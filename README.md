@@ -37,7 +37,7 @@ TherapyCompanion.AI is an advanced AI agent that serves as a **personal virtual 
 - Redis 6+
 - Anthropic API key (or OpenAI)
 
-### Installation
+### Backend Installation
 
 ```bash
 # Clone the repository
@@ -65,7 +65,26 @@ python -m app.main
 
 The API will be available at: **http://localhost:8000**
 
+### Frontend Installation
+
+```bash
+# In a new terminal
+cd frontend
+
+# Install dependencies
+npm install
+
+# Setup environment
+cp .env.example .env
+
+# Run development server
+npm run dev
+```
+
+The web interface will be available at: **http://localhost:3000**
+
 📖 **Full setup guide:** [docs/SETUP.md](docs/SETUP.md)
+📖 **Frontend guide:** [frontend/README.md](frontend/README.md)
 
 ---
 
@@ -182,7 +201,8 @@ The AI supports special commands for common tasks:
 
 ### Tech Stack
 
-- **Backend:** FastAPI (Python 3.11+)
+**Backend:**
+- **Framework:** FastAPI (Python 3.11+)
 - **Database:** PostgreSQL with SQLAlchemy ORM
 - **Cache:** Redis
 - **AI:** Anthropic Claude / OpenAI GPT
@@ -190,11 +210,20 @@ The AI supports special commands for common tasks:
 - **Auth:** JWT with BCrypt
 - **Audio:** OpenAI Whisper (transcription)
 
+**Frontend:**
+- **Framework:** React 18 with TypeScript
+- **Build Tool:** Vite
+- **Styling:** Tailwind CSS
+- **State:** Zustand
+- **Router:** React Router v6
+- **HTTP Client:** Axios
+- **Icons:** Heroicons
+
 ### Project Structure
 
 ```
 VirtualTherapist/
-├── app/
+├── app/                  # Backend (Python/FastAPI)
 │   ├── api/              # FastAPI routes
 │   │   └── routes/       # Auth, agent, messages
 │   ├── core/             # Core config & AI agent
@@ -202,14 +231,23 @@ VirtualTherapist/
 │   ├── services/         # Business logic
 │   ├── security/         # Auth & encryption
 │   └── main.py           # FastAPI application
+├── frontend/             # Frontend (React/TypeScript)
+│   ├── src/
+│   │   ├── components/   # React components
+│   │   ├── pages/        # Page components
+│   │   ├── lib/          # API client
+│   │   └── store/        # State management
+│   ├── public/           # Static assets
+│   └── package.json      # Frontend dependencies
 ├── docs/                 # Comprehensive documentation
 │   ├── ARCHITECTURE.md   # System architecture
 │   ├── API_GUIDE.md      # API documentation
-│   └── SETUP.md          # Setup instructions
+│   ├── SETUP.md          # Setup instructions
+│   └── FRONTEND_GUIDE.md # Frontend guide
 ├── tests/                # Unit tests
 ├── examples/             # Usage examples
 ├── alembic/              # Database migrations
-└── requirements.txt      # Dependencies
+└── requirements.txt      # Backend dependencies
 ```
 
 📖 **Full architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
@@ -221,6 +259,8 @@ VirtualTherapist/
 - **[Setup Guide](docs/SETUP.md)** - Installation and configuration
 - **[API Guide](docs/API_GUIDE.md)** - Complete API documentation
 - **[Architecture](docs/ARCHITECTURE.md)** - System design and components
+- **[Frontend Guide](docs/FRONTEND_GUIDE.md)** - Web interface guide
+- **[Frontend README](frontend/README.md)** - Frontend setup
 - **[Examples](examples/example_usage.py)** - Usage examples
 
 ---
