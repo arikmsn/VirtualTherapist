@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuthStore } from '@/store/authStore'
+import { useAuth } from '@/auth/useAuth'
 import { authAPI } from '@/lib/api'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
-  const { setAuth } = useAuthStore()
+  const { login } = useAuth()
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -39,7 +39,7 @@ export default function RegisterPage() {
         formData.fullName,
         formData.phone
       )
-      setAuth(data.access_token, { id: 1, email: formData.email, fullName: formData.fullName })
+      login(data.access_token, { id: 1, email: formData.email, fullName: formData.fullName })
       navigate('/onboarding')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'שגיאה ברישום')

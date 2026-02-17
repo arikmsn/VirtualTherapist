@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAuthStore } from '@/store/authStore'
+import { useAuth } from '@/auth/useAuth'
 import {
   HomeIcon,
   ChatBubbleLeftRightIcon,
@@ -9,7 +9,7 @@ import {
 } from '@heroicons/react/24/outline'
 
 export default function Layout() {
-  const { user, logout } = useAuthStore()
+  const { user, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
 

@@ -1,5 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import { useAuthStore } from './store/authStore'
+import AuthProvider from './auth/AuthProvider'
+import { useAuth } from './auth/useAuth'
+import ProtectedRoute from './auth/ProtectedRoute'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
@@ -11,13 +13,13 @@ import SessionDetailPage from './pages/SessionDetailPage'
 import PatientSummariesPage from './pages/PatientSummariesPage'
 import Layout from './components/Layout'
 
-function App() {
-  const { isAuthenticated, _hasHydrated } = useAuthStore()
+function AppRoutes() {
+  const { isAuthenticated, isReady } = useAuth()
 
-  // Wait for Zustand persist to hydrate before rendering routes.
-  // Without this, the store starts with isAuthenticated=false (initial state)
-  // then hydrates to true, causing a flash redirect to /login then back.
-  if (!_hasHydrated) {
+  // Wait for auth to initialize from localStorage before rendering routes.
+  // Without this, the initial isAuthenticated=false triggers a redirect
+  // to /login before the stored token is read, causing a flash.
+  if (!isReady) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
@@ -28,25 +30,35 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* Public routes */}
+        {/* Public routes — redirect to dashboard if already logged in */}
         <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" />} />
         <Route path="/register" element={!isAuthenticated ? <RegisterPage /> : <Navigate to="/dashboard" />} />
 
-        {/* Protected routes */}
-        <Route element={isAuthenticated ? <Layout /> : <Navigate to="/login" />}>
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route path="/messages" element={<MessagesPage />} />
-          <Route path="/patients" element={<PatientsPage />} />
-          <Route path="/patients/:patientId/summaries" element={<PatientSummariesPage />} />
-          <Route path="/sessions" element={<SessionsPage />} />
-          <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
+        {/* Protected routes — ProtectedRoute redirects to /login if not authenticated */}
+        <Route element={<ProtectedRoute />}>
+          <Route element={<Layout />}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/messages" element={<MessagesPage />} />
+            <Route path="/patients" element={<PatientsPage />} />
+            <Route path="/patients/:patientId/summaries" element={<PatientSummariesPage />} />
+            <Route path="/sessions" element={<SessionsPage />} />
+            <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
+          </Route>
         </Route>
 
         {/* Default redirect */}
         <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} />} />
       </Routes>
     </Router>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   )
 }
 

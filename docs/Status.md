@@ -200,6 +200,34 @@ curl -s http://localhost:8000/api/v1/patients/1/insight-summary -X POST \
 
 **Key principle:** The AI drafts, the therapist decides. Every summary starts as a draft and requires explicit therapist approval. The AI never contacts patients or makes clinical decisions autonomously.
 
+## Auth Flow — Architecture & Regression Checklist
+
+### Architecture
+- **Single source of truth:** `AuthProvider` (React Context) in `frontend/src/auth/AuthProvider.tsx`.
+- **Token storage:** `localStorage['access_token']` — one key, one place.
+- **User metadata:** `localStorage['auth_user']` — non-sensitive display info (name, email).
+- **Hook:** `useAuth()` — exposes `isAuthenticated`, `isReady`, `token`, `user`, `login()`, `logout()`.
+- **Route guard:** `ProtectedRoute` (`frontend/src/auth/ProtectedRoute.tsx`) — the ONLY place that redirects unauthenticated users to `/login`. Individual pages have zero auth-redirect logic.
+- **401 interceptor:** `api.ts` clears `access_token` + `auth_user` from localStorage and hard-redirects to `/login`.
+
+### Regression Checklist
+Run this checklist after any change to `App.tsx`, `auth/`, or `api.ts` interceptors:
+
+1. Open `/login` → log in with a valid user → land on `/dashboard` and **stay there**.
+2. Refresh `/dashboard` → remain on `/dashboard` (token persists).
+3. Navigate to `/patients`, `/sessions`, `/sessions/:id` — all load without redirect.
+4. Click "התנתק" (logout) → land on `/login`.
+5. Manually navigate to `/dashboard` while logged out → redirected to `/login`.
+6. Open `/login` while already logged in → redirected to `/dashboard` (no loop).
+7. In DevTools: `localStorage.removeItem('access_token')` → next navigation to any protected route → redirected to `/login`.
+
+### Rules
+- No more than one source of truth for auth state (the `AuthContext`).
+- All auth redirects go through `ProtectedRoute`, not via scattered `navigate('/login')` calls.
+- The only `navigate('/login')` in the codebase is in `Layout.tsx`'s logout handler (after calling `logout()`).
+
+---
+
 ## Daily View + Prep Brief — HOW TO TEST
 
 ### Prerequisites

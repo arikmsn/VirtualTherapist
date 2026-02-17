@@ -10,10 +10,13 @@ export const api = axios.create({
   },
 })
 
+// Single localStorage key for the JWT — matches AuthProvider.tsx
+const TOKEN_KEY = 'access_token'
+
 // Add token to requests
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem(TOKEN_KEY)
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -24,15 +27,13 @@ api.interceptors.request.use(
   }
 )
 
-// Handle 401 errors — clear both token stores to prevent redirect loops
+// Handle 401 errors — clear token and redirect to login
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear the raw token used by the axios request interceptor
-      localStorage.removeItem('token')
-      // Clear the Zustand persist store so isAuthenticated resets to false
-      localStorage.removeItem('auth-storage')
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem('auth_user')
       window.location.href = '/login'
     }
     return Promise.reject(error)

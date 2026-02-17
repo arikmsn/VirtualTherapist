@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuthStore } from '@/store/authStore'
+import { useAuth } from '@/auth/useAuth'
 import { authAPI } from '@/lib/api'
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const { setAuth } = useAuthStore()
+  const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -18,7 +18,7 @@ export default function LoginPage() {
 
     try {
       const data = await authAPI.login(email, password)
-      setAuth(data.access_token, { id: 1, email, fullName: 'User' }) // Mock user data
+      login(data.access_token, { id: 1, email, fullName: 'User' })
       navigate('/dashboard')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'שגיאה בהתחברות')
