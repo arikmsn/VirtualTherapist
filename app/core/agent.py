@@ -36,6 +36,24 @@ class SessionSummaryResult:
         self.full_summary = full_summary
 
 
+class PatientInsightResult:
+    """Structured result from AI patient insight summary."""
+
+    def __init__(
+        self,
+        overview: str,
+        progress: str,
+        patterns: List[str],
+        risks: List[str],
+        suggestions_for_next_sessions: List[str],
+    ):
+        self.overview = overview
+        self.progress = progress
+        self.patterns = patterns
+        self.risks = risks
+        self.suggestions_for_next_sessions = suggestions_for_next_sessions
+
+
 class TherapyAgent:
     """
     The core AI agent that mimics the therapist's personality and style
@@ -342,6 +360,109 @@ class TherapyAgent:
             mood_observed=data.get("mood_observed", ""),
             risk_assessment=data.get("risk_assessment", ""),
             full_summary=data.get("full_summary", ""),
+        )
+
+    async def generate_patient_insight_summary(
+        self,
+        patient_name: str,
+        summaries_timeline: List[Dict[str, Any]],
+    ) -> PatientInsightResult:
+        """
+        Generate a cross-session insight report for a patient.
+
+        summaries_timeline: list of dicts with keys:
+            session_date, session_number, full_summary, topics_discussed,
+            patient_progress, risk_assessment
+        """
+        if self.client is None:
+            raise RuntimeError(
+                "AI client not initialized. "
+                f"Set a valid API key in .env for AI_PROVIDER='{self.ai_provider}'."
+            )
+
+        # Build timeline text
+        timeline_parts = []
+        for s in summaries_timeline:
+            date_str = str(s.get("session_date", "?"))
+            num = s.get("session_number", "?")
+            topics = ", ".join(s.get("topics_discussed", []) or [])
+            progress = s.get("patient_progress", "")
+            risk = s.get("risk_assessment", "")
+            summary_text = s.get("full_summary", "")
+            timeline_parts.append(
+                f"--- פגישה #{num} ({date_str}) ---\n"
+                f"נושאים: {topics}\n"
+                f"סיכום: {summary_text}\n"
+                f"התקדמות: {progress}\n"
+                f"סיכון: {risk}"
+            )
+
+        timeline = "\n\n".join(timeline_parts)
+
+        prompt = f"""\
+אתה מסייע לחשיבה הקלינית של המטפל. אתה לא מאבחן, לא ממליץ על טיפול תרופתי, ולא מחליף שיקול דעת קליני.
+
+להלן ציר הזמן של סיכומי הפגישות המאושרים עבור המטופל "{patient_name}":
+
+{timeline}
+
+על סמך ציר הזמן, צור דו"ח תובנות **למטפל בלבד** (לא למטופל).
+
+החזר תשובה **אך ורק** כ-JSON תקין (ללא markdown, ללא ```):
+{{
+  "overview": "סקירה כללית של מהלך הטיפול ב-3-5 משפטים",
+  "progress": "תיאור ההתקדמות לאורך זמן — מה השתנה מפגישה ראשונה לאחרונה",
+  "patterns": ["דפוס 1", "דפוס 2", "..."],
+  "risks": ["נקודת סיכון 1 למעקב", "..."],
+  "suggestions_for_next_sessions": ["רעיון 1 לפגישות הבאות", "רעיון 2", "..."]
+}}
+
+כללים:
+- בסס את התובנות **רק** על מידע שמופיע בסיכומים. אל תמציא.
+- אם אין מספיק מידע לשדה מסוים, כתוב ["לא ניתן לקבוע מהנתונים הקיימים"].
+- כתוב בעברית מקצועית שוטפת.
+- אל תיתן אבחנות. אל תציע תרופות.
+"""
+
+        try:
+            if self.ai_provider == "anthropic":
+                raw = await self._generate_anthropic(prompt)
+            else:
+                raw = await self._generate_openai(prompt)
+
+            return self._parse_insight_json(raw)
+
+        except Exception as e:
+            logger.error(f"Error generating patient insight summary: {e}")
+            raise
+
+    def _parse_insight_json(self, raw: str) -> PatientInsightResult:
+        """Parse AI response into PatientInsightResult, with fallback."""
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[: cleaned.rfind("```")]
+        cleaned = cleaned.strip()
+
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            logger.warning("AI returned non-JSON insight, using full text as fallback")
+            return PatientInsightResult(
+                overview=raw,
+                progress="",
+                patterns=[],
+                risks=[],
+                suggestions_for_next_sessions=[],
+            )
+
+        return PatientInsightResult(
+            overview=data.get("overview", ""),
+            progress=data.get("progress", ""),
+            patterns=data.get("patterns", []),
+            risks=data.get("risks", []),
+            suggestions_for_next_sessions=data.get("suggestions_for_next_sessions", []),
         )
 
     async def _generate_anthropic(self, prompt: str) -> str:

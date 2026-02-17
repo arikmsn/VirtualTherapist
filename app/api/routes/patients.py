@@ -10,6 +10,7 @@ from app.models.therapist import Therapist
 from app.models.patient import PatientStatus
 from app.services.patient_service import PatientService
 from app.services.session_service import SessionService
+from app.services.therapist_service import TherapistService
 from app.api.routes.sessions import SummaryResponse, PatientSummaryItem
 
 router = APIRouter()
@@ -214,5 +215,51 @@ async def get_patient_summaries(
 
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class PatientInsightResponse(BaseModel):
+    overview: str
+    progress: str
+    patterns: List[str]
+    risks: List[str]
+    suggestions_for_next_sessions: List[str]
+
+
+@router.post("/{patient_id}/insight-summary", response_model=PatientInsightResponse)
+async def generate_patient_insight_summary(
+    patient_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """Generate a cross-session AI insight report for a patient (therapist-only)"""
+
+    session_service = SessionService(db)
+    therapist_service = TherapistService(db)
+
+    try:
+        agent = await therapist_service.get_agent_for_therapist(
+            current_therapist.id,
+        )
+
+        result = await session_service.generate_patient_insight(
+            patient_id=patient_id,
+            therapist_id=current_therapist.id,
+            agent=agent,
+        )
+
+        return PatientInsightResponse(
+            overview=result.overview,
+            progress=result.progress,
+            patterns=result.patterns,
+            risks=result.risks,
+            suggestions_for_next_sessions=result.suggestions_for_next_sessions,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

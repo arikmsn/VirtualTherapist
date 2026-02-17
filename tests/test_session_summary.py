@@ -16,7 +16,7 @@ from app.models.session import Session as _Session, SessionSummary as _SessionSu
 from app.models.patient import Patient as _Patient  # noqa: F401
 from app.models.message import Message as _Message  # noqa: F401
 from app.models.audit import AuditLog as _AuditLog  # noqa: F401
-from app.core.agent import SessionSummaryResult
+from app.core.agent import SessionSummaryResult, PatientInsightResult
 
 # In-memory SQLite for tests — use StaticPool so all connections share one DB
 from sqlalchemy.pool import StaticPool
@@ -324,3 +324,67 @@ async def test_patient_summaries_empty(client, therapist_with_patient):
 
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+def _create_approved_summary(client, session_id):
+    """Helper: generate + approve a summary."""
+    _create_summary_via_api(client, session_id)
+    client.patch(
+        f"/api/v1/sessions/{session_id}/summary",
+        json={"status": "approved"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_patient_insight_happy_path(client, therapist_with_patient):
+    """POST /patients/{id}/insight-summary returns structured insight."""
+    session_id = therapist_with_patient["session"].id
+    patient_id = therapist_with_patient["patient"].id
+    _create_approved_summary(client, session_id)
+
+    with patch(
+        "app.core.agent.TherapyAgent.generate_patient_insight_summary",
+        new_callable=AsyncMock,
+    ) as mock_insight:
+        mock_insight.return_value = PatientInsightResult(
+            overview="סקירה כללית של מהלך הטיפול",
+            progress="שיפור הדרגתי בתפקוד",
+            patterns=["דפוס הימנעות חוזר", "שיפור בביטוי רגשי"],
+            risks=["סיכון נמוך, יש לעקוב אחרי דפוסי שינה"],
+            suggestions_for_next_sessions=["להמשיך חשיפה הדרגתית", "לעבוד על ויסות רגשי"],
+        )
+
+        resp = client.post(f"/api/v1/patients/{patient_id}/insight-summary")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["overview"] == "סקירה כללית של מהלך הטיפול"
+    assert data["progress"] == "שיפור הדרגתי בתפקוד"
+    assert len(data["patterns"]) == 2
+    assert len(data["risks"]) == 1
+    assert len(data["suggestions_for_next_sessions"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_patient_insight_no_approved_summaries(client, therapist_with_patient):
+    """POST /patients/{id}/insight-summary returns 400 when no approved summaries."""
+    patient_id = therapist_with_patient["patient"].id
+
+    resp = client.post(f"/api/v1/patients/{patient_id}/insight-summary")
+
+    assert resp.status_code == 400
+    assert "סיכומים מאושרים" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_patient_insight_with_draft_only(client, therapist_with_patient):
+    """POST returns 400 when summaries exist but none are approved."""
+    session_id = therapist_with_patient["session"].id
+    patient_id = therapist_with_patient["patient"].id
+    # Create but do NOT approve
+    _create_summary_via_api(client, session_id)
+
+    resp = client.post(f"/api/v1/patients/{patient_id}/insight-summary")
+
+    assert resp.status_code == 400
+    assert "סיכומים מאושרים" in resp.json()["detail"]

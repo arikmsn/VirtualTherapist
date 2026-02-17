@@ -5,7 +5,7 @@ from datetime import date
 from sqlalchemy.orm import Session
 from app.models.session import Session as TherapySession, SessionSummary, SessionType, SummaryStatus
 from app.models.patient import Patient
-from app.core.agent import TherapyAgent
+from app.core.agent import TherapyAgent, PatientInsightResult
 from app.services.audit_service import AuditService
 from loguru import logger
 
@@ -442,3 +442,63 @@ class SessionService:
                 })
 
         return results
+
+    async def generate_patient_insight(
+        self,
+        patient_id: int,
+        therapist_id: int,
+        agent: TherapyAgent,
+    ) -> PatientInsightResult:
+        """Generate a cross-session AI insight report for a patient."""
+
+        patient = self.db.query(Patient).filter(
+            Patient.id == patient_id,
+            Patient.therapist_id == therapist_id,
+        ).first()
+
+        if not patient:
+            raise ValueError("Patient not found")
+
+        # Fetch only approved summaries, ordered chronologically
+        sessions = (
+            self.db.query(TherapySession)
+            .filter(
+                TherapySession.patient_id == patient_id,
+                TherapySession.summary_id.isnot(None),
+            )
+            .order_by(TherapySession.session_date.asc())
+            .all()
+        )
+
+        approved_summaries = []
+        for s in sessions:
+            summary = s.summary
+            if summary and summary.status == SummaryStatus.APPROVED:
+                approved_summaries.append({
+                    "session_date": s.session_date,
+                    "session_number": s.session_number,
+                    "full_summary": summary.full_summary,
+                    "topics_discussed": summary.topics_discussed,
+                    "patient_progress": summary.patient_progress,
+                    "risk_assessment": summary.risk_assessment,
+                })
+
+        if not approved_summaries:
+            raise ValueError("אין סיכומים מאושרים עבור מטופל זה. יש לאשר לפחות סיכום אחד.")
+
+        result = await agent.generate_patient_insight_summary(
+            patient_name=patient.full_name_encrypted,  # display name
+            summaries_timeline=approved_summaries,
+        )
+
+        await self.audit_service.log_action(
+            user_id=therapist_id,
+            user_type="therapist",
+            action="generate",
+            resource_type="patient_insight",
+            resource_id=patient_id,
+            action_details={"approved_summaries_count": len(approved_summaries)},
+        )
+
+        logger.info(f"Generated insight summary for patient {patient_id} ({len(approved_summaries)} summaries)")
+        return result
