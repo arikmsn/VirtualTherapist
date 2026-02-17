@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   DocumentTextIcon,
   PaperAirplaneIcon,
-  MicrophoneIcon,
+  UserGroupIcon,
   BellAlertIcon,
   CheckCircleIcon,
   ClockIcon,
@@ -59,7 +59,6 @@ function shiftDate(dateStr: string, days: number): string {
 
 export default function DashboardPage() {
   const navigate = useNavigate()
-  const [showSessionModal, setShowSessionModal] = useState(false)
   const [showMessageModal, setShowMessageModal] = useState(false)
 
   const [stats, setStats] = useState({
@@ -246,11 +245,11 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* THE 3 MAIN BUTTONS - This is the core interface! */}
+      {/* QUICK ACTIONS — navigate to the right place, no floating editors */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Button 1: Write Summary */}
+        {/* Action 1: Go to Sessions (write summary for a specific session) */}
         <button
-          onClick={() => setShowSessionModal(true)}
+          onClick={() => navigate('/sessions')}
           className="card group hover:shadow-2xl transition-all duration-300 hover:scale-105 cursor-pointer text-right"
         >
           <div className="flex flex-col items-start gap-4">
@@ -260,16 +259,16 @@ export default function DashboardPage() {
             <div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">📝 כתיבת סיכום</h3>
               <p className="text-gray-600 text-sm">
-                הקלט דקה-דקתיים או הקלד הערות, והמערכת תיצור סיכום מובנה בסגנון שלך
+                בחר פגישה מהרשימה וכתוב סיכום AI מובנה עבורה
               </p>
             </div>
             <div className="mt-auto w-full">
-              <div className="text-sm text-therapy-calm font-medium">לחץ ליצירת סיכום →</div>
+              <div className="text-sm text-therapy-calm font-medium">עבור לפגישות →</div>
             </div>
           </div>
         </button>
 
-        {/* Button 2: Send to Patient */}
+        {/* Action 2: Send to Patient */}
         <button
           onClick={() => setShowMessageModal(true)}
           className="card group hover:shadow-2xl transition-all duration-300 hover:scale-105 cursor-pointer text-right"
@@ -295,23 +294,23 @@ export default function DashboardPage() {
           </div>
         </button>
 
-        {/* Button 3: New Recording */}
+        {/* Action 3: Go to Patients */}
         <button
-          onClick={() => setShowSessionModal(true)}
+          onClick={() => navigate('/patients')}
           className="card group hover:shadow-2xl transition-all duration-300 hover:scale-105 cursor-pointer text-right"
         >
           <div className="flex flex-col items-start gap-4">
             <div className="w-16 h-16 bg-therapy-warm/10 rounded-full flex items-center justify-center group-hover:bg-therapy-warm group-hover:text-white transition-colors duration-300">
-              <MicrophoneIcon className="h-8 w-8 text-therapy-warm group-hover:text-white" />
+              <UserGroupIcon className="h-8 w-8 text-therapy-warm group-hover:text-white" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">🎙️ הקלטה חדשה</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">👥 מטופלים</h3>
               <p className="text-gray-600 text-sm">
-                הקלט סיכום פגישה והמערכת תתמלל ותיצור סיכום מובנה אוטומטית
+                צפה ברשימת המטופלים, הוסף מטופל חדש או עיין בהיסטוריית סיכומים
               </p>
             </div>
             <div className="mt-auto w-full">
-              <div className="text-sm text-therapy-warm font-medium">לחץ להקלטה →</div>
+              <div className="text-sm text-therapy-warm font-medium">עבור למטופלים →</div>
             </div>
           </div>
         </button>
@@ -401,11 +400,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Modals */}
-      {showSessionModal && (
-        <SessionModal onClose={() => setShowSessionModal(false)} />
-      )}
-
+      {/* Message Modal (kept — messages are not session-scoped) */}
       {showMessageModal && (
         <MessageModal
           patients={patients}
@@ -416,78 +411,7 @@ export default function DashboardPage() {
   )
 }
 
-// Session Summary Modal
-function SessionModal({ onClose }: { onClose: () => void }) {
-  const [recordingMode, setRecordingMode] = useState<'audio' | 'text'>('audio')
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" dir="rtl">
-      <div className="bg-white rounded-xl p-8 max-w-2xl w-full mx-4 animate-fade-in">
-        <h2 className="text-2xl font-bold mb-6">יצירת סיכום פגישה</h2>
-
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            בחר שיטה
-          </label>
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => setRecordingMode('audio')}
-              className={`p-4 border-2 rounded-lg ${
-                recordingMode === 'audio'
-                  ? 'border-therapy-calm bg-blue-50'
-                  : 'border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              <MicrophoneIcon className="h-8 w-8 mx-auto mb-2 text-therapy-warm" />
-              <div className="font-medium">הקלטה</div>
-              <div className="text-xs text-gray-500">הקלט קול והמערכת תתמלל</div>
-            </button>
-
-            <button
-              onClick={() => setRecordingMode('text')}
-              className={`p-4 border-2 rounded-lg ${
-                recordingMode === 'text'
-                  ? 'border-therapy-calm bg-blue-50'
-                  : 'border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              <DocumentTextIcon className="h-8 w-8 mx-auto mb-2 text-therapy-calm" />
-              <div className="font-medium">טקסט</div>
-              <div className="text-xs text-gray-500">הקלד הערות ישירות</div>
-            </button>
-          </div>
-        </div>
-
-        {recordingMode === 'audio' ? (
-          <div className="bg-gray-50 rounded-lg p-8 text-center">
-            <div className="w-24 h-24 bg-therapy-warm rounded-full mx-auto mb-4 flex items-center justify-center">
-              <MicrophoneIcon className="h-12 w-12 text-white" />
-            </div>
-            <button className="btn-primary mb-2">🎙️ התחל הקלטה</button>
-            <p className="text-sm text-gray-600">לחץ כדי להתחיל להקליט</p>
-          </div>
-        ) : (
-          <div>
-            <textarea
-              className="input-field h-40 resize-none"
-              placeholder="הקלד כאן את רשימות הפגישה... המערכת תיצור מזה סיכום מובנה בסגנון שלך"
-            />
-            <button className="btn-primary mt-4 w-full">צור סיכום</button>
-          </div>
-        )}
-
-        <button
-          onClick={onClose}
-          className="btn-secondary w-full mt-4"
-        >
-          ביטול
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// Message Modal - now receives real patients list
+// Message Modal — messages are patient-scoped (not session-scoped), so this modal is fine here
 function MessageModal({ patients, onClose }: { patients: Patient[]; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" dir="rtl">

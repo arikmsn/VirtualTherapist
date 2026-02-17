@@ -140,26 +140,48 @@ curl -s http://localhost:8000/api/v1/patients/1/insight-summary -X POST \
 
 ## Therapist Workspace — Current Capabilities
 
-### Patients List + Per-Patient Summaries Timeline
-- **Patients page** (`/patients`) — searchable list of all patients, stats (active count, total, missed exercises), create new patient via modal.
-- **Per-patient summaries** (`/patients/{id}/summaries`) — click any patient card (or the "סיכומים" button) to see a timeline of all AI-generated summaries for that patient, sorted newest-first. Each entry shows session number, date, status badge (טיוטה / מאושר), topic chips, and a preview of the summary text. Clicking an entry navigates to the full session detail.
-- **Patient insight summary** — purple panel at the top of the summaries page. "צור סיכום עומק" button generates a cross-session AI report synthesizing all approved summaries into patterns, progress, risks, and next-session ideas.
+### Data Model: Patient → Session → Summary
 
-### SessionDetail Workspace: Notes → AI Summary → Edit → Approve
-- **Session detail** (`/sessions/{id}`) — the therapist's main workspace for a single session:
-  1. **Notes input** — paste or type raw session notes into the textarea.
-  2. **AI summary generation** — click "צור סיכום AI" to send notes to the AI agent, which returns a structured summary (topics, interventions, homework, progress, next plan, mood, risk assessment).
-  3. **Review** — the summary appears in structured cards with a "טיוטה" (draft) badge.
-  4. **Edit** — click "ערוך סיכום" to make the full summary, progress, next plan, mood, and risk fields editable inline.
-  5. **Save draft** — click "שמור טיוטה" to persist edits without approving.
-  6. **Approve** — click "אשר סיכום" (or "שמור ואשר" while editing) to mark the summary as approved. The badge changes to "מאושר" with a green checkmark.
+Every piece of data follows a strict hierarchy:
+- **Patient** — who (name, contact, status)
+- **Session** — when + with whom (`patient_id`, `session_date`, `start_time`)
+- **Summary** — what happened (`session_id` → always tied to a specific session)
+
+A summary can **never** exist without a session. A session can **never** exist without a patient. This is enforced both in the database (foreign keys) and in the UI (there is no "free-floating" summary editor — summaries are always created from within a specific session's workspace).
+
+### How to Create a Patient
+1. Navigate to "מטופלים" (`/patients`).
+2. Click the "+" button.
+3. Fill in name (required) and optional fields (phone, email, concerns).
+4. Click "צור מטופל".
+
+### How to Create a Session for a Patient
+1. Via API: `POST /api/v1/sessions/` with `{ patient_id, session_date, start_time }`.
+2. The session appears in the daily view and in the sessions list.
+
+### How to Write and Approve a Summary for a Specific Session
+1. From the **Dashboard daily view**, click **"פתח סשן"** next to the session.
+   - Or from **"פגישות"** (`/sessions`), click **"צור סיכום"** next to a session without a summary.
+2. This opens the **SessionDetailPage** (`/sessions/{id}`) — the header clearly shows:
+   - Patient name
+   - Session date + time + number + type
+3. Paste or type session notes into the textarea.
+4. Click **"צור סיכום AI"** — the AI generates a structured summary **for THIS session only**.
+5. Review the generated summary (topics, interventions, homework, progress, mood, risk).
+6. Optionally click **"ערוך סיכום"** to edit, then **"שמור טיוטה"** to save.
+7. Click **"אשר סיכום"** to approve — the badge changes from "טיוטה" to "מאושר".
+
+There is no other place in the app to create a summary. The Dashboard's quick-action buttons navigate to the sessions list or patients list — they never open a floating editor.
 
 ### Daily View + Session Prep Brief
 - **Dashboard daily view** (`/dashboard`) — the top section shows sessions for the selected date. Date navigation with "יום קודם", "יום הבא", "היום" buttons and a native date picker. Each session row shows start time (HH:MM), patient name, session number, summary badge, and two action buttons: "פתח סשן" and "הכנה לפגישה". Defaults to today's date.
-- **Backend:** `GET /sessions/by-date?date=YYYY-MM-DD` returns sessions for a specific date with patient names, sorted by start time. `Session` model now has `start_time`/`end_time` DateTime columns.
+- **Quick actions** — the three cards below the daily view navigate to: Sessions list (for summary creation), Message modal (patient messages), and Patients list. No floating summary editors.
 - **Prep brief** (`/sessions/{id}?prep=1`) — amber "הכנה לפגישה" panel on the session detail page. Clicking "הכנה לפגישה" from the daily view auto-generates and displays an AI prep brief with: quick overview, recent progress, key points to revisit, watch-out items (red), and session ideas (green). Also available as a toggle button on any session detail page.
-- **Backend:** `POST /sessions/{id}/prep-brief` — generates a concise AI prep brief from the last 5 approved summaries for the session's patient. Returns 400 if no approved summaries, 503 if no AI key.
-- **Tests:** 24 passing tests (5 daily-view + 3 prep-brief + 16 existing).
+
+### Per-Patient Summaries Timeline
+- **Patients page** (`/patients`) — searchable list of all patients, create new patient via modal.
+- **Per-patient summaries** (`/patients/{id}/summaries`) — click any patient card to see a timeline of all AI-generated summaries for that patient. Each entry shows session number, date, status badge, topic chips. Clicking an entry navigates to the full session detail.
+- **Patient insight summary** — purple panel at the top of the summaries page. "צור סיכום עומק" generates a cross-session AI report from all approved summaries.
 
 ### Navigation Flow
 - **Sessions page** (`/sessions`) — lists all sessions with filter tabs (all / with summary / without summary). Each row shows patient name, date, and summary status. "צור סיכום" navigates to the detail page for sessions without a summary; "צפה בסיכום" for sessions that already have one.
