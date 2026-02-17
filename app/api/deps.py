@@ -43,7 +43,11 @@ async def get_current_therapist(
     if payload is None:
         raise credentials_exception
 
-    therapist_id: int = payload.get("sub")
+    therapist_id = payload.get("sub")
+    try:
+        therapist_id = int(therapist_id)
+    except (TypeError, ValueError):
+        raise credentials_exception
     if therapist_id is None:
         raise credentials_exception
 

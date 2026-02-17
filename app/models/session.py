@@ -29,7 +29,7 @@ class Session(BaseModel):
 
     # Session Info
     session_date = Column(Date, nullable=False)
-    session_type = Column(SQLEnum(SessionType), default=SessionType.INDIVIDUAL)
+    session_type = Column(SQLEnum(SessionType, native_enum=False), default=SessionType.INDIVIDUAL)
     duration_minutes = Column(Integer)  # Session duration
 
     # Session Number

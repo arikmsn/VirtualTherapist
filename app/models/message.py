@@ -36,11 +36,11 @@ class Message(BaseModel):
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
 
     # Message Content
-    direction = Column(SQLEnum(MessageDirection), nullable=False)
+    direction = Column(SQLEnum(MessageDirection, native_enum=False), nullable=False)
     content = Column(Text, nullable=False)  # The actual message text
 
     # Status & Approval
-    status = Column(SQLEnum(MessageStatus), default=MessageStatus.DRAFT)
+    status = Column(SQLEnum(MessageStatus, native_enum=False), default=MessageStatus.DRAFT)
 
     # Approval Tracking (CRITICAL for ethics!)
     requires_approval = Column(Boolean, default=True)

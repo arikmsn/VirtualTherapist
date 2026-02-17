@@ -54,6 +54,17 @@ async def startup_event():
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"AI Provider: {settings.AI_PROVIDER}")
 
+    # Auto-create tables in development (for SQLite or fresh databases)
+    if settings.ENVIRONMENT == "development":
+        from app.core.database import engine
+        from app.models.base import Base
+        from app.models import (  # noqa: F401
+            Therapist, TherapistProfile, Patient, Session,
+            SessionSummary, Message, AuditLog,
+        )
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created/verified")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():

@@ -30,7 +30,7 @@ class Patient(BaseModel):
     email_encrypted = Column(Text)  # Encrypted
 
     # Treatment Info
-    status = Column(SQLEnum(PatientStatus), default=PatientStatus.ACTIVE)
+    status = Column(SQLEnum(PatientStatus, native_enum=False), default=PatientStatus.ACTIVE)
     start_date = Column(Date)
 
     # Clinical Notes (encrypted)

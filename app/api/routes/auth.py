@@ -45,7 +45,7 @@ async def register(
 
         # Create access token
         access_token = create_access_token(
-            data={"sub": therapist.id},
+            data={"sub": str(therapist.id)},
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         )
 
@@ -90,7 +90,7 @@ async def login(
 
     # Create access token
     access_token = create_access_token(
-        data={"sub": therapist.id},
+        data={"sub": str(therapist.id)},
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
 

@@ -55,7 +55,7 @@ class TherapistProfile(BaseModel):
     therapist_id = Column(Integer, ForeignKey("therapists.id"), unique=True, nullable=False)
 
     # Therapeutic Approach
-    therapeutic_approach = Column(SQLEnum(TherapeuticApproach), nullable=False)
+    therapeutic_approach = Column(SQLEnum(TherapeuticApproach, native_enum=False), nullable=False)
     approach_description = Column(Text)  # Detailed description
 
     # Writing Style (AI learns this!)

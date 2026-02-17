@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import date
+from datetime import date, datetime
 from app.api.deps import get_db, get_current_therapist
 from app.models.therapist import Therapist
 from app.models.patient import PatientStatus
@@ -53,7 +53,7 @@ class PatientResponse(BaseModel):
     preferred_contact_time: Optional[str] = None
     completed_exercises_count: int
     missed_exercises_count: int
-    created_at: str
+    created_at: datetime
 
     class Config:
         from_attributes = True

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session as DBSession
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-from datetime import date
+from datetime import date, datetime
 from app.api.deps import get_db, get_current_therapist
 from app.models.therapist import Therapist
 from app.models.session import SessionType
@@ -40,7 +40,7 @@ class SessionResponse(BaseModel):
     session_number: Optional[int] = None
     has_recording: bool
     summary_id: Optional[int] = None
-    created_at: str
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -72,7 +72,7 @@ class SummaryResponse(BaseModel):
     homework_assigned: Optional[List[str]] = None
     next_session_plan: Optional[str] = None
     mood_observed: Optional[str] = None
-    created_at: str
+    created_at: datetime
 
     class Config:
         from_attributes = True

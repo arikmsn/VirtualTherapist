@@ -54,6 +54,7 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+therapy_dev.db*
 
 # Audio files (session recordings)
 uploads/
