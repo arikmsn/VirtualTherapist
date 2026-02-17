@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   DocumentTextIcon,
@@ -7,6 +7,9 @@ import {
   BellAlertIcon,
   CheckCircleIcon,
   ClockIcon,
+  ChevronRightIcon,
+  ChevronLeftIcon,
+  CalendarDaysIcon,
 } from '@heroicons/react/24/outline'
 import { patientsAPI, sessionsAPI, messagesAPI } from '@/lib/api'
 
@@ -14,6 +17,44 @@ interface Patient {
   id: number
   full_name: string
   status: string
+}
+
+interface DailySession {
+  id: number
+  patient_id: number
+  patient_name: string
+  session_date: string
+  start_time: string | null
+  end_time: string | null
+  session_type: string
+  session_number: number
+  has_summary: boolean
+}
+
+function todayISO(): string {
+  return new Date().toISOString().split('T')[0]
+}
+
+function formatDateHebrew(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.toLocaleDateString('he-IL', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+function formatTime(isoStr: string | null): string {
+  if (!isoStr) return ''
+  const d = new Date(isoStr)
+  return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+}
+
+function shiftDate(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return d.toISOString().split('T')[0]
 }
 
 export default function DashboardPage() {
@@ -30,6 +71,12 @@ export default function DashboardPage() {
   const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Daily view state
+  const [selectedDate, setSelectedDate] = useState<string>(todayISO())
+  const [dailySessions, setDailySessions] = useState<DailySession[]>([])
+  const [dailyLoading, setDailyLoading] = useState(true)
+
+  // Load global stats
   useEffect(() => {
     const loadStats = async () => {
       try {
@@ -39,7 +86,7 @@ export default function DashboardPage() {
           messagesAPI.getPending().catch(() => []),
         ])
         setPatients(patientsData)
-        const today = new Date().toISOString().split('T')[0]
+        const today = todayISO()
         setStats({
           pendingMessages: messagesData.length,
           todaySessions: sessionsData.filter(
@@ -61,6 +108,26 @@ export default function DashboardPage() {
     loadStats()
   }, [])
 
+  // Load daily sessions when date changes
+  const loadDailySessions = useCallback(async (dateStr: string) => {
+    setDailyLoading(true)
+    try {
+      const data = await sessionsAPI.listByDate(dateStr)
+      setDailySessions(data)
+    } catch (error) {
+      console.error('Error loading daily sessions:', error)
+      setDailySessions([])
+    } finally {
+      setDailyLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadDailySessions(selectedDate)
+  }, [selectedDate, loadDailySessions])
+
+  const isToday = selectedDate === todayISO()
+
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Welcome Header */}
@@ -69,6 +136,114 @@ export default function DashboardPage() {
         <p className="text-indigo-100 text-lg">
           מה תרצה לעשות היום?
         </p>
+      </div>
+
+      {/* ===== DAILY VIEW SECTION ===== */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <CalendarDaysIcon className="h-6 w-6 text-therapy-calm" />
+            {isToday ? 'המפגשים של היום' : `מפגשים – ${formatDateHebrew(selectedDate)}`}
+          </h2>
+          <span className="text-sm text-gray-500">
+            {dailySessions.length} מפגשים
+          </span>
+        </div>
+
+        {/* Date Navigation */}
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <button
+            onClick={() => setSelectedDate(shiftDate(selectedDate, 1))}
+            className="btn-secondary text-sm px-3 py-1.5 flex items-center gap-1"
+          >
+            <ChevronRightIcon className="h-4 w-4" />
+            יום קודם
+          </button>
+          <button
+            onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}
+            className="btn-secondary text-sm px-3 py-1.5 flex items-center gap-1"
+          >
+            יום הבא
+            <ChevronLeftIcon className="h-4 w-4" />
+          </button>
+          {!isToday && (
+            <button
+              onClick={() => setSelectedDate(todayISO())}
+              className="text-sm px-3 py-1.5 bg-therapy-calm text-white rounded-lg hover:bg-therapy-calm/90 transition-colors"
+            >
+              היום
+            </button>
+          )}
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-therapy-calm/30 focus:border-therapy-calm"
+          />
+        </div>
+
+        {/* Session List */}
+        {dailyLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-therapy-calm"></div>
+          </div>
+        ) : dailySessions.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <CalendarDaysIcon className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+            <p>אין מפגשים בתאריך זה</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {dailySessions.map((session) => (
+              <div
+                key={session.id}
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-4">
+                  {/* Time */}
+                  <div className="text-lg font-mono font-semibold text-therapy-calm min-w-[60px]">
+                    {formatTime(session.start_time) || '—'}
+                  </div>
+
+                  {/* Patient name + session info */}
+                  <div>
+                    <div className="font-medium text-gray-900">{session.patient_name}</div>
+                    <div className="text-xs text-gray-500">
+                      פגישה #{session.session_number} · {session.session_type}
+                    </div>
+                  </div>
+
+                  {/* Summary badge */}
+                  {session.has_summary ? (
+                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                      יש סיכום
+                    </span>
+                  ) : (
+                    <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
+                      ללא סיכום
+                    </span>
+                  )}
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => navigate(`/sessions/${session.id}`)}
+                    className="text-sm px-3 py-1 bg-therapy-calm text-white rounded-lg hover:bg-therapy-calm/90 transition-colors"
+                  >
+                    פתח סשן
+                  </button>
+                  <button
+                    onClick={() => navigate(`/sessions/${session.id}?prep=1`)}
+                    className="text-sm px-3 py-1 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors"
+                  >
+                    הכנה לפגישה
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* THE 3 MAIN BUTTONS - This is the core interface! */}
@@ -185,7 +360,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Recent Activity - TODO: fetch from activity API when available */}
+      {/* Recent Activity */}
       <div className="card">
         <h2 className="text-xl font-bold mb-4">פעילות אחרונה</h2>
         {loading ? (
