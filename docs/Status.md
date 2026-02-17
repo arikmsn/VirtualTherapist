@@ -82,10 +82,15 @@ curl -s http://localhost:8000/api/v1/sessions/1/summary \
   -H "Authorization: Bearer $TOKEN"
 ```
 
+### Session Summary Save, Approve & Per-Patient History
+- **Backend:** `PATCH /sessions/{id}/summary` — edit content, save draft, or approve. `GET /patients/{id}/summaries` — per-patient summary history with session metadata.
+- **Model:** `SummaryStatus` enum (draft/approved), `status` column on `SessionSummary`.
+- **Frontend:** `SessionDetailPage` — editable summary fields (full summary, progress, next plan, mood, risk), "שמור טיוטה" (save draft) and "אשר סיכום" (approve) buttons, status badges. `PatientSummariesPage` — per-patient summary timeline with topic chips.
+- **Tests:** 8 passing tests (4 original + 4 new: PATCH edit, PATCH approve, patient summaries list, patient summaries empty).
+
 ## In Progress
 
 ### Next features
-- Therapist edit/approve summary workflow
 - Audio upload + Whisper transcription (deferred — requires Python <3.13 or Docker)
 
 ## QA Agent Skill

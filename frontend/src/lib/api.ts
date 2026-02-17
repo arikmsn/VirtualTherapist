@@ -212,10 +212,23 @@ export const sessionsAPI = {
     return response.data
   },
 
+  patchSummary: async (sessionId: number, updates: Record<string, unknown>) => {
+    const response = await api.patch(`/sessions/${sessionId}/summary`, updates)
+    return response.data
+  },
+
   approveSummary: async (sessionId: number) => {
     const response = await api.post('/sessions/summary/approve', {
       session_id: sessionId,
     })
+    return response.data
+  },
+}
+
+// Patient Summaries API
+export const patientSummariesAPI = {
+  list: async (patientId: number) => {
+    const response = await api.get(`/patients/${patientId}/summaries`)
     return response.data
   },
 }

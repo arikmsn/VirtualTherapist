@@ -234,3 +234,93 @@ async def test_generate_summary_missing_ai_key(client, therapist_with_patient):
 
     assert resp.status_code == 503
     assert "AI client not initialized" in resp.json()["detail"]
+
+
+def _create_summary_via_api(client, session_id):
+    """Helper: generate a summary so we can test PATCH."""
+    with patch(
+        "app.core.agent.TherapyAgent.generate_session_summary",
+        new_callable=AsyncMock,
+    ) as mock_gen:
+        mock_gen.return_value = SessionSummaryResult(
+            topics_discussed=["נושא 1"],
+            interventions_used=["התערבות 1"],
+            patient_progress="התקדמות",
+            homework_assigned=["משימה 1"],
+            next_session_plan="תוכנית",
+            mood_observed="טוב",
+            risk_assessment="ללא",
+            full_summary="סיכום מלא",
+        )
+        resp = client.post(
+            f"/api/v1/sessions/{session_id}/summary/from-text",
+            json={"notes": "רשימות"},
+        )
+    assert resp.status_code == 200
+    return resp.json()
+
+
+@pytest.mark.asyncio
+async def test_patch_summary_edit_content(client, therapist_with_patient):
+    """PATCH /{session_id}/summary updates content and marks as edited."""
+    session_id = therapist_with_patient["session"].id
+    _create_summary_via_api(client, session_id)
+
+    resp = client.patch(
+        f"/api/v1/sessions/{session_id}/summary",
+        json={
+            "full_summary": "סיכום מעודכן",
+            "patient_progress": "התקדמות חדשה",
+        },
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["full_summary"] == "סיכום מעודכן"
+    assert data["patient_progress"] == "התקדמות חדשה"
+    assert data["therapist_edited"] is True
+    assert data["status"] == "draft"
+
+
+@pytest.mark.asyncio
+async def test_patch_summary_approve(client, therapist_with_patient):
+    """PATCH /{session_id}/summary with status=approved approves the summary."""
+    session_id = therapist_with_patient["session"].id
+    _create_summary_via_api(client, session_id)
+
+    resp = client.patch(
+        f"/api/v1/sessions/{session_id}/summary",
+        json={"status": "approved"},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "approved"
+    assert data["approved_by_therapist"] is True
+
+
+@pytest.mark.asyncio
+async def test_patient_summaries_list(client, therapist_with_patient):
+    """GET /patients/{patient_id}/summaries returns per-patient summary list."""
+    session_id = therapist_with_patient["session"].id
+    patient_id = therapist_with_patient["patient"].id
+    _create_summary_via_api(client, session_id)
+
+    resp = client.get(f"/api/v1/patients/{patient_id}/summaries")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["session_id"] == session_id
+    assert data[0]["summary"]["full_summary"] == "סיכום מלא"
+
+
+@pytest.mark.asyncio
+async def test_patient_summaries_empty(client, therapist_with_patient):
+    """GET /patients/{patient_id}/summaries returns empty list when no summaries."""
+    patient_id = therapist_with_patient["patient"].id
+
+    resp = client.get(f"/api/v1/patients/{patient_id}/summaries")
+
+    assert resp.status_code == 200
+    assert resp.json() == []

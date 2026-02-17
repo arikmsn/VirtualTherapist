@@ -19,6 +19,12 @@ class SessionType(str, enum.Enum):
     FOLLOW_UP = "follow_up"
 
 
+class SummaryStatus(str, enum.Enum):
+    """Summary review status"""
+    DRAFT = "draft"
+    APPROVED = "approved"
+
+
 class Session(BaseModel):
     """Therapy session record"""
 
@@ -70,6 +76,11 @@ class SessionSummary(BaseModel):
     generated_from = Column(String(50))  # "audio", "text", "manual"
     therapist_edited = Column(Boolean, default=False)
     approved_by_therapist = Column(Boolean, default=False)
+    status = Column(
+        SQLEnum(SummaryStatus, native_enum=False),
+        default=SummaryStatus.DRAFT,
+        nullable=False,
+    )
 
     # Clinical Observations
     mood_observed = Column(String(100))

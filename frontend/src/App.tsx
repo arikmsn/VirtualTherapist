@@ -8,6 +8,7 @@ import MessagesPage from './pages/MessagesPage'
 import PatientsPage from './pages/PatientsPage'
 import SessionsPage from './pages/SessionsPage'
 import SessionDetailPage from './pages/SessionDetailPage'
+import PatientSummariesPage from './pages/PatientSummariesPage'
 import Layout from './components/Layout'
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/messages" element={<MessagesPage />} />
           <Route path="/patients" element={<PatientsPage />} />
+          <Route path="/patients/:patientId/summaries" element={<PatientSummariesPage />} />
           <Route path="/sessions" element={<SessionsPage />} />
           <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
         </Route>

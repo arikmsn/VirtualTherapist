@@ -9,6 +9,8 @@ from app.api.deps import get_db, get_current_therapist
 from app.models.therapist import Therapist
 from app.models.patient import PatientStatus
 from app.services.patient_service import PatientService
+from app.services.session_service import SessionService
+from app.api.routes.sessions import SummaryResponse, PatientSummaryItem
 
 router = APIRouter()
 
@@ -178,6 +180,37 @@ async def delete_patient(
             therapist_id=current_therapist.id,
         )
         return {"message": "Patient deleted successfully"}
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{patient_id}/summaries", response_model=List[PatientSummaryItem])
+async def get_patient_summaries(
+    patient_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """Get all session summaries for a patient"""
+
+    service = SessionService(db)
+
+    try:
+        results = await service.get_patient_summaries(
+            patient_id=patient_id,
+            therapist_id=current_therapist.id,
+        )
+        return [
+            PatientSummaryItem(
+                session_id=r["session_id"],
+                session_date=r["session_date"],
+                session_number=r["session_number"],
+                summary=SummaryResponse.model_validate(r["summary"]),
+            )
+            for r in results
+        ]
 
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

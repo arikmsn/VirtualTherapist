@@ -59,12 +59,25 @@ class EditSummaryRequest(BaseModel):
     edited_content: Dict[str, Any]
 
 
+class PatchSummaryRequest(BaseModel):
+    full_summary: Optional[str] = None
+    topics_discussed: Optional[List[str]] = None
+    interventions_used: Optional[List[str]] = None
+    patient_progress: Optional[str] = None
+    homework_assigned: Optional[List[str]] = None
+    next_session_plan: Optional[str] = None
+    mood_observed: Optional[str] = None
+    risk_assessment: Optional[str] = None
+    status: Optional[str] = None  # "draft" or "approved"
+
+
 class SummaryResponse(BaseModel):
     id: int
     full_summary: Optional[str] = None
     generated_from: Optional[str] = None
     therapist_edited: bool
     approved_by_therapist: bool
+    status: Optional[str] = "draft"
     topics_discussed: Optional[List[str]] = None
     interventions_used: Optional[List[str]] = None
     patient_progress: Optional[str] = None
@@ -73,6 +86,17 @@ class SummaryResponse(BaseModel):
     mood_observed: Optional[str] = None
     risk_assessment: Optional[str] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PatientSummaryItem(BaseModel):
+    session_id: int
+    session_date: date
+    session_number: Optional[int] = None
+    summary: SummaryResponse
 
     class Config:
         from_attributes = True
@@ -262,6 +286,32 @@ async def get_session_summary(
         raise HTTPException(status_code=404, detail=str(e))
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/{session_id}/summary", response_model=SummaryResponse)
+async def patch_session_summary(
+    session_id: int,
+    request: PatchSummaryRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Edit or approve a session summary (save draft / approve)"""
+
+    service = SessionService(db)
+    updates = request.model_dump(exclude_unset=True)
+
+    try:
+        summary = await service.update_summary(
+            session_id=session_id,
+            therapist_id=current_therapist.id,
+            updates=updates,
+        )
+        return SummaryResponse.model_validate(summary)
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

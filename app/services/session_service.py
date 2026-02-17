@@ -3,7 +3,7 @@
 from typing import Optional, Dict, Any, List
 from datetime import date
 from sqlalchemy.orm import Session
-from app.models.session import Session as TherapySession, SessionSummary, SessionType
+from app.models.session import Session as TherapySession, SessionSummary, SessionType, SummaryStatus
 from app.models.patient import Patient
 from app.core.agent import TherapyAgent
 from app.services.audit_service import AuditService
@@ -344,3 +344,101 @@ class SessionService:
 
         logger.info(f"Updated session {session_id}")
         return session
+
+    async def update_summary(
+        self,
+        session_id: int,
+        therapist_id: int,
+        updates: Dict[str, Any],
+    ) -> SessionSummary:
+        """Update (edit/approve) an existing session summary."""
+
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
+
+        if not session or not session.summary:
+            raise ValueError("Session or summary not found")
+
+        summary = session.summary
+
+        # Allowed editable fields
+        editable = {
+            "full_summary", "topics_discussed", "interventions_used",
+            "patient_progress", "homework_assigned", "next_session_plan",
+            "mood_observed", "risk_assessment",
+        }
+
+        content_changed = False
+        for field, value in updates.items():
+            if field in editable and hasattr(summary, field):
+                setattr(summary, field, value)
+                content_changed = True
+
+        if content_changed:
+            summary.therapist_edited = True
+
+        # Handle status change
+        if "status" in updates:
+            new_status = updates["status"]
+            if new_status == "approved" or new_status == SummaryStatus.APPROVED:
+                summary.status = SummaryStatus.APPROVED
+                summary.approved_by_therapist = True
+            elif new_status == "draft" or new_status == SummaryStatus.DRAFT:
+                summary.status = SummaryStatus.DRAFT
+                summary.approved_by_therapist = False
+
+        self.db.commit()
+        self.db.refresh(summary)
+
+        action = "approve" if summary.status == SummaryStatus.APPROVED else "edit"
+        await self.audit_service.log_action(
+            user_id=therapist_id,
+            user_type="therapist",
+            action=action,
+            resource_type="session_summary",
+            resource_id=summary.id,
+            action_details={"session_id": session_id},
+        )
+
+        logger.info(f"Updated summary {summary.id} (status={summary.status})")
+        return summary
+
+    async def get_patient_summaries(
+        self,
+        patient_id: int,
+        therapist_id: int,
+    ) -> List[Dict[str, Any]]:
+        """Get all summaries for a patient's sessions, with session metadata."""
+
+        patient = self.db.query(Patient).filter(
+            Patient.id == patient_id,
+            Patient.therapist_id == therapist_id,
+        ).first()
+
+        if not patient:
+            raise ValueError("Patient not found")
+
+        sessions = (
+            self.db.query(TherapySession)
+            .filter(
+                TherapySession.patient_id == patient_id,
+                TherapySession.summary_id.isnot(None),
+            )
+            .order_by(TherapySession.session_date.desc())
+            .all()
+        )
+
+        results = []
+        for s in sessions:
+            summary = s.summary
+            if summary:
+                results.append({
+                    "session_id": s.id,
+                    "session_date": s.session_date,
+                    "session_number": s.session_number,
+                    "summary": summary,
+                })
+
+        return results

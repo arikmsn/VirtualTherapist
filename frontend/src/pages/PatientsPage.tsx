@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PlusIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { patientsAPI } from '@/lib/api'
 
@@ -18,11 +19,11 @@ interface Patient {
 }
 
 export default function PatientsPage() {
+  const navigate = useNavigate()
   const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [showCreateForm, setShowCreateForm] = useState(false)
-  const [, setSelectedPatient] = useState<number | null>(null)
 
   // Create form state
   const [newPatient, setNewPatient] = useState({
@@ -153,7 +154,7 @@ export default function PatientsPage() {
             <div
               key={patient.id}
               className="card hover:shadow-xl transition-all cursor-pointer"
-              onClick={() => setSelectedPatient(patient.id)}
+              onClick={() => navigate(`/patients/${patient.id}/summaries`)}
             >
               {/* Patient Header */}
               <div className="flex items-center gap-3 mb-4">
@@ -194,11 +195,14 @@ export default function PatientsPage() {
 
               {/* Actions */}
               <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-2 gap-2">
-                <button className="text-sm btn-secondary py-2">
-                  📝 סיכום חדש
+                <button
+                  className="text-sm btn-secondary py-2"
+                  onClick={(e) => { e.stopPropagation(); navigate(`/patients/${patient.id}/summaries`) }}
+                >
+                  סיכומים
                 </button>
                 <button className="text-sm btn-secondary py-2">
-                  💬 שלח הודעה
+                  שלח הודעה
                 </button>
               </div>
             </div>

@@ -5,6 +5,7 @@ import {
   DocumentTextIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
+  PencilSquareIcon,
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI } from '@/lib/api'
 
@@ -21,6 +22,7 @@ interface SessionSummary {
   generated_from: string | null
   therapist_edited: boolean
   approved_by_therapist: boolean
+  status: string
   created_at: string
 }
 
@@ -44,7 +46,16 @@ export default function SessionDetailPage() {
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [error, setError] = useState('')
+
+  // Editable fields
+  const [editFullSummary, setEditFullSummary] = useState('')
+  const [editProgress, setEditProgress] = useState('')
+  const [editNextPlan, setEditNextPlan] = useState('')
+  const [editMood, setEditMood] = useState('')
+  const [editRisk, setEditRisk] = useState('')
 
   useEffect(() => {
     const loadSession = async () => {
@@ -87,13 +98,71 @@ export default function SessionDetailPage() {
     try {
       const result = await sessionsAPI.generateSummary(Number(sessionId), notes)
       setSummary(result)
-      // Update session to reflect new summary_id
       setSession((prev) => prev ? { ...prev, summary_id: result.id } : prev)
     } catch (err: any) {
       const detail = err.response?.data?.detail || 'שגיאה ביצירת הסיכום'
       setError(detail)
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const startEditing = () => {
+    if (!summary) return
+    setEditFullSummary(summary.full_summary || '')
+    setEditProgress(summary.patient_progress || '')
+    setEditNextPlan(summary.next_session_plan || '')
+    setEditMood(summary.mood_observed || '')
+    setEditRisk(summary.risk_assessment || '')
+    setEditing(true)
+  }
+
+  const handleSaveDraft = async () => {
+    setSaving(true)
+    setError('')
+
+    try {
+      const updates: Record<string, unknown> = {
+        full_summary: editFullSummary,
+        patient_progress: editProgress,
+        next_session_plan: editNextPlan,
+        mood_observed: editMood,
+        risk_assessment: editRisk,
+        status: 'draft',
+      }
+      const result = await sessionsAPI.patchSummary(Number(sessionId), updates)
+      setSummary(result)
+      setEditing(false)
+    } catch (err: any) {
+      const detail = err.response?.data?.detail || 'שגיאה בשמירת הטיוטה'
+      setError(detail)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleApprove = async () => {
+    setSaving(true)
+    setError('')
+
+    try {
+      const updates: Record<string, unknown> = { status: 'approved' }
+      // If editing, include the edited fields too
+      if (editing) {
+        updates.full_summary = editFullSummary
+        updates.patient_progress = editProgress
+        updates.next_session_plan = editNextPlan
+        updates.mood_observed = editMood
+        updates.risk_assessment = editRisk
+      }
+      const result = await sessionsAPI.patchSummary(Number(sessionId), updates)
+      setSummary(result)
+      setEditing(false)
+    } catch (err: any) {
+      const detail = err.response?.data?.detail || 'שגיאה באישור הסיכום'
+      setError(detail)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -196,16 +265,17 @@ export default function SessionDetailPage() {
       {/* Summary Display */}
       {summary && (
         <div className="space-y-4">
+          {/* Header + Status + Actions */}
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold">סיכום הפגישה</h2>
             <div className="flex items-center gap-2">
-              {summary.approved_by_therapist ? (
+              {summary.status === 'approved' || summary.approved_by_therapist ? (
                 <span className="badge badge-approved">
                   <CheckCircleIcon className="h-4 w-4 inline ml-1" />
                   מאושר
                 </span>
               ) : (
-                <span className="badge badge-draft">ממתין לבדיקה</span>
+                <span className="badge badge-draft">טיוטה</span>
               )}
               <span className="text-xs text-gray-400">
                 נוצר מ{summary.generated_from === 'text' ? 'טקסט' : 'הקלטה'}
@@ -213,12 +283,68 @@ export default function SessionDetailPage() {
             </div>
           </div>
 
-          {/* Full Summary */}
-          {summary.full_summary && (
+          {/* Action Buttons */}
+          <div className="flex items-center gap-3">
+            {!editing && (
+              <button onClick={startEditing} className="btn-secondary flex items-center gap-2">
+                <PencilSquareIcon className="h-4 w-4" />
+                ערוך סיכום
+              </button>
+            )}
+            {!editing && summary.status !== 'approved' && !summary.approved_by_therapist && (
+              <button
+                onClick={handleApprove}
+                disabled={saving}
+                className="btn-primary flex items-center gap-2 disabled:opacity-50"
+              >
+                <CheckCircleIcon className="h-4 w-4" />
+                {saving ? 'מאשר...' : 'אשר סיכום'}
+              </button>
+            )}
+            {editing && (
+              <>
+                <button
+                  onClick={handleSaveDraft}
+                  disabled={saving}
+                  className="btn-secondary disabled:opacity-50"
+                >
+                  {saving ? 'שומר...' : 'שמור טיוטה'}
+                </button>
+                <button
+                  onClick={handleApprove}
+                  disabled={saving}
+                  className="btn-primary flex items-center gap-2 disabled:opacity-50"
+                >
+                  <CheckCircleIcon className="h-4 w-4" />
+                  {saving ? 'מאשר...' : 'שמור ואשר'}
+                </button>
+                <button
+                  onClick={() => setEditing(false)}
+                  className="text-gray-500 hover:text-gray-700 text-sm"
+                >
+                  ביטול
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Full Summary — editable or display */}
+          {editing ? (
             <div className="card">
               <h3 className="font-bold text-gray-800 mb-2">סיכום כללי</h3>
-              <p className="text-gray-700 whitespace-pre-line">{summary.full_summary}</p>
+              <textarea
+                value={editFullSummary}
+                onChange={(e) => setEditFullSummary(e.target.value)}
+                className="input-field h-32 resize-none"
+              />
             </div>
+          ) : (
+            summary.full_summary && (
+              <div className="card">
+                <h3 className="font-bold text-gray-800 mb-2">סיכום כללי</h3>
+                <p className="text-gray-700 whitespace-pre-line">{summary.full_summary}</p>
+              </div>
+            )
           )}
 
           {/* Structured Sections */}
@@ -235,26 +361,64 @@ export default function SessionDetailPage() {
               title="משימות בית"
               items={summary.homework_assigned}
             />
-            <SummaryTextSection
-              title="התקדמות המטופל"
-              text={summary.patient_progress}
-            />
-            <SummaryTextSection
-              title="תוכנית לפגישה הבאה"
-              text={summary.next_session_plan}
-            />
-            <SummaryTextSection
-              title="מצב רוח נצפה"
-              text={summary.mood_observed}
-            />
+
+            {editing ? (
+              <EditableTextSection
+                title="התקדמות המטופל"
+                value={editProgress}
+                onChange={setEditProgress}
+              />
+            ) : (
+              <SummaryTextSection
+                title="התקדמות המטופל"
+                text={summary.patient_progress}
+              />
+            )}
+
+            {editing ? (
+              <EditableTextSection
+                title="תוכנית לפגישה הבאה"
+                value={editNextPlan}
+                onChange={setEditNextPlan}
+              />
+            ) : (
+              <SummaryTextSection
+                title="תוכנית לפגישה הבאה"
+                text={summary.next_session_plan}
+              />
+            )}
+
+            {editing ? (
+              <EditableTextSection
+                title="מצב רוח נצפה"
+                value={editMood}
+                onChange={setEditMood}
+              />
+            ) : (
+              <SummaryTextSection
+                title="מצב רוח נצפה"
+                text={summary.mood_observed}
+              />
+            )}
           </div>
 
           {/* Risk Assessment */}
-          {summary.risk_assessment && (
+          {editing ? (
             <div className="card border-amber-200 bg-amber-50">
-              <h3 className="font-bold text-amber-800 mb-1">הערכת סיכון</h3>
-              <p className="text-amber-700">{summary.risk_assessment}</p>
+              <h3 className="font-bold text-amber-800 mb-2">הערכת סיכון</h3>
+              <textarea
+                value={editRisk}
+                onChange={(e) => setEditRisk(e.target.value)}
+                className="input-field h-20 resize-none"
+              />
             </div>
+          ) : (
+            summary.risk_assessment && (
+              <div className="card border-amber-200 bg-amber-50">
+                <h3 className="font-bold text-amber-800 mb-1">הערכת סיכון</h3>
+                <p className="text-amber-700">{summary.risk_assessment}</p>
+              </div>
+            )
           )}
         </div>
       )}
@@ -282,6 +446,27 @@ function SummaryTextSection({ title, text }: { title: string; text: string | nul
     <div className="card">
       <h3 className="font-bold text-gray-800 mb-2">{title}</h3>
       <p className="text-gray-700">{text}</p>
+    </div>
+  )
+}
+
+function EditableTextSection({
+  title,
+  value,
+  onChange,
+}: {
+  title: string
+  value: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <div className="card">
+      <h3 className="font-bold text-gray-800 mb-2">{title}</h3>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="input-field h-20 resize-none text-sm"
+      />
     </div>
   )
 }
