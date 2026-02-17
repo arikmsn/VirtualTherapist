@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowRightIcon,
   DocumentTextIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
   PencilSquareIcon,
+  LightBulbIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI } from '@/lib/api'
 
@@ -26,6 +28,14 @@ interface SessionSummary {
   created_at: string
 }
 
+interface PrepBrief {
+  quick_overview: string
+  recent_progress: string
+  key_points_to_revisit: string[]
+  watch_out_for: string[]
+  ideas_for_this_session: string[]
+}
+
 interface Session {
   id: number
   patient_id: number
@@ -39,6 +49,7 @@ interface Session {
 export default function SessionDetailPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [session, setSession] = useState<Session | null>(null)
   const [patientName, setPatientName] = useState('')
@@ -49,6 +60,12 @@ export default function SessionDetailPage() {
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState('')
+
+  // Prep brief state
+  const [prepBrief, setPrepBrief] = useState<PrepBrief | null>(null)
+  const [prepLoading, setPrepLoading] = useState(false)
+  const [prepError, setPrepError] = useState('')
+  const [showPrepPanel, setShowPrepPanel] = useState(searchParams.get('prep') === '1')
 
   // Editable fields
   const [editFullSummary, setEditFullSummary] = useState('')
@@ -89,6 +106,28 @@ export default function SessionDetailPage() {
     }
     loadSession()
   }, [sessionId])
+
+  // Auto-load prep brief when ?prep=1
+  useEffect(() => {
+    if (showPrepPanel && !prepBrief && !prepLoading && sessionId) {
+      loadPrepBrief()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPrepPanel, sessionId])
+
+  const loadPrepBrief = async () => {
+    setPrepLoading(true)
+    setPrepError('')
+    try {
+      const data = await sessionsAPI.getPrepBrief(Number(sessionId))
+      setPrepBrief(data)
+    } catch (err: any) {
+      const detail = err.response?.data?.detail || 'שגיאה ביצירת תדריך ההכנה'
+      setPrepError(detail)
+    } finally {
+      setPrepLoading(false)
+    }
+  }
 
   const handleGenerateSummary = async () => {
     if (!notes.trim()) return
@@ -215,6 +254,104 @@ export default function SessionDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Prep Brief Panel */}
+      {showPrepPanel && (
+        <div className="card border-amber-200 bg-amber-50">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold text-amber-900 flex items-center gap-2">
+              <LightBulbIcon className="h-5 w-5" />
+              הכנה לפגישה
+            </h2>
+            <button
+              onClick={() => setShowPrepPanel(false)}
+              className="text-amber-600 hover:text-amber-800"
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+
+          {prepLoading ? (
+            <div className="flex justify-center py-6">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600 mx-auto mb-2"></div>
+                <p className="text-sm text-amber-700">מכין תדריך...</p>
+              </div>
+            </div>
+          ) : prepError ? (
+            <div className="text-amber-800 text-sm">
+              <p>{prepError}</p>
+              <button
+                onClick={loadPrepBrief}
+                className="mt-2 text-sm px-3 py-1 bg-amber-200 rounded-lg hover:bg-amber-300 transition-colors"
+              >
+                נסה שוב
+              </button>
+            </div>
+          ) : prepBrief ? (
+            <div className="space-y-3 text-sm">
+              {/* Quick overview */}
+              <div>
+                <h3 className="font-semibold text-amber-900 mb-1">סקירה מהירה</h3>
+                <p className="text-amber-800">{prepBrief.quick_overview}</p>
+              </div>
+
+              {/* Recent progress */}
+              <div>
+                <h3 className="font-semibold text-amber-900 mb-1">התקדמות אחרונה</h3>
+                <p className="text-amber-800">{prepBrief.recent_progress}</p>
+              </div>
+
+              {/* Key points to revisit */}
+              {prepBrief.key_points_to_revisit.length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-amber-900 mb-1">נקודות לחזור אליהן</h3>
+                  <ul className="list-disc list-inside text-amber-800 space-y-0.5">
+                    {prepBrief.key_points_to_revisit.map((p, i) => (
+                      <li key={i}>{p}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Watch out for */}
+              {prepBrief.watch_out_for.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-2">
+                  <h3 className="font-semibold text-red-800 mb-1">שים לב</h3>
+                  <ul className="list-disc list-inside text-red-700 space-y-0.5">
+                    {prepBrief.watch_out_for.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Ideas for this session */}
+              {prepBrief.ideas_for_this_session.length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-2">
+                  <h3 className="font-semibold text-green-800 mb-1">רעיונות לפגישה זו</h3>
+                  <ul className="list-disc list-inside text-green-700 space-y-0.5">
+                    {prepBrief.ideas_for_this_session.map((idea, i) => (
+                      <li key={i}>{idea}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* Prep Brief Toggle Button (when panel is closed) */}
+      {!showPrepPanel && (
+        <button
+          onClick={() => { setShowPrepPanel(true) }}
+          className="text-sm px-4 py-2 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors flex items-center gap-2"
+        >
+          <LightBulbIcon className="h-4 w-4" />
+          הכנה לפגישה
+        </button>
+      )}
 
       {/* Notes Input */}
       {!summary && (
