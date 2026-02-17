@@ -128,4 +128,92 @@ export const messagesAPI = {
   },
 }
 
+// Patients API
+export const patientsAPI = {
+  list: async (status?: string) => {
+    const params = status ? { status } : {}
+    const response = await api.get('/patients/', { params })
+    return response.data
+  },
+
+  get: async (patientId: number) => {
+    const response = await api.get(`/patients/${patientId}`)
+    return response.data
+  },
+
+  create: async (data: {
+    full_name: string
+    phone?: string
+    email?: string
+    start_date?: string
+    primary_concerns?: string
+    diagnosis?: string
+    treatment_goals?: string[]
+    preferred_contact_time?: string
+    allow_ai_contact?: boolean
+  }) => {
+    const response = await api.post('/patients/', data)
+    return response.data
+  },
+
+  update: async (patientId: number, data: Record<string, unknown>) => {
+    const response = await api.put(`/patients/${patientId}`, data)
+    return response.data
+  },
+
+  delete: async (patientId: number) => {
+    const response = await api.delete(`/patients/${patientId}`)
+    return response.data
+  },
+}
+
+// Sessions API
+export const sessionsAPI = {
+  list: async (limit?: number) => {
+    const params = limit ? { limit } : {}
+    const response = await api.get('/sessions/', { params })
+    return response.data
+  },
+
+  get: async (sessionId: number) => {
+    const response = await api.get(`/sessions/${sessionId}`)
+    return response.data
+  },
+
+  create: async (data: {
+    patient_id: number
+    session_date: string
+    session_type?: string
+    duration_minutes?: number
+  }) => {
+    const response = await api.post('/sessions/', data)
+    return response.data
+  },
+
+  update: async (sessionId: number, data: Record<string, unknown>) => {
+    const response = await api.put(`/sessions/${sessionId}`, data)
+    return response.data
+  },
+
+  getPatientSessions: async (patientId: number) => {
+    const response = await api.get(`/sessions/patient/${patientId}`)
+    return response.data
+  },
+
+  generateSummary: async (sessionId: number, therapistNotes: string) => {
+    const response = await api.post('/sessions/summary/from-text', {
+      session_id: sessionId,
+      therapist_notes: therapistNotes,
+    })
+    return response.data
+  },
+
+  approveSummary: async (sessionId: number) => {
+    const response = await api.post('/sessions/summary/approve', {
+      session_id: sessionId,
+    })
+    return response.data
+  },
+}
+
 export default api

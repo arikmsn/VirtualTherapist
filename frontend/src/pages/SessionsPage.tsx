@@ -1,45 +1,72 @@
-import { useState } from 'react'
-import { DocumentTextIcon, CheckCircleIcon, ClockIcon } from '@heroicons/react/24/outline'
+import { useState, useEffect } from 'react'
+import { DocumentTextIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
+import { sessionsAPI, patientsAPI } from '@/lib/api'
 
-// Mock data - in real app, fetch from API
-const mockSessions = [
-  {
-    id: 1,
-    patientName: 'יוסי כהן',
-    date: '2024-02-15',
-    duration: 50,
-    hasSummary: true,
-    summaryApproved: true,
-    topics: ['חרדה חברתית', 'תרגילי חשיפה'],
-  },
-  {
-    id: 2,
-    patientName: 'שרה לוי',
-    date: '2024-02-14',
-    duration: 45,
-    hasSummary: true,
-    summaryApproved: false,
-    topics: ['דיכאון', 'מחשבות אוטומטיות'],
-  },
-  {
-    id: 3,
-    patientName: 'דני מזרחי',
-    date: '2024-02-14',
-    duration: 50,
-    hasSummary: false,
-    summaryApproved: false,
-    topics: [],
-  },
-]
+interface Session {
+  id: number
+  therapist_id: number
+  patient_id: number
+  session_date: string
+  session_type?: string
+  duration_minutes?: number
+  session_number?: number
+  has_recording: boolean
+  summary_id?: number
+  created_at: string
+}
+
+interface Patient {
+  id: number
+  full_name: string
+}
 
 export default function SessionsPage() {
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved'>('all')
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [patientMap, setPatientMap] = useState<Record<number, string>>({})
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<'all' | 'with_summary' | 'no_summary'>('all')
 
-  const filteredSessions = mockSessions.filter((session) => {
-    if (filter === 'pending') return session.hasSummary && !session.summaryApproved
-    if (filter === 'approved') return session.summaryApproved
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [sessionsData, patientsData] = await Promise.all([
+          sessionsAPI.list(),
+          patientsAPI.list(),
+        ])
+        setSessions(sessionsData)
+        const map: Record<number, string> = {}
+        patientsData.forEach((p: Patient) => {
+          map[p.id] = p.full_name
+        })
+        setPatientMap(map)
+      } catch (error) {
+        console.error('Error loading sessions:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [])
+
+  const filteredSessions = sessions.filter((session) => {
+    if (filter === 'with_summary') return session.summary_id != null
+    if (filter === 'no_summary') return session.summary_id == null
     return true
   })
+
+  const withSummaryCount = sessions.filter((s) => s.summary_id != null).length
+  const noSummaryCount = sessions.filter((s) => s.summary_id == null).length
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64" dir="rtl">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-therapy-calm mx-auto mb-4"></div>
+          <p className="text-gray-600">טוען פגישות...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 animate-fade-in" dir="rtl">
@@ -62,27 +89,27 @@ export default function SessionsPage() {
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            הכל ({mockSessions.length})
+            הכל ({sessions.length})
           </button>
           <button
-            onClick={() => setFilter('pending')}
+            onClick={() => setFilter('with_summary')}
             className={`px-4 py-2 rounded-lg font-medium transition-all ${
-              filter === 'pending'
-                ? 'bg-therapy-warm text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            ממתין לאישור (1)
-          </button>
-          <button
-            onClick={() => setFilter('approved')}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${
-              filter === 'approved'
+              filter === 'with_summary'
                 ? 'bg-therapy-support text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            מאושרים (1)
+            עם סיכום ({withSummaryCount})
+          </button>
+          <button
+            onClick={() => setFilter('no_summary')}
+            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              filter === 'no_summary'
+                ? 'bg-therapy-warm text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            ללא סיכום ({noSummaryCount})
           </button>
         </div>
       </div>
@@ -99,20 +126,15 @@ export default function SessionsPage() {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-bold">{session.patientName}</h3>
-                    {session.summaryApproved && (
+                    <h3 className="text-lg font-bold">
+                      {patientMap[session.patient_id] || `מטופל #${session.patient_id}`}
+                    </h3>
+                    {session.summary_id != null ? (
                       <span className="badge badge-approved">
                         <CheckCircleIcon className="h-4 w-4 inline ml-1" />
-                        אושר
+                        יש סיכום
                       </span>
-                    )}
-                    {session.hasSummary && !session.summaryApproved && (
-                      <span className="badge badge-pending">
-                        <ClockIcon className="h-4 w-4 inline ml-1" />
-                        ממתין לאישור
-                      </span>
-                    )}
-                    {!session.hasSummary && (
+                    ) : (
                       <span className="badge badge-draft">
                         אין סיכום
                       </span>
@@ -120,62 +142,38 @@ export default function SessionsPage() {
                   </div>
 
                   <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-                    <span>📅 {new Date(session.date).toLocaleDateString('he-IL')}</span>
-                    <span>⏱️ {session.duration} דקות</span>
-                    <span>פגישה #{session.id}</span>
+                    <span>
+                      {new Date(session.session_date).toLocaleDateString('he-IL')}
+                    </span>
+                    {session.duration_minutes && (
+                      <span>{session.duration_minutes} דקות</span>
+                    )}
+                    {session.session_number && (
+                      <span>פגישה #{session.session_number}</span>
+                    )}
+                    {session.session_type && (
+                      <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">
+                        {session.session_type}
+                      </span>
+                    )}
                   </div>
-
-                  {session.topics.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {session.topics.map((topic, i) => (
-                        <span
-                          key={i}
-                          className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm"
-                        >
-                          {topic}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
 
               {/* Actions */}
               <div className="flex gap-2">
-                {!session.hasSummary && (
+                {session.summary_id == null && (
                   <button className="btn-primary whitespace-nowrap">
                     צור סיכום
                   </button>
                 )}
-                {session.hasSummary && !session.summaryApproved && (
-                  <button className="btn-success whitespace-nowrap">
-                    אשר סיכום
-                  </button>
-                )}
-                {session.summaryApproved && (
+                {session.summary_id != null && (
                   <button className="btn-secondary whitespace-nowrap">
                     צפה בסיכום
                   </button>
                 )}
               </div>
             </div>
-
-            {/* Sample Summary Preview (if approved) */}
-            {session.summaryApproved && (
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <div className="bg-gray-50 rounded-lg p-4 text-sm">
-                  <p className="text-gray-700 leading-relaxed">
-                    <strong>נושאים:</strong> דיברנו על חרדה חברתית, במיוחד בפגישות עבודה.
-                    <br />
-                    <strong>התערבות:</strong> ביצענו תרגיל חשיפה - סימולציה של פגישה.
-                    <br />
-                    <strong>התקדמות:</strong> פחות הימנעות, יותר ביטחון.
-                    <br />
-                    <strong>משימה:</strong> זיהוי מחשבות אוטומטיות לפגישה הבאה.
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
         ))}
       </div>
@@ -184,10 +182,12 @@ export default function SessionsPage() {
         <div className="card text-center py-12">
           <div className="text-6xl mb-4">📋</div>
           <h3 className="text-xl font-bold text-gray-900 mb-2">
-            אין פגישות תואמות
+            {sessions.length === 0 ? 'אין פגישות עדיין' : 'אין פגישות תואמות'}
           </h3>
           <p className="text-gray-600">
-            נסה לשנות את הסינון או צור פגישה חדשה
+            {sessions.length === 0
+              ? 'צור פגישה חדשה דרך לוח הבקרה'
+              : 'נסה לשנות את הסינון'}
           </p>
         </div>
       )}

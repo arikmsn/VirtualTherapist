@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { agentAPI } from '@/lib/api'
 import { CheckCircleIcon } from '@heroicons/react/24/outline'
@@ -26,27 +26,68 @@ const STEPS = [
   },
 ]
 
+const SUMMARY_SECTIONS = [
+  'נושאים שנדונו',
+  'התערבויות',
+  'התקדמות המטופל',
+  'משימות בית',
+  'תוכנית לפגישה הבאה',
+  'הערכת סיכון',
+]
+
 export default function OnboardingPage() {
   const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState(0)
+  const [saving, setSaving] = useState(false)
   const [formData, setFormData] = useState({
     approach: '',
     approachDescription: '',
     tone: '',
     messageLength: 'short',
     terminology: '',
+    summarySections: [...SUMMARY_SECTIONS],
     followUpFrequency: 'weekly',
     preferredExercises: '',
     exampleSummary: '',
     exampleMessage: '',
   })
 
+  useEffect(() => {
+    agentAPI.startOnboarding().catch((err) =>
+      console.error('Failed to start onboarding:', err)
+    )
+  }, [])
+
+  const getStepData = (step: number) => {
+    switch (step) {
+      case 0:
+        return { approach: formData.approach, approachDescription: formData.approachDescription }
+      case 1:
+        return { tone: formData.tone, messageLength: formData.messageLength, terminology: formData.terminology }
+      case 2:
+        return { summarySections: formData.summarySections }
+      case 3:
+        return { followUpFrequency: formData.followUpFrequency, preferredExercises: formData.preferredExercises }
+      case 4:
+        return { exampleSummary: formData.exampleSummary, exampleMessage: formData.exampleMessage }
+      default:
+        return {}
+    }
+  }
+
   const handleNext = async () => {
-    if (currentStep < STEPS.length - 1) {
-      setCurrentStep(currentStep + 1)
-    } else {
-      // Complete onboarding
-      await completeOnboarding()
+    setSaving(true)
+    try {
+      await agentAPI.completeOnboardingStep(currentStep + 1, getStepData(currentStep))
+      if (currentStep < STEPS.length - 1) {
+        setCurrentStep(currentStep + 1)
+      } else {
+        navigate('/dashboard')
+      }
+    } catch (error) {
+      console.error('Error saving onboarding step:', error)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -56,14 +97,13 @@ export default function OnboardingPage() {
     }
   }
 
-  const completeOnboarding = async () => {
-    try {
-      // Save all onboarding data
-      await agentAPI.completeOnboardingStep(5, formData)
-      navigate('/dashboard')
-    } catch (error) {
-      console.error('Error completing onboarding:', error)
-    }
+  const toggleSummarySection = (section: string) => {
+    setFormData((prev) => {
+      const sections = prev.summarySections.includes(section)
+        ? prev.summarySections.filter((s) => s !== section)
+        : [...prev.summarySections, section]
+      return { ...prev, summarySections: sections }
+    })
   }
 
   return (
@@ -71,7 +111,7 @@ export default function OnboardingPage() {
       {/* Progress Bar */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          {STEPS.map((step, index) => (
+          {STEPS.map((_step, index) => (
             <div key={index} className="flex items-center">
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
@@ -199,10 +239,15 @@ export default function OnboardingPage() {
                 חלקים בסיכום (בחר את החשובים)
               </label>
               <div className="space-y-2">
-                {['נושאים שנדונו', 'התערבויות', 'התקדמות המטופל', 'משימות בית', 'תוכנית לפגישה הבאה', 'הערכת סיכון'].map(
+                {SUMMARY_SECTIONS.map(
                   (section) => (
                     <label key={section} className="flex items-center gap-2">
-                      <input type="checkbox" className="w-4 h-4" defaultChecked />
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4"
+                        checked={formData.summarySections.includes(section)}
+                        onChange={() => toggleSummarySection(section)}
+                      />
                       <span>{section}</span>
                     </label>
                   )
@@ -282,8 +327,8 @@ export default function OnboardingPage() {
           >
             ← חזור
           </button>
-          <button onClick={handleNext} className="btn-primary">
-            {currentStep === STEPS.length - 1 ? 'סיים והתחל' : 'המשך →'}
+          <button onClick={handleNext} disabled={saving} className="btn-primary disabled:opacity-50">
+            {saving ? 'שומר...' : currentStep === STEPS.length - 1 ? 'סיים והתחל' : 'המשך →'}
           </button>
         </div>
       </div>

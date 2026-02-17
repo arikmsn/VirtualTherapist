@@ -4,7 +4,6 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   PencilIcon,
-  PaperAirplaneIcon,
   ClockIcon,
 } from '@heroicons/react/24/outline'
 
@@ -73,15 +72,6 @@ export default function MessagesPage() {
       setEditingId(null)
     } catch (error) {
       console.error('Error editing message:', error)
-    }
-  }
-
-  const handleSend = async (id: number) => {
-    try {
-      await messagesAPI.send(id)
-      setMessages(messages.filter((m) => m.id !== id))
-    } catch (error) {
-      console.error('Error sending message:', error)
     }
   }
 

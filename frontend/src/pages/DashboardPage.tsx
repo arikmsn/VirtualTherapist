@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   DocumentTextIcon,
@@ -8,19 +8,58 @@ import {
   CheckCircleIcon,
   ClockIcon,
 } from '@heroicons/react/24/outline'
+import { patientsAPI, sessionsAPI, messagesAPI } from '@/lib/api'
+
+interface Patient {
+  id: number
+  full_name: string
+  status: string
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [showSessionModal, setShowSessionModal] = useState(false)
   const [showMessageModal, setShowMessageModal] = useState(false)
 
-  // Mock data - in real app, fetch from API
-  const stats = {
-    pendingMessages: 3,
-    todaySessions: 5,
-    activePatients: 24,
-    completedSummaries: 12,
-  }
+  const [stats, setStats] = useState({
+    pendingMessages: 0,
+    todaySessions: 0,
+    activePatients: 0,
+    completedSummaries: 0,
+  })
+  const [patients, setPatients] = useState<Patient[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const [patientsData, sessionsData, messagesData] = await Promise.all([
+          patientsAPI.list(),
+          sessionsAPI.list(),
+          messagesAPI.getPending().catch(() => []),
+        ])
+        setPatients(patientsData)
+        const today = new Date().toISOString().split('T')[0]
+        setStats({
+          pendingMessages: messagesData.length,
+          todaySessions: sessionsData.filter(
+            (s: any) => s.session_date === today
+          ).length,
+          activePatients: patientsData.filter(
+            (p: any) => p.status === 'active'
+          ).length,
+          completedSummaries: sessionsData.filter(
+            (s: any) => s.summary_id != null
+          ).length,
+        })
+      } catch (error) {
+        console.error('Error loading dashboard stats:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadStats()
+  }, [])
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -140,52 +179,51 @@ export default function DashboardPage() {
             <BellAlertIcon className="h-8 w-8 text-amber-600" />
             <div>
               <div className="text-2xl font-bold text-amber-900">{stats.completedSummaries}</div>
-              <div className="text-sm text-amber-700">סיכומים השבוע</div>
+              <div className="text-sm text-amber-700">סיכומים</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Recent Activity */}
+      {/* Recent Activity - TODO: fetch from activity API when available */}
       <div className="card">
         <h2 className="text-xl font-bold mb-4">פעילות אחרונה</h2>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <div>
-                <div className="font-medium">סיכום פגישה עם יוסי אושר</div>
-                <div className="text-sm text-gray-500">לפני 10 דקות</div>
+        {loading ? (
+          <p className="text-gray-500 text-center py-4">טוען...</p>
+        ) : patients.length === 0 ? (
+          <p className="text-gray-500 text-center py-4">
+            אין פעילות עדיין. התחל על ידי הוספת מטופלים!
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                <div>
+                  <div className="font-medium">{stats.activePatients} מטופלים פעילים במערכת</div>
+                  <div className="text-sm text-gray-500">סטטיסטיקה כללית</div>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <div>
-                <div className="font-medium">הודעה למטופלת שרה ממתינה לאישור</div>
-                <div className="text-sm text-gray-500">לפני 25 דקות</div>
+            {stats.pendingMessages > 0 && (
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <div>
+                    <div className="font-medium">{stats.pendingMessages} הודעות ממתינות לאישורך</div>
+                    <div className="text-sm text-gray-500">דורש פעולה</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate('/messages')}
+                  className="text-therapy-calm text-sm font-medium hover:underline"
+                >
+                  אשר עכשיו →
+                </button>
               </div>
-            </div>
-            <button
-              onClick={() => navigate('/messages')}
-              className="text-therapy-calm text-sm font-medium hover:underline"
-            >
-              אשר עכשיו →
-            </button>
+            )}
           </div>
-
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-              <div>
-                <div className="font-medium">3 פגישות חדשות נקבעו להיום</div>
-                <div className="text-sm text-gray-500">לפני שעה</div>
-              </div>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Modals */}
@@ -194,7 +232,10 @@ export default function DashboardPage() {
       )}
 
       {showMessageModal && (
-        <MessageModal onClose={() => setShowMessageModal(false)} />
+        <MessageModal
+          patients={patients}
+          onClose={() => setShowMessageModal(false)}
+        />
       )}
     </div>
   )
@@ -271,8 +312,8 @@ function SessionModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-// Message Modal
-function MessageModal({ onClose }: { onClose: () => void }) {
+// Message Modal - now receives real patients list
+function MessageModal({ patients, onClose }: { patients: Patient[]; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" dir="rtl">
       <div className="bg-white rounded-xl p-8 max-w-2xl w-full mx-4 animate-fade-in">
@@ -283,9 +324,10 @@ function MessageModal({ onClose }: { onClose: () => void }) {
             בחר מטופל
           </label>
           <select className="input-field">
-            <option>יוסי כהן</option>
-            <option>שרה לוי</option>
-            <option>דני מזרחי</option>
+            <option value="">-- בחר מטופל --</option>
+            {patients.map((p) => (
+              <option key={p.id} value={p.id}>{p.full_name}</option>
+            ))}
           </select>
         </div>
 
