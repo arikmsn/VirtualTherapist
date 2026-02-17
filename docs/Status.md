@@ -88,6 +88,58 @@ curl -s http://localhost:8000/api/v1/sessions/1/summary \
 - **Frontend:** `SessionDetailPage` — editable summary fields (full summary, progress, next plan, mood, risk), "שמור טיוטה" (save draft) and "אשר סיכום" (approve) buttons, status badges. `PatientSummariesPage` — per-patient summary timeline with topic chips.
 - **Tests:** 8 passing tests (4 original + 4 new: PATCH edit, PATCH approve, patient summaries list, patient summaries empty).
 
+---
+
+## Therapist Workspace — Current Capabilities
+
+### Patients List + Per-Patient Summaries Timeline
+- **Patients page** (`/patients`) — searchable list of all patients, stats (active count, total, missed exercises), create new patient via modal.
+- **Per-patient summaries** (`/patients/{id}/summaries`) — click any patient card (or the "סיכומים" button) to see a timeline of all AI-generated summaries for that patient, sorted newest-first. Each entry shows session number, date, status badge (טיוטה / מאושר), topic chips, and a preview of the summary text. Clicking an entry navigates to the full session detail.
+
+### SessionDetail Workspace: Notes → AI Summary → Edit → Approve
+- **Session detail** (`/sessions/{id}`) — the therapist's main workspace for a single session:
+  1. **Notes input** — paste or type raw session notes into the textarea.
+  2. **AI summary generation** — click "צור סיכום AI" to send notes to the AI agent, which returns a structured summary (topics, interventions, homework, progress, next plan, mood, risk assessment).
+  3. **Review** — the summary appears in structured cards with a "טיוטה" (draft) badge.
+  4. **Edit** — click "ערוך סיכום" to make the full summary, progress, next plan, mood, and risk fields editable inline.
+  5. **Save draft** — click "שמור טיוטה" to persist edits without approving.
+  6. **Approve** — click "אשר סיכום" (or "שמור ואשר" while editing) to mark the summary as approved. The badge changes to "מאושר" with a green checkmark.
+
+### Navigation Flow
+- **Sessions page** (`/sessions`) — lists all sessions with filter tabs (all / with summary / without summary). Each row shows patient name, date, and summary status. "צור סיכום" navigates to the detail page for sessions without a summary; "צפה בסיכום" for sessions that already have one.
+
+---
+
+## "Day in the Life" — A Therapist Using TherapyCompanion.AI
+
+**Morning: Prepare for the day**
+
+1. Dr. Levi logs in at `http://localhost:3000/login` and lands on the **Dashboard**. She sees today's session count, active patients, and pending messages at a glance.
+
+**Between sessions: Add a new patient**
+
+2. A new patient was referred. She clicks "מטופלים" in the sidebar, then the "+" button. In the modal she types the patient's name, phone, and primary concerns, then clicks "צור מטופל". The patient appears in the list instantly.
+
+**After a session: Generate an AI summary**
+
+3. Dr. Levi just finished a 50-minute CBT session with Yael. She navigates to "פגישות" and clicks "צור סיכום" next to Yael's session row.
+
+4. On the session detail page, she pastes her raw notes from the session into the textarea — observations, interventions she used, homework she assigned, and her clinical impression.
+
+5. She clicks **"צור סיכום AI"**. A spinner appears for a few seconds. The AI returns a structured summary broken into sections: topics discussed, interventions used, homework assigned, patient progress, mood observed, risk assessment, and a full narrative summary.
+
+**Review and approve**
+
+6. She reads through the AI-generated summary. The progress section needs a small correction — she clicks **"ערוך סיכום"**, updates the wording, and clicks **"שמור ואשר"**. The badge changes from "טיוטה" to "מאושר".
+
+**End of day: Review a patient's history**
+
+7. Before tomorrow's session with David, she navigates to "מטופלים", clicks David's card, and sees a timeline of all his past session summaries — dates, topic chips, status badges. She clicks the most recent one to refresh her memory on where they left off.
+
+**Key principle:** The AI drafts, the therapist decides. Every summary starts as a draft and requires explicit therapist approval. The AI never contacts patients or makes clinical decisions autonomously.
+
+---
+
 ## In Progress
 
 ### Next features
