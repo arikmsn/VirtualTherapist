@@ -1,7 +1,7 @@
 """Session service - handles therapy sessions and summary generation"""
 
 from typing import Optional, Dict, Any, List
-from datetime import date
+from datetime import date, datetime
 from sqlalchemy.orm import Session
 from app.models.session import Session as TherapySession, SessionSummary, SessionType, SummaryStatus
 from app.models.patient import Patient
@@ -23,7 +23,9 @@ class SessionService:
         patient_id: int,
         session_date: date,
         session_type: SessionType = SessionType.INDIVIDUAL,
-        duration_minutes: Optional[int] = None
+        duration_minutes: Optional[int] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
     ) -> TherapySession:
         """Create a new therapy session record"""
 
@@ -45,6 +47,8 @@ class SessionService:
             therapist_id=therapist_id,
             patient_id=patient_id,
             session_date=session_date,
+            start_time=start_time,
+            end_time=end_time,
             session_type=session_type,
             duration_minutes=duration_minutes,
             session_number=session_count + 1
@@ -308,6 +312,42 @@ class SessionService:
             .limit(limit)
             .all()
         )
+
+    async def get_sessions_by_date(
+        self,
+        therapist_id: int,
+        target_date: date,
+    ) -> List[Dict[str, Any]]:
+        """Get sessions for a therapist on a specific date, with patient names."""
+
+        sessions = (
+            self.db.query(TherapySession)
+            .filter(
+                TherapySession.therapist_id == therapist_id,
+                TherapySession.session_date == target_date,
+            )
+            .order_by(TherapySession.start_time.asc().nullslast())
+            .all()
+        )
+
+        results = []
+        for s in sessions:
+            patient = self.db.query(Patient).filter(Patient.id == s.patient_id).first()
+            patient_name = patient.full_name_encrypted if patient else f"מטופל #{s.patient_id}"
+
+            results.append({
+                "id": s.id,
+                "patient_id": s.patient_id,
+                "patient_name": patient_name,
+                "session_date": s.session_date,
+                "start_time": s.start_time,
+                "end_time": s.end_time,
+                "session_type": s.session_type,
+                "session_number": s.session_number,
+                "has_summary": s.summary_id is not None,
+            })
+
+        return results
 
     async def update_session(
         self,

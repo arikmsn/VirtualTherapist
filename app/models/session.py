@@ -2,7 +2,7 @@
 
 from sqlalchemy import (
     Column, String, Text, JSON, Boolean, Integer,
-    ForeignKey, Date, Enum as SQLEnum,
+    ForeignKey, Date, DateTime, Enum as SQLEnum,
 )
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
@@ -35,6 +35,8 @@ class Session(BaseModel):
 
     # Session Info
     session_date = Column(Date, nullable=False)
+    start_time = Column(DateTime, nullable=True)   # Scheduled start (date+time)
+    end_time = Column(DateTime, nullable=True)      # Scheduled end (date+time)
     session_type = Column(SQLEnum(SessionType, native_enum=False), default=SessionType.INDIVIDUAL)
     duration_minutes = Column(Integer)  # Session duration
 

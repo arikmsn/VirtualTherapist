@@ -20,12 +20,16 @@ router = APIRouter()
 class CreateSessionRequest(BaseModel):
     patient_id: int
     session_date: date
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
     session_type: SessionType = SessionType.INDIVIDUAL
     duration_minutes: Optional[int] = None
 
 
 class UpdateSessionRequest(BaseModel):
     session_date: Optional[date] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
     session_type: Optional[SessionType] = None
     duration_minutes: Optional[int] = None
 
@@ -35,6 +39,8 @@ class SessionResponse(BaseModel):
     therapist_id: int
     patient_id: int
     session_date: date
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
     session_type: Optional[SessionType] = None
     duration_minutes: Optional[int] = None
     session_number: Optional[int] = None
@@ -44,6 +50,18 @@ class SessionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class DailySessionItem(BaseModel):
+    id: int
+    patient_id: int
+    patient_name: str
+    session_date: date
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    session_type: Optional[SessionType] = None
+    session_number: Optional[int] = None
+    has_summary: bool
 
 
 class GenerateSummaryFromTextRequest(BaseModel):
@@ -122,6 +140,8 @@ async def create_session(
             session_date=request.session_date,
             session_type=request.session_type,
             duration_minutes=request.duration_minutes,
+            start_time=request.start_time,
+            end_time=request.end_time,
         )
         return SessionResponse.model_validate(session)
 
@@ -147,6 +167,29 @@ async def list_sessions(
             limit=limit,
         )
         return [SessionResponse.model_validate(s) for s in sessions]
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/by-date", response_model=List[DailySessionItem])
+async def get_sessions_by_date(
+    target_date: Optional[date] = Query(default=None, alias="date"),
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Get sessions for a specific date (defaults to today)"""
+    from datetime import date as date_type
+
+    effective_date = target_date or date_type.today()
+    service = SessionService(db)
+
+    try:
+        items = await service.get_sessions_by_date(
+            therapist_id=current_therapist.id,
+            target_date=effective_date,
+        )
+        return [DailySessionItem(**item) for item in items]
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
