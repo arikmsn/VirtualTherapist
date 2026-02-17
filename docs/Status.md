@@ -154,6 +154,13 @@ curl -s http://localhost:8000/api/v1/patients/1/insight-summary -X POST \
   5. **Save draft** — click "שמור טיוטה" to persist edits without approving.
   6. **Approve** — click "אשר סיכום" (or "שמור ואשר" while editing) to mark the summary as approved. The badge changes to "מאושר" with a green checkmark.
 
+### Daily View + Session Prep Brief
+- **Dashboard daily view** (`/dashboard`) — the top section shows sessions for the selected date. Date navigation with "יום קודם", "יום הבא", "היום" buttons and a native date picker. Each session row shows start time (HH:MM), patient name, session number, summary badge, and two action buttons: "פתח סשן" and "הכנה לפגישה". Defaults to today's date.
+- **Backend:** `GET /sessions/by-date?date=YYYY-MM-DD` returns sessions for a specific date with patient names, sorted by start time. `Session` model now has `start_time`/`end_time` DateTime columns.
+- **Prep brief** (`/sessions/{id}?prep=1`) — amber "הכנה לפגישה" panel on the session detail page. Clicking "הכנה לפגישה" from the daily view auto-generates and displays an AI prep brief with: quick overview, recent progress, key points to revisit, watch-out items (red), and session ideas (green). Also available as a toggle button on any session detail page.
+- **Backend:** `POST /sessions/{id}/prep-brief` — generates a concise AI prep brief from the last 5 approved summaries for the session's patient. Returns 400 if no approved summaries, 503 if no AI key.
+- **Tests:** 24 passing tests (5 daily-view + 3 prep-brief + 16 existing).
+
 ### Navigation Flow
 - **Sessions page** (`/sessions`) — lists all sessions with filter tabs (all / with summary / without summary). Each row shows patient name, date, and summary status. "צור סיכום" navigates to the detail page for sessions without a summary; "צפה בסיכום" for sessions that already have one.
 
@@ -163,29 +170,68 @@ curl -s http://localhost:8000/api/v1/patients/1/insight-summary -X POST \
 
 **Morning: Prepare for the day**
 
-1. Dr. Levi logs in at `http://localhost:3000/login` and lands on the **Dashboard**. She sees today's session count, active patients, and pending messages at a glance.
+1. Dr. Levi logs in at `http://localhost:3000/login` and lands on the **Dashboard**. She sees today's sessions in the daily view — times, patient names, and summary status at a glance.
+
+2. She has 3 sessions today. Before her first session with David, she clicks **"הכנה לפגישה"** next to his name. An amber panel appears with an AI-generated prep brief: where they left off, key themes to revisit, and a watch-out about an anxiety spike mentioned last time. She reads it in 30 seconds and feels ready.
 
 **Between sessions: Add a new patient**
 
-2. A new patient was referred. She clicks "מטופלים" in the sidebar, then the "+" button. In the modal she types the patient's name, phone, and primary concerns, then clicks "צור מטופל". The patient appears in the list instantly.
+3. A new patient was referred. She clicks "מטופלים" in the sidebar, then the "+" button. In the modal she types the patient's name, phone, and primary concerns, then clicks "צור מטופל". The patient appears in the list instantly.
 
 **After a session: Generate an AI summary**
 
-3. Dr. Levi just finished a 50-minute CBT session with Yael. She navigates to "פגישות" and clicks "צור סיכום" next to Yael's session row.
+4. Dr. Levi just finished a 50-minute CBT session with Yael. She clicks **"פתח סשן"** from the daily view (or navigates to "פגישות" and clicks "צור סיכום" next to Yael's session row).
 
-4. On the session detail page, she pastes her raw notes from the session into the textarea — observations, interventions she used, homework she assigned, and her clinical impression.
+5. On the session detail page, she pastes her raw notes from the session into the textarea — observations, interventions she used, homework she assigned, and her clinical impression.
 
-5. She clicks **"צור סיכום AI"**. A spinner appears for a few seconds. The AI returns a structured summary broken into sections: topics discussed, interventions used, homework assigned, patient progress, mood observed, risk assessment, and a full narrative summary.
+6. She clicks **"צור סיכום AI"**. A spinner appears for a few seconds. The AI returns a structured summary broken into sections: topics discussed, interventions used, homework assigned, patient progress, mood observed, risk assessment, and a full narrative summary.
 
 **Review and approve**
 
-6. She reads through the AI-generated summary. The progress section needs a small correction — she clicks **"ערוך סיכום"**, updates the wording, and clicks **"שמור ואשר"**. The badge changes from "טיוטה" to "מאושר".
+7. She reads through the AI-generated summary. The progress section needs a small correction — she clicks **"ערוך סיכום"**, updates the wording, and clicks **"שמור ואשר"**. The badge changes from "טיוטה" to "מאושר".
 
-**End of day: Review a patient's history**
+**Checking tomorrow's schedule**
 
-7. Before tomorrow's session with David, she navigates to "מטופלים", clicks David's card, and sees a timeline of all his past session summaries — dates, topic chips, status badges. She clicks the most recent one to refresh her memory on where they left off.
+8. Before leaving, she clicks "יום הבא" in the daily view to see tomorrow's sessions. She clicks "הכנה לפגישה" for her first morning patient to review the prep brief and plan ahead.
+
+**End of week: Review a patient's history**
+
+9. She navigates to "מטופלים", clicks a patient's card, and sees a timeline of all past session summaries — dates, topic chips, status badges. She clicks **"צור סיכום עומק"** to generate a cross-session AI insight report with patterns, progress, risks, and ideas for upcoming sessions.
 
 **Key principle:** The AI drafts, the therapist decides. Every summary starts as a draft and requires explicit therapist approval. The AI never contacts patients or makes clinical decisions autonomously.
+
+## Daily View + Prep Brief — HOW TO TEST
+
+### Prerequisites
+- Backend running (`python -m app.main`)
+- Frontend running (`cd frontend && npm run dev`)
+- A valid AI API key in `.env` (for prep brief generation)
+
+### Steps
+
+1. **Register/Login** — Go to `http://localhost:3000/register`, create an account.
+
+2. **Create a patient** — Navigate to "מטופלים" (Patients), click "+", fill in a name, save.
+
+3. **Create sessions with start_time** — Via API:
+   ```bash
+   curl -s http://localhost:8000/api/v1/sessions/ -X POST \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"patient_id":1,"session_date":"2026-02-17","start_time":"2026-02-17T10:00:00"}'
+   ```
+
+4. **View daily sessions** — On the Dashboard, the "המפגשים של היום" section shows today's sessions with start times and patient names.
+
+5. **Navigate dates** — Click "יום קודם" / "יום הבא" to browse. Click "היום" to return. Use the date picker for specific dates.
+
+6. **Open a session** — Click "פתח סשן" to go to the session detail page.
+
+7. **Generate prep brief** — Click "הכנה לפגישה" from the daily view. The session detail page opens with the amber prep brief panel auto-loading. Requires at least one approved summary for that patient.
+
+### Prep Brief Requirements
+- The patient must have **approved** session summaries (generate summaries → approve them first).
+- Without approved summaries, the API returns 400.
+- Without an AI key, the API returns 503.
 
 ---
 
