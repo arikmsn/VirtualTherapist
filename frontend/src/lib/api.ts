@@ -24,12 +24,15 @@ api.interceptors.request.use(
   }
 )
 
-// Handle 401 errors
+// Handle 401 errors — clear both token stores to prevent redirect loops
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      // Clear the raw token used by the axios request interceptor
       localStorage.removeItem('token')
+      // Clear the Zustand persist store so isAuthenticated resets to false
+      localStorage.removeItem('auth-storage')
       window.location.href = '/login'
     }
     return Promise.reject(error)
@@ -221,6 +224,17 @@ export const sessionsAPI = {
     const response = await api.post('/sessions/summary/approve', {
       session_id: sessionId,
     })
+    return response.data
+  },
+
+  listByDate: async (dateStr?: string) => {
+    const params = dateStr ? { date: dateStr } : {}
+    const response = await api.get('/sessions/by-date', { params })
+    return response.data
+  },
+
+  getPrepBrief: async (sessionId: number) => {
+    const response = await api.post(`/sessions/${sessionId}/prep-brief`)
     return response.data
   },
 }

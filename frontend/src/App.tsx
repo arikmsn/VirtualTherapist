@@ -12,7 +12,18 @@ import PatientSummariesPage from './pages/PatientSummariesPage'
 import Layout from './components/Layout'
 
 function App() {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, _hasHydrated } = useAuthStore()
+
+  // Wait for Zustand persist to hydrate before rendering routes.
+  // Without this, the store starts with isAuthenticated=false (initial state)
+  // then hydrates to true, causing a flash redirect to /login then back.
+  if (!_hasHydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+      </div>
+    )
+  }
 
   return (
     <Router>
