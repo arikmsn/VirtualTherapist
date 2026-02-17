@@ -1,7 +1,22 @@
 """Application configuration using Pydantic Settings"""
 
 from typing import Literal
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_PLACEHOLDER_PATTERNS = [
+    "your-openai-key", "your-anthropic-key",
+    "sk-your-", "replace_with_your", "your-",
+    "change-me", "placeholder",
+]
+
+
+def is_placeholder_key(value: str | None) -> bool:
+    """Check if an API key is missing or a placeholder."""
+    if not value or not value.strip():
+        return True
+    lower = value.strip().lower()
+    return any(p in lower for p in _PLACEHOLDER_PATTERNS)
 
 
 class Settings(BaseSettings):
@@ -62,6 +77,28 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=True
     )
+
+    @model_validator(mode="after")
+    def validate_ai_keys(self) -> "Settings":
+        key_field = (
+            "ANTHROPIC_API_KEY" if self.AI_PROVIDER == "anthropic"
+            else "OPENAI_API_KEY"
+        )
+        key_value = getattr(self, key_field)
+
+        if is_placeholder_key(key_value):
+            msg = (
+                f"{key_field} is missing or a placeholder. "
+                f"AI features (chat, summaries) will not work. "
+                f"Set a valid key in .env for AI_PROVIDER='{self.AI_PROVIDER}'."
+            )
+            if self.ENVIRONMENT == "production":
+                raise ValueError(msg)
+            else:
+                from loguru import logger
+                logger.warning(msg)
+
+        return self
 
 
 # Global settings instance

@@ -25,15 +25,24 @@ class TherapyAgent:
 
     def __init__(self, therapist_profile: Optional[TherapistProfile] = None):
         """Initialize the agent with optional therapist profile"""
+        from app.core.config import is_placeholder_key
+
         self.profile = therapist_profile
         self.ai_provider = settings.AI_PROVIDER
+        self.client = None
 
-        # Initialize AI client based on provider
+        # Initialize AI client only if a real key is available
         if self.ai_provider == "anthropic":
-            self.client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            if not is_placeholder_key(settings.ANTHROPIC_API_KEY):
+                self.client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            else:
+                logger.warning("Anthropic client not initialized: missing or placeholder API key")
         elif self.ai_provider == "openai":
-            openai.api_key = settings.OPENAI_API_KEY
-            self.client = openai
+            if not is_placeholder_key(settings.OPENAI_API_KEY):
+                openai.api_key = settings.OPENAI_API_KEY
+                self.client = openai
+            else:
+                logger.warning("OpenAI client not initialized: missing or placeholder API key")
 
         self.system_prompt = self._build_system_prompt()
 
@@ -187,6 +196,12 @@ class TherapyAgent:
         Returns:
             Generated response in therapist's style
         """
+        if self.client is None:
+            raise RuntimeError(
+                "AI client not initialized. "
+                f"Set a valid API key in .env for AI_PROVIDER='{self.ai_provider}'."
+            )
+
         try:
             # Build the full prompt with context
             full_prompt = message

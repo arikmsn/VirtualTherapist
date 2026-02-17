@@ -54,6 +54,15 @@ async def startup_event():
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"AI Provider: {settings.AI_PROVIDER}")
 
+    # Log masked AI key status
+    key_field = "ANTHROPIC_API_KEY" if settings.AI_PROVIDER == "anthropic" else "OPENAI_API_KEY"
+    key_value = getattr(settings, key_field)
+    if key_value and len(key_value) > 8:
+        masked = key_value[:4] + "..." + key_value[-4:]
+    else:
+        masked = "(not set)"
+    logger.info(f"AI Key ({key_field}): {masked}")
+
     # Auto-create tables in development (for SQLite or fresh databases)
     if settings.ENVIRONMENT == "development":
         from app.core.database import engine
