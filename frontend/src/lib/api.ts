@@ -231,6 +231,11 @@ export const patientSummariesAPI = {
     const response = await api.get(`/patients/${patientId}/summaries`)
     return response.data
   },
+
+  generateInsight: async (patientId: number) => {
+    const response = await api.post(`/patients/${patientId}/insight-summary`)
+    return response.data
+  },
 }
 
 export default api
