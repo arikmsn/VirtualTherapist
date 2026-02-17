@@ -1,6 +1,5 @@
 """Audio service - handles audio transcription for session recordings"""
 
-from typing import Optional
 import os
 from app.core.config import settings
 from loguru import logger

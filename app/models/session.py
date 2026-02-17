@@ -1,6 +1,9 @@
 """Session models - therapy sessions and summaries"""
 
-from sqlalchemy import Column, String, Text, JSON, Integer, ForeignKey, Date, Enum as SQLEnum
+from sqlalchemy import (
+    Column, String, Text, JSON, Boolean, Integer,
+    ForeignKey, Date, Enum as SQLEnum,
+)
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 import enum

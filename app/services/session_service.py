@@ -1,6 +1,6 @@
 """Session service - handles therapy sessions and summary generation"""
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import date
 from sqlalchemy.orm import Session
 from app.models.session import Session as TherapySession, SessionSummary, SessionType
@@ -260,3 +260,88 @@ class SessionService:
 
         logger.info(f"Therapist edited summary {summary.id}")
         return summary
+
+    async def get_session(
+        self,
+        session_id: int,
+        therapist_id: int,
+    ) -> Optional[TherapySession]:
+        """Get a single session by ID (verify ownership)"""
+
+        return self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
+
+    async def get_patient_sessions(
+        self,
+        patient_id: int,
+        therapist_id: int,
+    ) -> List[TherapySession]:
+        """Get all sessions for a patient (verify ownership)"""
+
+        patient = self.db.query(Patient).filter(
+            Patient.id == patient_id,
+            Patient.therapist_id == therapist_id,
+        ).first()
+
+        if not patient:
+            raise ValueError("Patient not found")
+
+        return (
+            self.db.query(TherapySession)
+            .filter(TherapySession.patient_id == patient_id)
+            .order_by(TherapySession.session_date.desc())
+            .all()
+        )
+
+    async def get_therapist_sessions(
+        self,
+        therapist_id: int,
+        limit: int = 50,
+    ) -> List[TherapySession]:
+        """Get recent sessions for a therapist"""
+
+        return (
+            self.db.query(TherapySession)
+            .filter(TherapySession.therapist_id == therapist_id)
+            .order_by(TherapySession.session_date.desc())
+            .limit(limit)
+            .all()
+        )
+
+    async def update_session(
+        self,
+        session_id: int,
+        therapist_id: int,
+        update_data: Dict[str, Any],
+    ) -> TherapySession:
+        """Update session details"""
+
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
+
+        if not session:
+            raise ValueError("Session not found")
+
+        protected = {"id", "created_at", "therapist_id", "patient_id"}
+        for field, value in update_data.items():
+            if field not in protected and hasattr(session, field):
+                setattr(session, field, value)
+
+        self.db.commit()
+        self.db.refresh(session)
+
+        await self.audit_service.log_action(
+            user_id=therapist_id,
+            user_type="therapist",
+            action="update",
+            resource_type="session",
+            resource_id=session.id,
+            action_details=update_data,
+        )
+
+        logger.info(f"Updated session {session_id}")
+        return session

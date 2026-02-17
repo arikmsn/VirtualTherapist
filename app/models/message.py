@@ -3,7 +3,6 @@
 from sqlalchemy import Column, String, Text, Boolean, Integer, ForeignKey, DateTime, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
-from datetime import datetime
 import enum
 
 

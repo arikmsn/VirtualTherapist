@@ -1,10 +1,9 @@
 """Therapist service - handles therapist profile management and onboarding"""
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from app.models.therapist import Therapist, TherapistProfile, TherapeuticApproach
 from app.core.agent import TherapyAgent
-from app.security.encryption import encrypt_data, decrypt_data
 from app.services.audit_service import AuditService
 from loguru import logger
 
@@ -151,7 +150,10 @@ class TherapistService:
 
         elif step == 3:  # Summary preferences
             profile.summary_template = data.get("template")
-            profile.summary_sections = data.get("sections", ["topics", "interventions", "progress", "next_steps"])
+            profile.summary_sections = data.get(
+                "sections",
+                ["topics", "interventions", "progress", "next_steps"],
+            )
 
         elif step == 4:  # Communication preferences
             profile.follow_up_frequency = data.get("follow_up_frequency")

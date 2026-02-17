@@ -6,7 +6,7 @@ TherapyCompanion.AI - Virtual Therapist Assistant
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import auth, agent, messages
+from app.api.routes import auth, agent, messages, patients, sessions
 from loguru import logger
 
 
@@ -43,6 +43,8 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(agent.router, prefix="/api/v1/agent", tags=["AI Agent"])
 app.include_router(messages.router, prefix="/api/v1/messages", tags=["Messages"])
+app.include_router(patients.router, prefix="/api/v1/patients", tags=["Patients"])
+app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["Sessions"])
 
 
 @app.on_event("startup")

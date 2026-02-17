@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from app.api.deps import get_db, get_current_therapist
 from app.models.therapist import Therapist
-from app.models.message import Message, MessageStatus
+from app.models.message import MessageStatus
 from app.services.message_service import MessageService
 from app.services.therapist_service import TherapistService
 

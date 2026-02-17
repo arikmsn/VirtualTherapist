@@ -1,6 +1,9 @@
 """Patient models - stores patient information and status"""
 
-from sqlalchemy import Column, String, Text, JSON, Boolean, ForeignKey, Enum as SQLEnum, Date
+from sqlalchemy import (
+    Column, String, Text, JSON, Boolean, Integer,
+    ForeignKey, Enum as SQLEnum, Date,
+)
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 import enum

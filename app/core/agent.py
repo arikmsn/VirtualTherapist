@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any
 from anthropic import Anthropic
 import openai
 from app.core.config import settings
-from app.models.therapist import Therapist, TherapistProfile
+from app.models.therapist import TherapistProfile
 from loguru import logger
 
 
@@ -43,51 +43,72 @@ class TherapyAgent:
         This is customized based on the therapist's profile
         """
 
-        base_prompt = """
-אתה **TherapyCompanion.AI** - סוכן AI מתקדם המשמש כ"עוזר מטפל וירטואלי אישי" שממשיך את עבודת המטפל האנושי בין הפגישות.
+        base_prompt = """\
+אתה **TherapyCompanion.AI** - סוכן AI מתקדם המשמש כ\
+"עוזר מטפל וירטואלי אישי" \
+שממשיך את עבודת המטפל האנושי בין הפגישות.
 
-## 🎯 תפקיד כפול:
+## תפקיד כפול:
 1. **סייע למטפל בזרימת העבודה היומית** (תיעוד, סיכומים, משימות)
-2. **המשך פעילות טיפולית** עם מטופלים בין פגישות (תמיכה, תרגילי המשך, בדיקות מצב)
+2. **המשך פעילות טיפולית** עם מטופלים בין פגישות
 
-## 🔒 אבטחה ופרטיות (קריטי!)
-```
-⚠️ חוקים ברזליים - לעולם אל תפר:
+## אבטחה ופרטיות (קריטי!)
 1. אף פעם לא לשלוח דבר למטופל ללא אישור מפורש של המטפל
 2. כל השיחות מוצפנות מקצה לקצה (AES-256)
 3. מלוא תיעוד ביקורת על כל פעולה
 4. אפשרות מחיקה מלאה בכל עת (GDPR)
 5. אין שיתוף נתונים עם צדדים שלישיים
-```
 
-## 🎭 התאמה אישית מלאה לכל מטפל:
-אתה צריך לדבר בדיוק כמו המטפל - להשתמש במינוח שלו, בטון שלו, בסגנון הכתיבה שלו.
+## התאמה אישית מלאה לכל מטפל:
+אתה צריך לדבר בדיוק כמו המטפל - \
+להשתמש במינוח שלו, בטון שלו, בסגנון הכתיבה שלו.
 
 """
 
         # Add therapist-specific customization if profile exists
         if self.profile:
-            custom_prompt = f"""
-## 👤 פרופיל המטפל שאתה מחקה:
+            p = self.profile
+            name = (
+                p.therapist.full_name
+                if hasattr(p, "therapist") else "לא צוין"
+            )
+            approach_desc = (
+                f"**תיאור הגישה:** {p.approach_description}"
+                if p.approach_description else ""
+            )
+            tone = p.tone or "תומך וישיר"
+            msg_len = p.message_length_preference or "קצר ממוקד"
+            terminology = (
+                ", ".join(p.common_terminology)
+                if p.common_terminology else "לא צוין"
+            )
+            freq = p.follow_up_frequency or "שבועי"
+            exercises = (
+                ", ".join(p.preferred_exercises)
+                if p.preferred_exercises else "לא צוין"
+            )
 
-**שם המטפל:** {self.profile.therapist.full_name if hasattr(self.profile, 'therapist') else 'לא צוין'}
-**גישה טיפולית:** {self.profile.therapeutic_approach.value}
-{f"**תיאור הגישה:** {self.profile.approach_description}" if self.profile.approach_description else ""}
+            custom_prompt = f"""
+## פרופיל המטפל שאתה מחקה:
+
+**שם המטפל:** {name}
+**גישה טיפולית:** {p.therapeutic_approach.value}
+{approach_desc}
 
 **טון ושפה:**
-- טון: {self.profile.tone if self.profile.tone else 'תומך וישיר'}
-- אורך הודעות: {self.profile.message_length_preference if self.profile.message_length_preference else 'קצר ממוקד'}
-- מינוח נפוץ: {', '.join(self.profile.common_terminology) if self.profile.common_terminology else 'לא צוין'}
+- טון: {tone}
+- אורך הודעות: {msg_len}
+- מינוח נפוץ: {terminology}
 
 **סגנון סיכומים:**
-- תדירות מעקב: {self.profile.follow_up_frequency if self.profile.follow_up_frequency else 'שבועי'}
-- תרגילים מועדפים: {', '.join(self.profile.preferred_exercises) if self.profile.preferred_exercises else 'לא צוין'}
+- תדירות מעקב: {freq}
+- תרגילים מועדפים: {exercises}
 
-## 📋 דוגמאות מהמטפל:
+## דוגמאות מהמטפל:
 {self._format_examples()}
 
 **חשוב:** דבר תמיד בשם המטפל, לא בשם עצמך. למשל:
-"היי [שם מטופל], זה {self.profile.therapist.full_name if hasattr(self.profile, 'therapist') else '[שם המטפל]'}. רציתי לשמוע איך הלך..."
+"היי [שם מטופל], זה {name}. רציתי לשמוע איך הלך..."
 """
             base_prompt += custom_prompt
 
@@ -178,7 +199,10 @@ class TherapyAgent:
             else:
                 response = await self._generate_openai(full_prompt)
 
-            logger.info(f"Generated response for therapist: {self.profile.therapist.email if self.profile else 'Unknown'}")
+            therapist_email = (
+                self.profile.therapist.email if self.profile else "Unknown"
+            )
+            logger.info(f"Generated response for therapist: {therapist_email}")
             return response
 
         except Exception as e:

@@ -1,8 +1,10 @@
 """Tests for security features"""
 
-import pytest
 from app.security.encryption import encrypt_data, decrypt_data
-from app.security.auth import get_password_hash, verify_password, create_access_token, decode_access_token
+from app.security.auth import (
+    get_password_hash, verify_password,
+    create_access_token, decode_access_token,
+)
 
 
 def test_encryption_decryption():

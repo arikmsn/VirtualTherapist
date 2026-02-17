@@ -1,6 +1,6 @@
 """Therapist models - stores therapist information and personalized profiles"""
 
-from sqlalchemy import Column, String, Text, JSON, Boolean, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, String, Text, JSON, Boolean, Integer, ForeignKey, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 import enum
@@ -35,7 +35,10 @@ class Therapist(BaseModel):
     is_verified = Column(Boolean, default=False)
 
     # Relationships
-    profile = relationship("TherapistProfile", back_populates="therapist", uselist=False, cascade="all, delete-orphan")
+    profile = relationship(
+        "TherapistProfile", back_populates="therapist",
+        uselist=False, cascade="all, delete-orphan",
+    )
     patients = relationship("Patient", back_populates="therapist", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="therapist", cascade="all, delete-orphan")
     messages = relationship("Message", back_populates="therapist", cascade="all, delete-orphan")
@@ -62,7 +65,8 @@ class TherapistProfile(BaseModel):
 
     # Session Summary Style
     summary_template = Column(Text)  # Custom template for summaries
-    summary_sections = Column(JSON)  # Preferred sections: ["topics", "interventions", "progress", "next_steps"]
+    # Preferred sections: ["topics", "interventions", "progress", "next_steps"]
+    summary_sections = Column(JSON)
 
     # Communication Preferences
     follow_up_frequency = Column(String(50))  # "daily", "weekly", "as_needed"
@@ -73,7 +77,8 @@ class TherapistProfile(BaseModel):
     cultural_considerations = Column(Text)
 
     # AI Learning Data
-    example_summaries = Column(JSON)  # Examples of therapist's previous summaries for AI to learn from
+    # Examples of therapist's previous summaries for AI to learn from
+    example_summaries = Column(JSON)
     example_messages = Column(JSON)  # Examples of messages to patients
 
     # Onboarding Status
