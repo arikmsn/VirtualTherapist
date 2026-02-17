@@ -54,6 +54,24 @@ class PatientInsightResult:
         self.suggestions_for_next_sessions = suggestions_for_next_sessions
 
 
+class SessionPrepBriefResult:
+    """Structured result from AI session preparation brief."""
+
+    def __init__(
+        self,
+        quick_overview: str,
+        recent_progress: str,
+        key_points_to_revisit: List[str],
+        watch_out_for: List[str],
+        ideas_for_this_session: List[str],
+    ):
+        self.quick_overview = quick_overview
+        self.recent_progress = recent_progress
+        self.key_points_to_revisit = key_points_to_revisit
+        self.watch_out_for = watch_out_for
+        self.ideas_for_this_session = ideas_for_this_session
+
+
 class TherapyAgent:
     """
     The core AI agent that mimics the therapist's personality and style
@@ -463,6 +481,113 @@ class TherapyAgent:
             patterns=data.get("patterns", []),
             risks=data.get("risks", []),
             suggestions_for_next_sessions=data.get("suggestions_for_next_sessions", []),
+        )
+
+    async def generate_session_prep_brief(
+        self,
+        patient_name: str,
+        session_date: str,
+        session_number: Optional[int],
+        summaries_timeline: List[Dict[str, Any]],
+    ) -> SessionPrepBriefResult:
+        """
+        Generate a concise prep brief for an upcoming session.
+
+        summaries_timeline: last N approved summaries (most recent last).
+        """
+        if self.client is None:
+            raise RuntimeError(
+                "AI client not initialized. "
+                f"Set a valid API key in .env for AI_PROVIDER='{self.ai_provider}'."
+            )
+
+        timeline_parts = []
+        for s in summaries_timeline:
+            date_str = str(s.get("session_date", "?"))
+            num = s.get("session_number", "?")
+            topics = ", ".join(s.get("topics_discussed", []) or [])
+            progress = s.get("patient_progress", "")
+            homework = ", ".join(s.get("homework_assigned", []) or [])
+            risk = s.get("risk_assessment", "")
+            next_plan = s.get("next_session_plan", "")
+            timeline_parts.append(
+                f"--- פגישה #{num} ({date_str}) ---\n"
+                f"נושאים: {topics}\n"
+                f"התקדמות: {progress}\n"
+                f"משימות בית: {homework}\n"
+                f"תוכנית להמשך: {next_plan}\n"
+                f"סיכון: {risk}"
+            )
+
+        timeline = "\n\n".join(timeline_parts)
+
+        session_num_str = f"#{session_number}" if session_number else ""
+        prompt = f"""\
+אתה מסייע לחשיבה הקלינית של המטפל. אתה לא מאבחן ולא מקבל החלטות טיפוליות בעצמך.
+שמור על תמציתיות ופרקטיות — הכנה קצרה לפגישה הקרובה.
+
+הפגישה הקרובה: מטופל "{patient_name}", פגישה {session_num_str}, בתאריך {session_date}.
+
+להלן סיכומי הפגישות האחרונות (מאושרים):
+
+{timeline}
+
+צור תדריך הכנה קצר **למטפל בלבד**.
+
+החזר תשובה **אך ורק** כ-JSON תקין (ללא markdown, ללא ```):
+{{
+  "quick_overview": "2-3 משפטים תמציתיים על מצב המטופל כרגע",
+  "recent_progress": "מה השתנה בפגישות האחרונות",
+  "key_points_to_revisit": ["נקודה 1 לחזור אליה", "..."],
+  "watch_out_for": ["נושא רגיש / סיכון לשים לב", "..."],
+  "ideas_for_this_session": ["רעיון קונקרטי 1", "רעיון 2", "..."]
+}}
+
+כללים:
+- בסס רק על מידע מהסיכומים. אל תמציא.
+- כתוב בעברית מקצועית שוטפת.
+- שמור על קיצור — מטפל עסוק צריך לקרוא את זה ב-30 שניות.
+"""
+
+        try:
+            if self.ai_provider == "anthropic":
+                raw = await self._generate_anthropic(prompt)
+            else:
+                raw = await self._generate_openai(prompt)
+
+            return self._parse_prep_brief_json(raw)
+
+        except Exception as e:
+            logger.error(f"Error generating session prep brief: {e}")
+            raise
+
+    def _parse_prep_brief_json(self, raw: str) -> SessionPrepBriefResult:
+        """Parse AI response into SessionPrepBriefResult, with fallback."""
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[: cleaned.rfind("```")]
+        cleaned = cleaned.strip()
+
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            logger.warning("AI returned non-JSON prep brief, using full text as fallback")
+            return SessionPrepBriefResult(
+                quick_overview=raw,
+                recent_progress="",
+                key_points_to_revisit=[],
+                watch_out_for=[],
+                ideas_for_this_session=[],
+            )
+
+        return SessionPrepBriefResult(
+            quick_overview=data.get("quick_overview", ""),
+            recent_progress=data.get("recent_progress", ""),
+            key_points_to_revisit=data.get("key_points_to_revisit", []),
+            watch_out_for=data.get("watch_out_for", []),
+            ideas_for_this_session=data.get("ideas_for_this_session", []),
         )
 
     async def _generate_anthropic(self, prompt: str) -> str:

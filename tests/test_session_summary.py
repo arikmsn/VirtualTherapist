@@ -16,7 +16,7 @@ from app.models.session import Session as _Session, SessionSummary as _SessionSu
 from app.models.patient import Patient as _Patient  # noqa: F401
 from app.models.message import Message as _Message  # noqa: F401
 from app.models.audit import AuditLog as _AuditLog  # noqa: F401
-from app.core.agent import SessionSummaryResult, PatientInsightResult
+from app.core.agent import SessionSummaryResult, PatientInsightResult, SessionPrepBriefResult
 
 # In-memory SQLite for tests — use StaticPool so all connections share one DB
 from sqlalchemy.pool import StaticPool
@@ -388,3 +388,53 @@ async def test_patient_insight_with_draft_only(client, therapist_with_patient):
 
     assert resp.status_code == 400
     assert "סיכומים מאושרים" in resp.json()["detail"]
+
+
+# --- Prep Brief Tests ---
+
+
+@pytest.mark.asyncio
+async def test_prep_brief_happy_path(client, therapist_with_patient):
+    """POST /sessions/{id}/prep-brief returns structured prep brief."""
+    session_id = therapist_with_patient["session"].id
+    _create_approved_summary(client, session_id)
+
+    with patch(
+        "app.core.agent.TherapyAgent.generate_session_prep_brief",
+        new_callable=AsyncMock,
+    ) as mock_prep:
+        mock_prep.return_value = SessionPrepBriefResult(
+            quick_overview="המטופל מראה שיפור הדרגתי",
+            recent_progress="שיפור בחרדה חברתית",
+            key_points_to_revisit=["יומן מחשבות", "חשיפה הדרגתית"],
+            watch_out_for=["דפוסי הימנעות"],
+            ideas_for_this_session=["תרגול ויסות רגשי", "סקירת משימות בית"],
+        )
+
+        resp = client.post(f"/api/v1/sessions/{session_id}/prep-brief")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["quick_overview"] == "המטופל מראה שיפור הדרגתי"
+    assert len(data["key_points_to_revisit"]) == 2
+    assert len(data["watch_out_for"]) == 1
+    assert len(data["ideas_for_this_session"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_prep_brief_no_approved_summaries(client, therapist_with_patient):
+    """POST /sessions/{id}/prep-brief returns 400 when no approved summaries."""
+    session_id = therapist_with_patient["session"].id
+
+    resp = client.post(f"/api/v1/sessions/{session_id}/prep-brief")
+
+    assert resp.status_code == 400
+    assert "סיכומים מאושרים" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_prep_brief_session_not_found(client, therapist_with_patient):
+    """POST /sessions/9999/prep-brief returns 400 for non-existent session."""
+    resp = client.post("/api/v1/sessions/9999/prep-brief")
+
+    assert resp.status_code == 400

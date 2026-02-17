@@ -5,7 +5,7 @@ from datetime import date, datetime
 from sqlalchemy.orm import Session
 from app.models.session import Session as TherapySession, SessionSummary, SessionType, SummaryStatus
 from app.models.patient import Patient
-from app.core.agent import TherapyAgent, PatientInsightResult
+from app.core.agent import TherapyAgent, PatientInsightResult, SessionPrepBriefResult
 from app.services.audit_service import AuditService
 from loguru import logger
 
@@ -541,4 +541,66 @@ class SessionService:
         )
 
         logger.info(f"Generated insight summary for patient {patient_id} ({len(approved_summaries)} summaries)")
+        return result
+
+    async def generate_prep_brief(
+        self,
+        session_id: int,
+        therapist_id: int,
+        agent: TherapyAgent,
+        max_summaries: int = 5,
+    ) -> SessionPrepBriefResult:
+        """Generate a concise AI prep brief for an upcoming session."""
+
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
+
+        if not session:
+            raise ValueError("Session not found or does not belong to this therapist")
+
+        patient = self.db.query(Patient).filter(Patient.id == session.patient_id).first()
+        if not patient:
+            raise ValueError("Patient not found")
+
+        # Fetch approved summaries for this patient, most recent last, limited
+        patient_sessions = (
+            self.db.query(TherapySession)
+            .filter(
+                TherapySession.patient_id == session.patient_id,
+                TherapySession.summary_id.isnot(None),
+            )
+            .order_by(TherapySession.session_date.asc())
+            .all()
+        )
+
+        approved = []
+        for s in patient_sessions:
+            summary = s.summary
+            if summary and summary.status == SummaryStatus.APPROVED:
+                approved.append({
+                    "session_date": s.session_date,
+                    "session_number": s.session_number,
+                    "topics_discussed": summary.topics_discussed,
+                    "patient_progress": summary.patient_progress,
+                    "homework_assigned": summary.homework_assigned,
+                    "next_session_plan": summary.next_session_plan,
+                    "risk_assessment": summary.risk_assessment,
+                })
+
+        if not approved:
+            raise ValueError("אין סיכומים מאושרים עבור מטופל זה. יש לאשר לפחות סיכום אחד.")
+
+        # Keep only the last N
+        recent = approved[-max_summaries:]
+
+        result = await agent.generate_session_prep_brief(
+            patient_name=patient.full_name_encrypted,
+            session_date=str(session.session_date),
+            session_number=session.session_number,
+            summaries_timeline=recent,
+        )
+
+        logger.info(f"Generated prep brief for session {session_id} ({len(recent)} summaries)")
         return result

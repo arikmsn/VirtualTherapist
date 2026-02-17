@@ -404,3 +404,49 @@ async def edit_summary(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class SessionPrepBriefResponse(BaseModel):
+    quick_overview: str
+    recent_progress: str
+    key_points_to_revisit: List[str]
+    watch_out_for: List[str]
+    ideas_for_this_session: List[str]
+
+
+@router.post("/{session_id}/prep-brief", response_model=SessionPrepBriefResponse)
+async def generate_session_prep_brief(
+    session_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Generate a concise AI prep brief for an upcoming session"""
+
+    session_service = SessionService(db)
+    therapist_service = TherapistService(db)
+
+    try:
+        agent = await therapist_service.get_agent_for_therapist(
+            current_therapist.id,
+        )
+
+        result = await session_service.generate_prep_brief(
+            session_id=session_id,
+            therapist_id=current_therapist.id,
+            agent=agent,
+        )
+
+        return SessionPrepBriefResponse(
+            quick_overview=result.quick_overview,
+            recent_progress=result.recent_progress,
+            key_points_to_revisit=result.key_points_to_revisit,
+            watch_out_for=result.watch_out_for,
+            ideas_for_this_session=result.ideas_for_this_session,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
