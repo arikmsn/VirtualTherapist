@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { DocumentTextIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI } from '@/lib/api'
 
@@ -21,6 +22,7 @@ interface Patient {
 }
 
 export default function SessionsPage() {
+  const navigate = useNavigate()
   const [sessions, setSessions] = useState<Session[]>([])
   const [patientMap, setPatientMap] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(true)
@@ -163,12 +165,18 @@ export default function SessionsPage() {
               {/* Actions */}
               <div className="flex gap-2">
                 {session.summary_id == null && (
-                  <button className="btn-primary whitespace-nowrap">
+                  <button
+                    onClick={() => navigate(`/sessions/${session.id}`)}
+                    className="btn-primary whitespace-nowrap"
+                  >
                     צור סיכום
                   </button>
                 )}
                 {session.summary_id != null && (
-                  <button className="btn-secondary whitespace-nowrap">
+                  <button
+                    onClick={() => navigate(`/sessions/${session.id}`)}
+                    className="btn-secondary whitespace-nowrap"
+                  >
                     צפה בסיכום
                   </button>
                 )}

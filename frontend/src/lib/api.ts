@@ -200,11 +200,15 @@ export const sessionsAPI = {
     return response.data
   },
 
-  generateSummary: async (sessionId: number, therapistNotes: string) => {
-    const response = await api.post('/sessions/summary/from-text', {
-      session_id: sessionId,
-      therapist_notes: therapistNotes,
+  generateSummary: async (sessionId: number, notes: string) => {
+    const response = await api.post(`/sessions/${sessionId}/summary/from-text`, {
+      notes,
     })
+    return response.data
+  },
+
+  getSummary: async (sessionId: number) => {
+    const response = await api.get(`/sessions/${sessionId}/summary`)
     return response.data
   },
 
