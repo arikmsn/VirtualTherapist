@@ -3,12 +3,37 @@ Core AI Agent - TherapyCompanion.AI
 This is the heart of the system - the personalized AI therapist assistant
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+import json
 from anthropic import Anthropic
 import openai
 from app.core.config import settings
 from app.models.therapist import TherapistProfile
 from loguru import logger
+
+
+class SessionSummaryResult:
+    """Structured result from AI session summary generation."""
+
+    def __init__(
+        self,
+        topics_discussed: List[str],
+        interventions_used: List[str],
+        patient_progress: str,
+        homework_assigned: List[str],
+        next_session_plan: str,
+        mood_observed: str,
+        risk_assessment: str,
+        full_summary: str,
+    ):
+        self.topics_discussed = topics_discussed
+        self.interventions_used = interventions_used
+        self.patient_progress = patient_progress
+        self.homework_assigned = homework_assigned
+        self.next_session_plan = next_session_plan
+        self.mood_observed = mood_observed
+        self.risk_assessment = risk_assessment
+        self.full_summary = full_summary
 
 
 class TherapyAgent:
@@ -223,6 +248,101 @@ class TherapyAgent:
         except Exception as e:
             logger.error(f"Error generating response: {str(e)}")
             raise
+
+    async def generate_session_summary(
+        self,
+        notes: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> SessionSummaryResult:
+        """
+        Generate a structured session summary from therapist notes.
+
+        Returns a SessionSummaryResult with parsed fields.
+        """
+        if self.client is None:
+            raise RuntimeError(
+                "AI client not initialized. "
+                f"Set a valid API key in .env for AI_PROVIDER='{self.ai_provider}'."
+            )
+
+        summary_prompt = f"""\
+צור סיכום פגישה מובנה מהרשימות הבאות. החזר תשובה **אך ורק** כ-JSON תקין (ללא markdown, ללא ```).
+
+**רשימות המטפל:**
+{notes}
+
+החזר JSON בדיוק במבנה הבא (כל הערכים בעברית):
+{{
+  "topics_discussed": ["נושא 1", "נושא 2"],
+  "interventions_used": ["התערבות 1", "התערבות 2"],
+  "patient_progress": "תיאור התקדמות המטופל",
+  "homework_assigned": ["משימה 1", "משימה 2"],
+  "next_session_plan": "תוכנית לפגישה הבאה",
+  "mood_observed": "מצב רוח נצפה",
+  "risk_assessment": "הערכת סיכון - ציין 'ללא סיכון מיוחד' אם לא זוהה סיכון",
+  "full_summary": "סיכום מלא בפסקה אחת-שתיים בסגנון הכתיבה של המטפל"
+}}
+
+כללים:
+- אל תמציא מידע שלא מופיע ברשימות.
+- אם משהו לא ברור מהרשימות, כתוב "לא צוין".
+- הסיכום המלא (full_summary) צריך להיות בסגנון הכתיבה של המטפל.
+- אל תיתן אבחנות. אל תציע טיפולים. רק תעד את מה שהמטפל כתב.
+"""
+
+        ctx_str = ""
+        if context:
+            ctx_str = f"הקשר: מספר פגישה {context.get('session_number', '?')}\n\n"
+
+        full_prompt = ctx_str + summary_prompt
+
+        try:
+            if self.ai_provider == "anthropic":
+                raw = await self._generate_anthropic(full_prompt)
+            else:
+                raw = await self._generate_openai(full_prompt)
+
+            return self._parse_summary_json(raw)
+
+        except Exception as e:
+            logger.error(f"Error generating session summary: {e}")
+            raise
+
+    def _parse_summary_json(self, raw: str) -> SessionSummaryResult:
+        """Parse AI response into SessionSummaryResult, with fallback."""
+        # Strip markdown fences if AI included them despite instructions
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[: cleaned.rfind("```")]
+        cleaned = cleaned.strip()
+
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            logger.warning("AI returned non-JSON summary, using full text as fallback")
+            return SessionSummaryResult(
+                topics_discussed=[],
+                interventions_used=[],
+                patient_progress="",
+                homework_assigned=[],
+                next_session_plan="",
+                mood_observed="",
+                risk_assessment="",
+                full_summary=raw,
+            )
+
+        return SessionSummaryResult(
+            topics_discussed=data.get("topics_discussed", []),
+            interventions_used=data.get("interventions_used", []),
+            patient_progress=data.get("patient_progress", ""),
+            homework_assigned=data.get("homework_assigned", []),
+            next_session_plan=data.get("next_session_plan", ""),
+            mood_observed=data.get("mood_observed", ""),
+            risk_assessment=data.get("risk_assessment", ""),
+            full_summary=data.get("full_summary", ""),
+        )
 
     async def _generate_anthropic(self, prompt: str) -> str:
         """Generate response using Anthropic Claude"""

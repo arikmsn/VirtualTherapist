@@ -46,9 +46,8 @@ class SessionResponse(BaseModel):
         from_attributes = True
 
 
-class GenerateSummaryRequest(BaseModel):
-    session_id: int
-    therapist_notes: str
+class GenerateSummaryFromTextRequest(BaseModel):
+    notes: str
 
 
 class ApproveSummaryRequest(BaseModel):
@@ -72,6 +71,7 @@ class SummaryResponse(BaseModel):
     homework_assigned: Optional[List[str]] = None
     next_session_plan: Optional[str] = None
     mood_observed: Optional[str] = None
+    risk_assessment: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -204,13 +204,14 @@ async def update_session(
 # --- Summary endpoints ---
 
 
-@router.post("/summary/from-text", response_model=SummaryResponse)
+@router.post("/{session_id}/summary/from-text", response_model=SummaryResponse)
 async def generate_summary_from_text(
-    request: GenerateSummaryRequest,
+    session_id: int,
+    request: GenerateSummaryFromTextRequest,
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
-    """Generate a session summary from therapist text notes"""
+    """Generate a structured AI session summary from therapist text notes"""
 
     session_service = SessionService(db)
     therapist_service = TherapistService(db)
@@ -221,14 +222,46 @@ async def generate_summary_from_text(
         )
 
         summary = await session_service.generate_summary_from_text(
-            session_id=request.session_id,
-            therapist_notes=request.therapist_notes,
+            session_id=session_id,
+            therapist_notes=request.notes,
             agent=agent,
+            therapist_id=current_therapist.id,
         )
         return SummaryResponse.model_validate(summary)
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{session_id}/summary", response_model=SummaryResponse)
+async def get_session_summary(
+    session_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Get the AI-generated summary for a session"""
+
+    service = SessionService(db)
+
+    try:
+        summary = await service.get_summary(
+            session_id=session_id,
+            therapist_id=current_therapist.id,
+        )
+
+        if not summary:
+            raise HTTPException(status_code=404, detail="No summary found for this session")
+
+        return SummaryResponse.model_validate(summary)
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

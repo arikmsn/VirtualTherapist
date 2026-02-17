@@ -7,7 +7,6 @@ from app.models.session import Session as TherapySession, SessionSummary, Sessio
 from app.models.patient import Patient
 from app.core.agent import TherapyAgent
 from app.services.audit_service import AuditService
-from app.services.audio_service import AudioService
 from loguru import logger
 
 
@@ -17,7 +16,6 @@ class SessionService:
     def __init__(self, db: Session):
         self.db = db
         self.audit_service = AuditService(db)
-        self.audio_service = AudioService()
 
     async def create_session(
         self,
@@ -135,73 +133,74 @@ class SessionService:
         self,
         session_id: int,
         therapist_notes: str,
-        agent: TherapyAgent
+        agent: TherapyAgent,
+        therapist_id: int,
     ) -> SessionSummary:
         """
-        Generate session summary from therapist's text notes
-        Uses AI to structure and format in therapist's style
+        Generate session summary from therapist's text notes.
+        Uses AI agent to produce a structured JSON summary.
         """
 
-        session = self.db.query(TherapySession).filter(TherapySession.id == session_id).first()
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
         if not session:
-            raise ValueError("Session not found")
+            raise ValueError("Session not found or does not belong to this therapist")
 
-        summary_prompt = f"""
-צור סיכום פגישה מובנה מהרשימות הבאות בסגנון שלך האישי.
-
-**רשימות המטפל:**
-{therapist_notes}
-
-אנא צור סיכום מובנה הכולל:
-1. נושאים שנדונו
-2. התערבויות שבוצעו
-3. התקדמות המטופל
-4. משימות בית שהוטלו
-5. תוכנית לפגישה הבאה
-"""
-
-        summary_text = await agent.generate_response(summary_prompt, context={
-            "session_number": session.session_number,
-            "patient_id": session.patient_id
-        })
-
-        summary = await self._create_summary_from_text(
-            session_id=session_id,
-            summary_text=summary_text,
-            generated_from="text"
+        result = await agent.generate_session_summary(
+            notes=therapist_notes,
+            context={
+                "session_number": session.session_number,
+                "patient_id": session.patient_id,
+            },
         )
 
-        session.summary_id = summary.id
-        self.db.commit()
-
-        logger.info(f"Generated summary from text for session {session_id}")
-        return summary
-
-    async def _create_summary_from_text(
-        self,
-        session_id: int,
-        summary_text: str,
-        generated_from: str
-    ) -> SessionSummary:
-        """Create a SessionSummary object from generated text"""
-
-        # Parse the summary text into structured components
-        # This is a simplified version - in production, use more sophisticated parsing
         summary = SessionSummary(
-            full_summary=summary_text,
-            generated_from=generated_from,
+            full_summary=result.full_summary,
+            topics_discussed=result.topics_discussed,
+            interventions_used=result.interventions_used,
+            patient_progress=result.patient_progress,
+            homework_assigned=result.homework_assigned,
+            next_session_plan=result.next_session_plan,
+            mood_observed=result.mood_observed,
+            risk_assessment=result.risk_assessment,
+            generated_from="text",
             therapist_edited=False,
             approved_by_therapist=False,
-            topics_discussed=[],  # Would parse from text
-            interventions_used=[],  # Would parse from text
-            homework_assigned=[]  # Would parse from text
         )
 
         self.db.add(summary)
+        self.db.flush()  # get summary.id without full commit
+
+        session.summary_id = summary.id
         self.db.commit()
         self.db.refresh(summary)
 
+        await self.audit_service.log_action(
+            user_id=therapist_id,
+            user_type="therapist",
+            action="generate",
+            resource_type="session_summary",
+            resource_id=summary.id,
+            action_details={"session_id": session_id, "generated_from": "text"},
+        )
+
+        logger.info(f"Generated structured summary for session {session_id}")
         return summary
+
+    async def get_summary(self, session_id: int, therapist_id: int) -> Optional[SessionSummary]:
+        """Get the summary for a session, verifying therapist ownership."""
+
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
+
+        if not session:
+            raise ValueError("Session not found or does not belong to this therapist")
+
+        return session.summary
 
     async def approve_summary(self, session_id: int, therapist_id: int) -> SessionSummary:
         """Therapist approves the generated summary"""
