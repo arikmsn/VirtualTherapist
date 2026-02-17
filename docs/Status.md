@@ -88,6 +88,54 @@ curl -s http://localhost:8000/api/v1/sessions/1/summary \
 - **Frontend:** `SessionDetailPage` — editable summary fields (full summary, progress, next plan, mood, risk), "שמור טיוטה" (save draft) and "אשר סיכום" (approve) buttons, status badges. `PatientSummariesPage` — per-patient summary timeline with topic chips.
 - **Tests:** 8 passing tests (4 original + 4 new: PATCH edit, PATCH approve, patient summaries list, patient summaries empty).
 
+### Patient Insight Summary
+- **Backend:** `POST /patients/{id}/insight-summary` — generates a cross-session AI report from all **approved** summaries. Returns structured JSON: overview, progress, patterns, risks, suggestions for next sessions. Returns 400 if no approved summaries exist, 503 if AI key missing.
+- **Agent:** New `generate_patient_insight_summary()` method with dedicated Hebrew prompt. Emphasizes therapist-only use, no diagnosis.
+- **Frontend:** `PatientSummariesPage` — purple "סיכום עומק AI" panel with "צור סיכום עומק" button (disabled when 0 approved summaries). Displays structured sections: overview, progress, patterns, risks (amber), suggestions (green). Friendly message when no approved summaries.
+- **Tests:** 11 passing tests (3 new: happy path, no approved summaries, draft-only summaries).
+
+## Patient Insight Summary — HOW TO TEST
+
+### Prerequisites
+- Backend running (`python -m app.main`)
+- Frontend running (`cd frontend && npm run dev`)
+- A valid AI API key in `.env`
+
+### Steps
+
+1. **Register/Login** — Go to `http://localhost:3000/register`, create an account.
+
+2. **Create a patient** — Navigate to "מטופלים" (Patients), click "+", fill in a name, save.
+
+3. **Create 2–3 sessions** — From the Dashboard or via API, create sessions for that patient.
+
+4. **Generate summaries** — For each session, navigate to "פגישות" → click "צור סיכום" → paste notes → click "צור סיכום AI".
+
+5. **Approve summaries** — On each session detail page, click "אשר סיכום" to move from draft → approved.
+
+6. **Open patient summaries** — Navigate to "מטופלים", click the patient card. You'll see the summaries timeline with approved badges.
+
+7. **Generate insight** — Click **"צור סיכום עומק"** in the purple panel at the top. A spinner appears. After a few seconds, the AI report appears with sections:
+   - סקירה כללית (overview)
+   - התקדמות לאורך זמן (progress)
+   - דפוסים מרכזיים (patterns)
+   - נקודות סיכון למעקב (risks — amber)
+   - רעיונות לפגישות הבאות (suggestions — green)
+
+### Edge Cases
+- **No approved summaries:** The "צור סיכום עומק" button is disabled. If called via API, returns 400 with "אין סיכומים מאושרים".
+- **No AI key:** Returns 503 with clear error.
+- **Draft-only summaries:** Button disabled, API returns 400.
+
+### API Testing (curl)
+```bash
+# Assumes $TOKEN is set (see AI Session Summaries curl section above)
+
+# Generate insight (requires approved summaries + real AI key)
+curl -s http://localhost:8000/api/v1/patients/1/insight-summary -X POST \
+  -H "Authorization: Bearer $TOKEN"
+```
+
 ---
 
 ## Therapist Workspace — Current Capabilities
@@ -95,6 +143,7 @@ curl -s http://localhost:8000/api/v1/sessions/1/summary \
 ### Patients List + Per-Patient Summaries Timeline
 - **Patients page** (`/patients`) — searchable list of all patients, stats (active count, total, missed exercises), create new patient via modal.
 - **Per-patient summaries** (`/patients/{id}/summaries`) — click any patient card (or the "סיכומים" button) to see a timeline of all AI-generated summaries for that patient, sorted newest-first. Each entry shows session number, date, status badge (טיוטה / מאושר), topic chips, and a preview of the summary text. Clicking an entry navigates to the full session detail.
+- **Patient insight summary** — purple panel at the top of the summaries page. "צור סיכום עומק" button generates a cross-session AI report synthesizing all approved summaries into patterns, progress, risks, and next-session ideas.
 
 ### SessionDetail Workspace: Notes → AI Summary → Edit → Approve
 - **Session detail** (`/sessions/{id}`) — the therapist's main workspace for a single session:
