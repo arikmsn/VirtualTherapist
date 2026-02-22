@@ -65,6 +65,7 @@ temp_audio/
 patient_data/
 therapist_data/
 backups/
+production_secrets.txt
 
 # Cache
 .cache/
