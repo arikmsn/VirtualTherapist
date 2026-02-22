@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.models.base import Base
 from app.models import (  # noqa: F401 — registers models with Base metadata
     Therapist, TherapistProfile, Patient, Session,
-    SessionSummary, Message, AuditLog,
+    SessionSummary, Message, AuditLog, Exercise,
 )
 
 # this is the Alembic Config object

@@ -10,6 +10,7 @@ from app.models.therapist import Therapist
 from app.models.message import Message, MessageStatus
 from app.services.message_service import MessageService
 from app.services.therapist_service import TherapistService
+from loguru import logger
 
 
 router = APIRouter()
@@ -239,7 +240,8 @@ async def get_pending_messages(
         return [MessageResponse.model_validate(msg) for msg in messages]
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"get_pending_messages failed for therapist {current_therapist.id}: {e!r}")
+        return []
 
 
 @router.get("/patient/{patient_id}", response_model=List[MessageResponse])
