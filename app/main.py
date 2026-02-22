@@ -31,9 +31,12 @@ app = FastAPI(
 
 
 # CORS middleware
+# Origins come from CORS_ORIGINS env var (comma-separated).
+# Default "*" works in dev; production should set the exact Vercel URL.
+_cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.DEBUG else [],  # Configure properly in production
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

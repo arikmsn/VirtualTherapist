@@ -8,7 +8,8 @@ from app.core.config import settings
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 
 engine_kwargs = {
-    "echo": settings.DEBUG,
+    # Never echo SQL in production regardless of DEBUG flag
+    "echo": settings.DEBUG and settings.ENVIRONMENT != "production",
 }
 
 if _is_sqlite:

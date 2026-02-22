@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "TherapyCompanion.AI"
     APP_VERSION: str = "1.0.0"
+    CLINIC_NAME: str = "TherapyCompanion"  # Shown in appointment reminder templates
     ENVIRONMENT: Literal["development", "staging", "production"] = "development"
     DEBUG: bool = False
 
@@ -76,6 +77,12 @@ class Settings(BaseSettings):
     # Legacy Auth Token (still accepted if API Key not set):
     TWILIO_AUTH_TOKEN: str | None = None
     TWILIO_WHATSAPP_NUMBER: str | None = None  # e.g. "whatsapp:+14155238886"
+
+    # CORS
+    # Comma-separated list of allowed frontend origins.
+    # In production set to your Vercel URL, e.g. "https://app.vercel.app".
+    # Defaults to "*" so local development works without extra config.
+    CORS_ORIGINS: str = "*"
 
     # Logging
     LOG_LEVEL: str = "INFO"
