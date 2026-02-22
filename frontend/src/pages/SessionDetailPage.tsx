@@ -766,6 +766,9 @@ function ExerciseTracker({
   const [adding, setAdding] = useState<string | null>(null)
   const [newDesc, setNewDesc] = useState('')
   const [addingCustom, setAddingCustom] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editText, setEditText] = useState('')
+  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   // Suggestions from homework_assigned that aren't yet tracked
   const tracked = new Set(exercises.map((e) => e.description))
@@ -780,6 +783,33 @@ function ExerciseTracker({
       console.error('Error toggling exercise:', err)
     } finally {
       setToggling(null)
+    }
+  }
+
+  const deleteExercise = async (ex: Exercise) => {
+    setDeletingId(ex.id)
+    try {
+      await exercisesAPI.delete(ex.id)
+      onExercisesChange(exercises.filter((e) => e.id !== ex.id))
+    } catch (err) {
+      console.error('Error deleting exercise:', err)
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const saveEdit = async (ex: Exercise) => {
+    const trimmed = editText.trim()
+    if (!trimmed || trimmed === ex.description) {
+      setEditingId(null)
+      return
+    }
+    try {
+      const updated = await exercisesAPI.patch(ex.id, { description: trimmed })
+      onExercisesChange(exercises.map((e) => (e.id === ex.id ? updated : e)))
+      setEditingId(null)
+    } catch (err) {
+      console.error('Error updating exercise:', err)
     }
   }
 
@@ -817,10 +847,11 @@ function ExerciseTracker({
       {exercises.length > 0 && (
         <ul className="space-y-2 mb-3">
           {exercises.map((ex) => (
-            <li key={ex.id} className="flex items-start gap-3">
+            <li key={ex.id} className="flex items-center gap-2">
+              {/* Toggle complete */}
               <button
-                onClick={() => toggleExercise(ex)}
-                disabled={toggling === ex.id}
+                onClick={() => editingId !== ex.id && toggleExercise(ex)}
+                disabled={toggling === ex.id || editingId === ex.id}
                 className="mt-0.5 flex-shrink-0"
                 aria-label={ex.completed ? 'סמן כלא הושלם' : 'סמן כהושלם'}
               >
@@ -832,9 +863,63 @@ function ExerciseTracker({
                   <span className="w-5 h-5 rounded-full border-2 border-gray-400 inline-block" />
                 )}
               </button>
-              <span className={`text-sm ${ex.completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                {ex.description}
-              </span>
+
+              {/* Inline edit input OR text */}
+              {editingId === ex.id ? (
+                <>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); saveEdit(ex) }
+                      if (e.key === 'Escape') setEditingId(null)
+                    }}
+                    className="input-field flex-1 text-sm py-1"
+                  />
+                  <button
+                    onClick={() => saveEdit(ex)}
+                    className="text-xs text-green-600 hover:text-green-800 flex-shrink-0"
+                  >
+                    שמור
+                  </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="text-xs text-gray-400 hover:text-gray-600 flex-shrink-0"
+                  >
+                    ביטול
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className={`text-sm flex-1 ${ex.completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                    {ex.description}
+                  </span>
+                  {/* Edit + delete — only for non-completed tasks */}
+                  {!ex.completed && (
+                    <>
+                      <button
+                        onClick={() => { setEditingId(ex.id); setEditText(ex.description) }}
+                        className="flex-shrink-0 text-gray-300 hover:text-blue-500 transition-colors"
+                        aria-label="ערוך משימה"
+                        title="ערוך משימה"
+                      >
+                        <PencilSquareIcon className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteExercise(ex)}
+                        disabled={deletingId === ex.id}
+                        className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors disabled:opacity-50"
+                        aria-label="הסר משימה"
+                        title="הסר משימה"
+                      >
+                        <XMarkIcon className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
             </li>
           ))}
         </ul>
