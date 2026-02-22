@@ -121,7 +121,7 @@ class AuditService:
     ):
         """Get all GDPR-relevant logs for compliance reporting"""
 
-        query = self.db.query(AuditLog).filter(AuditLog.gdpr_relevant == True)
+        query = self.db.query(AuditLog).filter(AuditLog.gdpr_relevant.is_(True))
 
         if user_id:
             query = query.filter(AuditLog.user_id == user_id)

@@ -1,6 +1,6 @@
 """Therapist models - stores therapist information and personalized profiles"""
 
-from sqlalchemy import Column, String, Text, JSON, Boolean, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, String, Text, JSON, Boolean, Integer, ForeignKey, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 import enum
@@ -35,7 +35,10 @@ class Therapist(BaseModel):
     is_verified = Column(Boolean, default=False)
 
     # Relationships
-    profile = relationship("TherapistProfile", back_populates="therapist", uselist=False, cascade="all, delete-orphan")
+    profile = relationship(
+        "TherapistProfile", back_populates="therapist",
+        uselist=False, cascade="all, delete-orphan",
+    )
     patients = relationship("Patient", back_populates="therapist", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="therapist", cascade="all, delete-orphan")
     messages = relationship("Message", back_populates="therapist", cascade="all, delete-orphan")
@@ -52,7 +55,7 @@ class TherapistProfile(BaseModel):
     therapist_id = Column(Integer, ForeignKey("therapists.id"), unique=True, nullable=False)
 
     # Therapeutic Approach
-    therapeutic_approach = Column(SQLEnum(TherapeuticApproach), nullable=False)
+    therapeutic_approach = Column(SQLEnum(TherapeuticApproach, native_enum=False), nullable=False)
     approach_description = Column(Text)  # Detailed description
 
     # Writing Style (AI learns this!)
@@ -62,7 +65,8 @@ class TherapistProfile(BaseModel):
 
     # Session Summary Style
     summary_template = Column(Text)  # Custom template for summaries
-    summary_sections = Column(JSON)  # Preferred sections: ["topics", "interventions", "progress", "next_steps"]
+    # Preferred sections: ["topics", "interventions", "progress", "next_steps"]
+    summary_sections = Column(JSON)
 
     # Communication Preferences
     follow_up_frequency = Column(String(50))  # "daily", "weekly", "as_needed"
@@ -73,12 +77,30 @@ class TherapistProfile(BaseModel):
     cultural_considerations = Column(Text)
 
     # AI Learning Data
-    example_summaries = Column(JSON)  # Examples of therapist's previous summaries for AI to learn from
+    # Examples of therapist's previous summaries for AI to learn from
+    example_summaries = Column(JSON)
     example_messages = Column(JSON)  # Examples of messages to patients
 
     # Onboarding Status
     onboarding_completed = Column(Boolean, default=False)
     onboarding_step = Column(Integer, default=0)
+
+    # Twin v0.1 Controls (PRD Feature 5) — editable post-onboarding
+    # Sliders: 1 = formal/exploratory, 5 = warm/directive
+    tone_warmth = Column(Integer, default=3)
+    directiveness = Column(Integer, default=3)
+    # Explicit rules: list of strings the AI must never do/say
+    prohibitions = Column(JSON, default=list)
+    # Free-text additional rules or constraints
+    custom_rules = Column(Text)
+    # Increments when therapist makes meaningful style changes (audit)
+    style_version = Column(Integer, default=1)
+
+    # Professional credentials — injected into AI system prompt
+    education = Column(Text)             # Degrees / academic background
+    certifications = Column(Text)        # Professional titles & certifications
+    years_of_experience = Column(String(50))  # e.g. "12" or "10-15"
+    areas_of_expertise = Column(Text)    # Comma-separated or free-text areas
 
     # Relationship
     therapist = relationship("Therapist", back_populates="profile")

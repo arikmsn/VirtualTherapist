@@ -1,9 +1,8 @@
 """Audit log model - tracks all system actions for security and compliance"""
 
-from sqlalchemy import Column, String, Text, Integer, JSON, DateTime
+from sqlalchemy import Column, String, Text, Boolean, Integer, JSON, DateTime
 from app.models.base import BaseModel
 from datetime import datetime
-import enum
 
 
 class AuditLog(BaseModel):
@@ -20,8 +19,10 @@ class AuditLog(BaseModel):
     user_email = Column(String(255))
 
     # What
-    action = Column(String(100), nullable=False)  # "create", "read", "update", "delete", "approve", "send"
-    resource_type = Column(String(100), nullable=False)  # "patient", "message", "session", "summary"
+    # "create", "read", "update", "delete", "approve", "send"
+    action = Column(String(100), nullable=False)
+    # "patient", "message", "session", "summary"
+    resource_type = Column(String(100), nullable=False)
     resource_id = Column(Integer)
 
     # When

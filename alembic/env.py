@@ -8,7 +8,10 @@ from alembic import context
 # Import your models and settings
 from app.core.config import settings
 from app.models.base import Base
-from app.models import *  # Import all models
+from app.models import (  # noqa: F401 — registers models with Base metadata
+    Therapist, TherapistProfile, Patient, Session,
+    SessionSummary, Message, AuditLog,
+)
 
 # this is the Alembic Config object
 config = context.config
@@ -22,6 +25,7 @@ config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 # add your model's MetaData object here for 'autogenerate' support
 target_metadata = Base.metadata
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""

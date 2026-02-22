@@ -1,6 +1,9 @@
 """Session models - therapy sessions and summaries"""
 
-from sqlalchemy import Column, String, Text, JSON, Integer, ForeignKey, Date, Enum as SQLEnum
+from sqlalchemy import (
+    Column, String, Text, JSON, Boolean, Integer,
+    ForeignKey, Date, DateTime, Enum as SQLEnum,
+)
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 import enum
@@ -16,6 +19,12 @@ class SessionType(str, enum.Enum):
     FOLLOW_UP = "follow_up"
 
 
+class SummaryStatus(str, enum.Enum):
+    """Summary review status"""
+    DRAFT = "draft"
+    APPROVED = "approved"
+
+
 class Session(BaseModel):
     """Therapy session record"""
 
@@ -26,7 +35,9 @@ class Session(BaseModel):
 
     # Session Info
     session_date = Column(Date, nullable=False)
-    session_type = Column(SQLEnum(SessionType), default=SessionType.INDIVIDUAL)
+    start_time = Column(DateTime, nullable=True)   # Scheduled start (date+time)
+    end_time = Column(DateTime, nullable=True)      # Scheduled end (date+time)
+    session_type = Column(SQLEnum(SessionType, native_enum=False), default=SessionType.INDIVIDUAL)
     duration_minutes = Column(Integer)  # Session duration
 
     # Session Number
@@ -63,10 +74,18 @@ class SessionSummary(BaseModel):
     # Full Summary Text
     full_summary = Column(Text)  # Complete formatted summary
 
+    # Transcript (stored separately for audit — PRD Feature 2)
+    transcript = Column(Text)  # Raw ASR transcript, kept alongside summary
+
     # Metadata
     generated_from = Column(String(50))  # "audio", "text", "manual"
     therapist_edited = Column(Boolean, default=False)
     approved_by_therapist = Column(Boolean, default=False)
+    status = Column(
+        SQLEnum(SummaryStatus, native_enum=False),
+        default=SummaryStatus.DRAFT,
+        nullable=False,
+    )
 
     # Clinical Observations
     mood_observed = Column(String(100))

@@ -1,6 +1,9 @@
 """Patient models - stores patient information and status"""
 
-from sqlalchemy import Column, String, Text, JSON, Boolean, ForeignKey, Enum as SQLEnum, Date
+from sqlalchemy import (
+    Column, String, Text, JSON, Boolean, Integer,
+    ForeignKey, Enum as SQLEnum, Date,
+)
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 import enum
@@ -27,7 +30,7 @@ class Patient(BaseModel):
     email_encrypted = Column(Text)  # Encrypted
 
     # Treatment Info
-    status = Column(SQLEnum(PatientStatus), default=PatientStatus.ACTIVE)
+    status = Column(SQLEnum(PatientStatus, native_enum=False), default=PatientStatus.ACTIVE)
     start_date = Column(Date)
 
     # Clinical Notes (encrypted)

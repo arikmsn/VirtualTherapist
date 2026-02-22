@@ -1,0 +1,70 @@
+services:
+  - type: web
+    name: virtualtherapist-api
+    env: python
+    plan: free
+    region: frankfurt      # closest to IL; change to oregon/ohio if preferred
+    buildCommand: >-
+      pip install -r requirements.txt &&
+      pip install psycopg2-binary &&
+      python -m alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+
+    envVars:
+      # ── App ──────────────────────────────────────────────────────────────
+      - key: ENVIRONMENT
+        value: production
+
+      - key: LOG_LEVEL
+        value: WARNING
+
+      - key: CLINIC_NAME
+        sync: false          # e.g. "TherapyCompanion"
+
+      # ── Security (generate with: python -c "import secrets; print(secrets.token_hex(32))") ──
+      - key: SECRET_KEY
+        sync: false          # REQUIRED — long random string for JWT signing
+
+      - key: ENCRYPTION_KEY
+        sync: false          # REQUIRED — Fernet key for patient PII encryption
+                             # generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+      # ── Database ─────────────────────────────────────────────────────────
+      - key: DATABASE_URL
+        sync: false          # REQUIRED — postgresql://user:pass@host:5432/db?sslmode=require
+
+      # ── AI ───────────────────────────────────────────────────────────────
+      - key: AI_PROVIDER
+        value: anthropic
+
+      - key: AI_MODEL
+        value: claude-3-5-sonnet-20241022
+
+      - key: ANTHROPIC_API_KEY
+        sync: false          # REQUIRED when AI_PROVIDER=anthropic
+
+      # - key: OPENAI_API_KEY
+      #   sync: false        # REQUIRED instead if AI_PROVIDER=openai
+
+      # ── CORS ─────────────────────────────────────────────────────────────
+      - key: CORS_ORIGINS
+        sync: false          # REQUIRED — your Vercel URL, e.g. https://virtualtherapist.vercel.app
+                             # Multiple origins: https://a.vercel.app,https://custom.domain.com
+
+      # ── WhatsApp / Twilio ─────────────────────────────────────────────────
+      - key: TWILIO_ACCOUNT_SID
+        sync: false          # OPTIONAL — leave empty to use DevLogChannel (logs only)
+
+      - key: TWILIO_API_KEY_SID
+        sync: false          # OPTIONAL — preferred auth (starts with SK...)
+
+      - key: TWILIO_API_KEY_SECRET
+        sync: false          # OPTIONAL — paired with API_KEY_SID
+
+      - key: TWILIO_AUTH_TOKEN
+        sync: false          # OPTIONAL — legacy auth (used only if API Key not set)
+
+      - key: TWILIO_WHATSAPP_NUMBER
+        sync: false          # OPTIONAL — e.g. whatsapp:+14155238886
