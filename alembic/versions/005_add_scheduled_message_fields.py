@@ -11,8 +11,8 @@ Create Date: 2026-02-19
 from alembic import op
 import sqlalchemy as sa
 
-revision = "005_add_scheduled_message_fields"
-down_revision = "004_add_twin_controls"
+revision = "005"
+down_revision = "004"
 branch_labels = None
 depends_on = None
 

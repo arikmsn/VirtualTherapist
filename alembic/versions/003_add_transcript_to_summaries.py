@@ -7,8 +7,8 @@ Create Date: 2026-02-18
 from alembic import op
 import sqlalchemy as sa
 
-revision = "003_add_transcript_to_summaries"
-down_revision = "002_add_session_time_and_summary_status"
+revision = "003"
+down_revision = "002"
 branch_labels = None
 depends_on = None
 

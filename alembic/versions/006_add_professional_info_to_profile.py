@@ -10,8 +10,8 @@ Create Date: 2026-02-19
 from alembic import op
 import sqlalchemy as sa
 
-revision = "006_add_professional_info_to_profile"
-down_revision = "005_add_scheduled_message_fields"
+revision = "006"
+down_revision = "005"
 branch_labels = None
 depends_on = None
 

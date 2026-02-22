@@ -8,8 +8,8 @@ Create Date: 2026-02-19
 from alembic import op
 import sqlalchemy as sa
 
-revision = "007_add_exercises_table"
-down_revision = "006_add_professional_info_to_profile"
+revision = "007"
+down_revision = "006"
 branch_labels = None
 depends_on = None
 

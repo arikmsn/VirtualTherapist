@@ -8,8 +8,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "002_add_session_time_and_summary_status"
-down_revision = "001_initial_schema"
+revision = "002"
+down_revision = "001"
 branch_labels = None
 depends_on = None
 
