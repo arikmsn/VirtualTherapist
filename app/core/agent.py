@@ -6,7 +6,7 @@ This is the heart of the system - the personalized AI therapist assistant
 from typing import Optional, Dict, Any, List
 import json
 from anthropic import Anthropic
-import openai
+from openai import AsyncOpenAI
 from app.core.config import settings
 from app.models.therapist import TherapistProfile
 from loguru import logger
@@ -100,8 +100,7 @@ class TherapyAgent:
                 logger.warning("Anthropic client not initialized: missing or placeholder API key")
         elif self.ai_provider == "openai":
             if not is_placeholder_key(settings.OPENAI_API_KEY):
-                openai.api_key = settings.OPENAI_API_KEY
-                self.client = openai
+                self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
             else:
                 logger.warning("OpenAI client not initialized: missing or placeholder API key")
 
@@ -158,15 +157,52 @@ class TherapyAgent:
                 if p.preferred_exercises else "לא צוין"
             )
 
+            # Tone/directiveness labels (1-5 scale)
+            tone_labels = {1: "פורמלי מאוד", 2: "פורמלי", 3: "מאוזן", 4: "חם", 5: "חם מאוד"}
+            dir_labels = {1: "חקרני לחלוטין", 2: "חקרני", 3: "מאוזן", 4: "מכוון", 5: "מכוון מאוד"}
+            tw = getattr(p, "tone_warmth", None) or 3
+            dv = getattr(p, "directiveness", None) or 3
+            tone_label = tone_labels.get(tw, "מאוזן")
+            dir_label = dir_labels.get(dv, "מאוזן")
+
+            # Prohibitions block
+            prohibitions_list = getattr(p, "prohibitions", None) or []
+            prohibitions_block = ""
+            if prohibitions_list:
+                items = "\n".join(f"❌ {rule}" for rule in prohibitions_list)
+                prohibitions_block = f"\n## 🚫 כללים שאסור לעבור (הגדרת המטפל):\n{items}\n"
+
+            # Custom rules block
+            custom_rules_val = getattr(p, "custom_rules", None) or ""
+            custom_rules_block = ""
+            if custom_rules_val.strip():
+                custom_rules_block = f"\n## 📝 כללים נוספים של המטפל:\n{custom_rules_val.strip()}\n"
+
+            # Professional credentials block
+            edu = getattr(p, "education", None) or ""
+            certs = getattr(p, "certifications", None) or ""
+            yoe = getattr(p, "years_of_experience", None) or ""
+            expertise = getattr(p, "areas_of_expertise", None) or ""
+            prof_block = ""
+            parts = []
+            if edu.strip(): parts.append(f"השכלה: {edu.strip()}")
+            if certs.strip(): parts.append(f"הסמכות: {certs.strip()}")
+            if yoe.strip(): parts.append(f"ניסיון: {yoe.strip()} שנים")
+            if expertise.strip(): parts.append(f"תחומי התמחות: {expertise.strip()}")
+            if parts:
+                prof_block = "\n**פרטים מקצועיים:**\n" + "\n".join(f"- {pt}" for pt in parts) + "\n"
+
             custom_prompt = f"""
 ## פרופיל המטפל שאתה מחקה:
 
 **שם המטפל:** {name}
 **גישה טיפולית:** {p.therapeutic_approach.value}
 {approach_desc}
-
+{prof_block}
 **טון ושפה:**
-- טון: {tone}
+- טון (כפי שהוגדר): {tone}
+- חמימות (Twin): {tone_label} ({tw}/5)
+- הכוונה (Twin): {dir_label} ({dv}/5)
 - אורך הודעות: {msg_len}
 - מינוח נפוץ: {terminology}
 
@@ -176,7 +212,7 @@ class TherapyAgent:
 
 ## דוגמאות מהמטפל:
 {self._format_examples()}
-
+{prohibitions_block}{custom_rules_block}
 **חשוב:** דבר תמיד בשם המטפל, לא בשם עצמך. למשל:
 "היי [שם מטופל], זה {name}. רציתי לשמוע איך הלך..."
 """
@@ -605,14 +641,14 @@ class TherapyAgent:
 
     async def _generate_openai(self, prompt: str) -> str:
         """Generate response using OpenAI"""
-        response = await self.client.ChatCompletion.acreate(
+        response = await self.client.chat.completions.create(
             model=settings.AI_MODEL,
             messages=[
                 {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": prompt}
             ],
             temperature=settings.TEMPERATURE,
-            max_tokens=settings.MAX_TOKENS
+            max_tokens=settings.MAX_TOKENS,
         )
         return response.choices[0].message.content
 

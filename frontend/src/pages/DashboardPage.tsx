@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import {
   DocumentTextIcon,
   PaperAirplaneIcon,
-  UserGroupIcon,
   BellAlertIcon,
   CheckCircleIcon,
   ClockIcon,
@@ -31,12 +30,29 @@ interface DailySession {
   has_summary: boolean
 }
 
+const SESSION_TYPE_LABELS: Record<string, string> = {
+  individual: 'פרטני',
+  couples: 'זוגי',
+  family: 'משפחתי',
+  group: 'קבוצתי',
+  intake: 'אינטייק',
+  follow_up: 'מעקב',
+}
+
+/** Format a Date to YYYY-MM-DD using local timezone (never UTC). */
+function toLocalISO(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 function todayISO(): string {
-  return new Date().toISOString().split('T')[0]
+  return toLocalISO(new Date())
 }
 
 function formatDateHebrew(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
+  const d = new Date(dateStr + 'T12:00:00')
   return d.toLocaleDateString('he-IL', {
     weekday: 'long',
     year: 'numeric',
@@ -48,18 +64,31 @@ function formatDateHebrew(dateStr: string): string {
 function formatTime(isoStr: string | null): string {
   if (!isoStr) return ''
   const d = new Date(isoStr)
-  return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+  if (isNaN(d.getTime())) return ''
+  const h = String(d.getHours()).padStart(2, '0')
+  const m = String(d.getMinutes()).padStart(2, '0')
+  return `${h}:${m}`
 }
 
 function shiftDate(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T00:00:00')
+  const d = new Date(dateStr + 'T12:00:00')
   d.setDate(d.getDate() + days)
-  return d.toISOString().split('T')[0]
+  return toLocalISO(d)
+}
+
+interface SimpleSession {
+  id: number
+  patient_id: number
+  session_date: string
+  session_number?: number
+  summary_id?: number
 }
 
 export default function DashboardPage() {
   const navigate = useNavigate()
-  const [showMessageModal, setShowMessageModal] = useState(false)
+  const [showMessagePickerModal, setShowMessagePickerModal] = useState(false)
+  const [showSummaryModal, setShowSummaryModal] = useState(false)
+  const [allSessions, setAllSessions] = useState<SimpleSession[]>([])
 
   const [stats, setStats] = useState({
     pendingMessages: 0,
@@ -85,6 +114,7 @@ export default function DashboardPage() {
           messagesAPI.getPending().catch(() => []),
         ])
         setPatients(patientsData)
+        setAllSessions(sessionsData)
         const today = todayISO()
         setStats({
           pendingMessages: messagesData.length,
@@ -131,9 +161,9 @@ export default function DashboardPage() {
     <div className="space-y-8 animate-fade-in">
       {/* Welcome Header */}
       <div className="card bg-gradient-to-l from-therapy-calm to-therapy-gentle text-white">
-        <h1 className="text-3xl font-bold mb-2">שלום! 👋</h1>
+        <h1 className="text-3xl font-bold mb-2">לוח הפגישות להיום</h1>
         <p className="text-indigo-100 text-lg">
-          מה תרצה לעשות היום?
+          ניהול מטופלים, סיכומים והודעות במקום אחד
         </p>
       </div>
 
@@ -152,14 +182,14 @@ export default function DashboardPage() {
         {/* Date Navigation */}
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <button
-            onClick={() => setSelectedDate(shiftDate(selectedDate, 1))}
+            onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}
             className="btn-secondary text-sm px-3 py-1.5 flex items-center gap-1"
           >
             <ChevronRightIcon className="h-4 w-4" />
             יום קודם
           </button>
           <button
-            onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}
+            onClick={() => setSelectedDate(shiftDate(selectedDate, 1))}
             className="btn-secondary text-sm px-3 py-1.5 flex items-center gap-1"
           >
             יום הבא
@@ -208,7 +238,9 @@ export default function DashboardPage() {
                   <div>
                     <div className="font-medium text-gray-900">{session.patient_name}</div>
                     <div className="text-xs text-gray-500">
-                      פגישה #{session.session_number} · {session.session_type}
+                      {session.session_number ? `פגישה #${session.session_number}` : ''}
+                      {session.session_number && session.session_type ? ' · ' : ''}
+                      {SESSION_TYPE_LABELS[session.session_type] || session.session_type || ''}
                     </div>
                   </div>
 
@@ -247,9 +279,9 @@ export default function DashboardPage() {
 
       {/* QUICK ACTIONS — navigate to the right place, no floating editors */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Action 1: Go to Sessions (write summary for a specific session) */}
+        {/* Action 1: Write Summary — opens patient+session picker */}
         <button
-          onClick={() => navigate('/sessions')}
+          onClick={() => setShowSummaryModal(true)}
           className="card group hover:shadow-2xl transition-all duration-300 hover:scale-105 cursor-pointer text-right"
         >
           <div className="flex flex-col items-start gap-4">
@@ -257,20 +289,20 @@ export default function DashboardPage() {
               <DocumentTextIcon className="h-8 w-8 text-therapy-calm group-hover:text-white" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">📝 כתיבת סיכום</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">📝 סיכום פגישות מטופלים באמצעות AI</h3>
               <p className="text-gray-600 text-sm">
-                בחר פגישה מהרשימה וכתוב סיכום AI מובנה עבורה
+                בחר מטופל ופגישה וכתוב סיכום AI מובנה
               </p>
             </div>
             <div className="mt-auto w-full">
-              <div className="text-sm text-therapy-calm font-medium">עבור לפגישות →</div>
+              <div className="text-sm text-therapy-calm font-medium">לחץ לבחירת פגישה →</div>
             </div>
           </div>
         </button>
 
         {/* Action 2: Send to Patient */}
         <button
-          onClick={() => setShowMessageModal(true)}
+          onClick={() => setShowMessagePickerModal(true)}
           className="card group hover:shadow-2xl transition-all duration-300 hover:scale-105 cursor-pointer text-right"
         >
           <div className="flex flex-col items-start gap-4">
@@ -278,7 +310,7 @@ export default function DashboardPage() {
               <PaperAirplaneIcon className="h-8 w-8 text-therapy-support group-hover:text-white" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">👤 שליחה למטופל</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">💬 שליחת הודעות</h3>
               <p className="text-gray-600 text-sm">
                 צור הודעת מעקב אישית למטופל. המערכת תכתוב בסגנון שלך, אתה תאשר
               </p>
@@ -294,23 +326,23 @@ export default function DashboardPage() {
           </div>
         </button>
 
-        {/* Action 3: Go to Patients */}
+        {/* Action 3: Go to Messages Center */}
         <button
-          onClick={() => navigate('/patients')}
+          onClick={() => navigate('/messages')}
           className="card group hover:shadow-2xl transition-all duration-300 hover:scale-105 cursor-pointer text-right"
         >
           <div className="flex flex-col items-start gap-4">
             <div className="w-16 h-16 bg-therapy-warm/10 rounded-full flex items-center justify-center group-hover:bg-therapy-warm group-hover:text-white transition-colors duration-300">
-              <UserGroupIcon className="h-8 w-8 text-therapy-warm group-hover:text-white" />
+              <BellAlertIcon className="h-8 w-8 text-therapy-warm group-hover:text-white" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">👥 מטופלים</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">📨 מרכז הודעות</h3>
               <p className="text-gray-600 text-sm">
-                צפה ברשימת המטופלים, הוסף מטופל חדש או עיין בהיסטוריית סיכומים
+                צפה בכל ההודעות שנשלחו למטופלים, ערוך הודעות מתוזמנות וצפה בסטטוס
               </p>
             </div>
             <div className="mt-auto w-full">
-              <div className="text-sm text-therapy-warm font-medium">עבור למטופלים →</div>
+              <div className="text-sm text-therapy-warm font-medium">עבור למרכז הודעות →</div>
             </div>
           </div>
         </button>
@@ -400,59 +432,166 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Message Modal (kept — messages are not session-scoped) */}
-      {showMessageModal && (
-        <MessageModal
+      {/* Summary Modal — pick patient + session, then navigate */}
+      {showSummaryModal && (
+        <SummaryPickerModal
           patients={patients}
-          onClose={() => setShowMessageModal(false)}
+          sessions={allSessions}
+          onClose={() => setShowSummaryModal(false)}
+          onSelect={(sessionId) => {
+            setShowSummaryModal(false)
+            navigate(`/sessions/${sessionId}`)
+          }}
+        />
+      )}
+
+      {/* Message Patient Picker — selects a patient, then navigates to their messages tab */}
+      {showMessagePickerModal && (
+        <MessagePatientPickerModal
+          patients={patients}
+          onClose={() => setShowMessagePickerModal(false)}
+          onSelect={(patientId) => {
+            setShowMessagePickerModal(false)
+            navigate(`/patients/${patientId}`, { state: { initialTab: 'inbetween' } })
+          }}
         />
       )}
     </div>
   )
 }
 
-// Message Modal — messages are patient-scoped (not session-scoped), so this modal is fine here
-function MessageModal({ patients, onClose }: { patients: Patient[]; onClose: () => void }) {
+// Summary Picker Modal — select patient then session
+function SummaryPickerModal({
+  patients,
+  sessions,
+  onClose,
+  onSelect,
+}: {
+  patients: Patient[]
+  sessions: SimpleSession[]
+  onClose: () => void
+  onSelect: (sessionId: number) => void
+}) {
+  const [selectedPatientId, setSelectedPatientId] = useState<string>('')
+
+  const patientSessions = selectedPatientId
+    ? sessions
+        .filter((s) => s.patient_id === Number(selectedPatientId))
+        .sort((a, b) => b.session_date.localeCompare(a.session_date))
+    : []
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" dir="rtl">
-      <div className="bg-white rounded-xl p-8 max-w-2xl w-full mx-4 animate-fade-in">
-        <h2 className="text-2xl font-bold mb-6">יצירת הודעה למטופל</h2>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir="rtl">
+      <div className="bg-white rounded-xl p-8 max-w-lg w-full mx-4 animate-fade-in">
+        <h2 className="text-2xl font-bold mb-6">בחר פגישה לסיכום</h2>
 
+        {/* Patient select */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            בחר מטופל
-          </label>
-          <select className="input-field">
+          <label className="block text-sm font-medium text-gray-700 mb-2">מטופל/ת</label>
+          <select
+            className="input-field"
+            value={selectedPatientId}
+            onChange={(e) => setSelectedPatientId(e.target.value)}
+          >
             <option value="">-- בחר מטופל --</option>
-            {patients.map((p) => (
-              <option key={p.id} value={p.id}>{p.full_name}</option>
-            ))}
+            {[...patients]
+              .sort((a, b) => a.full_name.localeCompare(b.full_name, 'he'))
+              .map((p) => (
+                <option key={p.id} value={p.id}>{p.full_name}</option>
+              ))}
           </select>
         </div>
 
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            סוג הודעה
-          </label>
-          <select className="input-field">
-            <option>מעקב אחר תרגיל</option>
-            <option>תזכורת לפגישה</option>
-            <option>צ'ק-אין כללי</option>
-            <option>תזכורת לתרגיל בית</option>
-          </select>
-        </div>
+        {/* Session list for selected patient */}
+        {selectedPatientId && (
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">פגישה</label>
+            {patientSessions.length === 0 ? (
+              <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
+                אין פגישות למטופל זה. צור פגישה חדשה דרך עמוד הפגישות.
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {patientSessions.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => onSelect(s.id)}
+                    className="w-full text-right p-3 rounded-lg border border-gray-200 hover:border-therapy-calm hover:bg-therapy-calm/5 transition-colors flex items-center justify-between"
+                  >
+                    <div>
+                      <div className="font-medium">
+                        {new Date(s.session_date + 'T12:00:00').toLocaleDateString('he-IL')}
+                        {s.session_number ? ` · פגישה #${s.session_number}` : ''}
+                      </div>
+                    </div>
+                    {s.summary_id != null ? (
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                        יש סיכום
+                      </span>
+                    ) : (
+                      <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                        ללא סיכום
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-        <button className="btn-primary w-full mb-2">✨ צור הודעה (AI)</button>
-        <p className="text-xs text-gray-500 text-center mb-4">
-          המערכת תיצור הודעה בסגנון שלך. תוכל לערוך ולאשר לפני השליחה
+        <button onClick={onClose} className="btn-secondary w-full">ביטול</button>
+      </div>
+    </div>
+  )
+}
+
+// Patient picker for messaging — selects patient, then navigates to their Messages tab
+function MessagePatientPickerModal({
+  patients,
+  onClose,
+  onSelect,
+}: {
+  patients: Patient[]
+  onClose: () => void
+  onSelect: (patientId: number) => void
+}) {
+  const [selectedId, setSelectedId] = useState('')
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir="rtl">
+      <div className="bg-white rounded-xl p-8 max-w-md w-full mx-4 animate-fade-in">
+        <h2 className="text-2xl font-bold mb-2">שליחת הודעה למטופל</h2>
+        <p className="text-sm text-gray-500 mb-6">
+          בחר מטופל כדי לפתוח את מרכז ההודעות שלו ולשלוח תזכורת
         </p>
 
-        <button
-          onClick={onClose}
-          className="btn-secondary w-full"
-        >
-          ביטול
-        </button>
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">מטופל/ת</label>
+          <select
+            className="input-field"
+            value={selectedId}
+            onChange={(e) => setSelectedId(e.target.value)}
+          >
+            <option value="">-- בחר מטופל --</option>
+            {[...patients]
+              .sort((a, b) => a.full_name.localeCompare(b.full_name, 'he'))
+              .map((p) => (
+                <option key={p.id} value={p.id}>{p.full_name}</option>
+              ))}
+          </select>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={() => selectedId && onSelect(Number(selectedId))}
+            disabled={!selectedId}
+            className="btn-primary flex-1 disabled:opacity-50"
+          >
+            עבור למרכז הודעות →
+          </button>
+          <button onClick={onClose} className="btn-secondary">ביטול</button>
+        </div>
       </div>
     </div>
   )

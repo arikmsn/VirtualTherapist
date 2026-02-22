@@ -11,6 +11,8 @@ import PatientsPage from './pages/PatientsPage'
 import SessionsPage from './pages/SessionsPage'
 import SessionDetailPage from './pages/SessionDetailPage'
 import PatientSummariesPage from './pages/PatientSummariesPage'
+import PatientProfilePage from './pages/PatientProfilePage'
+import TwinProfilePage from './pages/TwinProfilePage'
 import Layout from './components/Layout'
 
 function AppRoutes() {
@@ -41,7 +43,9 @@ function AppRoutes() {
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/messages" element={<MessagesPage />} />
             <Route path="/patients" element={<PatientsPage />} />
+            <Route path="/patients/:patientId" element={<PatientProfilePage />} />
             <Route path="/patients/:patientId/summaries" element={<PatientSummariesPage />} />
+            <Route path="/twin" element={<TwinProfilePage />} />
             <Route path="/sessions" element={<SessionsPage />} />
             <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
           </Route>

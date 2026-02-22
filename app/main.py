@@ -6,7 +6,8 @@ TherapyCompanion.AI - Virtual Therapist Assistant
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import auth, agent, messages, patients, sessions
+from app.api.routes import auth, agent, messages, patients, sessions, therapist, debug, exercises
+from app.core.scheduler import scheduler
 from loguru import logger
 
 
@@ -45,12 +46,20 @@ app.include_router(agent.router, prefix="/api/v1/agent", tags=["AI Agent"])
 app.include_router(messages.router, prefix="/api/v1/messages", tags=["Messages"])
 app.include_router(patients.router, prefix="/api/v1/patients", tags=["Patients"])
 app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["Sessions"])
+app.include_router(therapist.router, prefix="/api/v1/therapist", tags=["Therapist Profile"])
+app.include_router(exercises.router, prefix="/api/v1/exercises", tags=["Exercises"])
+
+# Debug routes — only in development / staging (never production)
+if settings.ENVIRONMENT != "production":
+    app.include_router(debug.router, prefix="/api/debug", tags=["Debug"])
 
 
 @app.on_event("startup")
 async def startup_event():
     """Startup event handler"""
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    scheduler.start()
+    logger.info("APScheduler started (scheduled message delivery active)")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"AI Provider: {settings.AI_PROVIDER}")
 
@@ -69,7 +78,7 @@ async def startup_event():
         from app.models.base import Base
         from app.models import (  # noqa: F401
             Therapist, TherapistProfile, Patient, Session,
-            SessionSummary, Message, AuditLog,
+            SessionSummary, Message, AuditLog, Exercise,
         )
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created/verified")
@@ -78,6 +87,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event handler"""
+    scheduler.shutdown(wait=False)
     logger.info(f"Shutting down {settings.APP_NAME}")
 
 

@@ -68,6 +68,15 @@ class Settings(BaseSettings):
     DEFAULT_LANGUAGE: Literal["he", "en"] = "he"
     RTL_SUPPORT: bool = True
 
+    # WhatsApp / Twilio (Messages Center v1 — Phase C)
+    TWILIO_ACCOUNT_SID: str | None = None
+    # API Key auth (preferred over Auth Token):
+    TWILIO_API_KEY_SID: str | None = None     # starts with SK...
+    TWILIO_API_KEY_SECRET: str | None = None
+    # Legacy Auth Token (still accepted if API Key not set):
+    TWILIO_AUTH_TOKEN: str | None = None
+    TWILIO_WHATSAPP_NUMBER: str | None = None  # e.g. "whatsapp:+14155238886"
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/therapy_companion.log"

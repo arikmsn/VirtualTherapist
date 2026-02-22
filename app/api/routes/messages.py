@@ -1,12 +1,13 @@
 """Message management routes"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
+from datetime import datetime
 from app.api.deps import get_db, get_current_therapist
 from app.models.therapist import Therapist
-from app.models.message import MessageStatus
+from app.models.message import Message, MessageStatus
 from app.services.message_service import MessageService
 from app.services.therapist_service import TherapistService
 
@@ -25,9 +26,14 @@ class MessageResponse(BaseModel):
     patient_id: int
     content: str
     status: MessageStatus
-    message_type: str
-    created_at: str
+    message_type: Optional[str] = None
+    created_at: datetime
     requires_approval: bool
+    # Messages Center v1 fields
+    scheduled_send_at: Optional[datetime] = None
+    channel: Optional[str] = None
+    recipient_phone: Optional[str] = None
+    sent_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -188,6 +194,36 @@ async def send_message(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/", response_model=List[MessageResponse])
+async def get_all_messages(
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+    patient_id: Optional[int] = Query(default=None),
+    status: Optional[str] = Query(default=None),
+    date_from: Optional[datetime] = Query(default=None),
+    date_to: Optional[datetime] = Query(default=None),
+):
+    """
+    Return ALL messages for the current therapist across all patients.
+    Optional query filters: patient_id, status, date_from, date_to.
+    Used by the Message Control Center screen.
+    """
+    try:
+        q = db.query(Message).filter(Message.therapist_id == current_therapist.id)
+        if patient_id is not None:
+            q = q.filter(Message.patient_id == patient_id)
+        if status is not None:
+            q = q.filter(Message.status == status)
+        if date_from is not None:
+            q = q.filter(Message.created_at >= date_from)
+        if date_to is not None:
+            q = q.filter(Message.created_at <= date_to)
+        messages = q.order_by(Message.created_at.desc()).all()
+        return [MessageResponse.model_validate(m) for m in messages]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/pending", response_model=List[MessageResponse])
 async def get_pending_messages(
     current_therapist: Therapist = Depends(get_current_therapist),
@@ -223,5 +259,136 @@ async def get_patient_messages(
 
         return [MessageResponse.model_validate(msg) for msg in messages]
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Messages Center v1 endpoints (Phase C) ──────────────────────────────────
+
+
+class GenerateDraftRequest(BaseModel):
+    """Generate a Twin-aligned draft message for the Messages Center."""
+    patient_id: int
+    message_type: str  # "task_reminder" | "session_reminder"
+    context: Optional[Dict[str, Any]] = None  # e.g. task text, session date/time
+
+
+class SendOrScheduleRequest(BaseModel):
+    """Therapist confirms and sends/schedules a DRAFT message."""
+    content: str                       # Final (possibly edited) message text
+    recipient_phone: Optional[str] = None  # Override patient default phone
+    send_at: Optional[datetime] = None # None = send now; future = schedule
+
+
+class EditScheduledRequest(BaseModel):
+    """Edit a SCHEDULED message before it fires."""
+    content: Optional[str] = None
+    recipient_phone: Optional[str] = None
+    send_at: Optional[datetime] = None
+
+
+@router.post("/generate", response_model=MessageResponse, status_code=201)
+async def generate_draft_message(
+    request: GenerateDraftRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate a Twin-aligned draft message (task reminder or session reminder).
+    The therapist sees and can edit the text before sending or scheduling.
+    """
+    message_service = MessageService(db)
+    therapist_service = TherapistService(db)
+
+    try:
+        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+        message = await message_service.generate_draft_message(
+            therapist_id=current_therapist.id,
+            patient_id=request.patient_id,
+            message_type=request.message_type,
+            agent=agent,
+            context=request.context,
+        )
+        return MessageResponse.model_validate(message)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{message_id}/send-or-schedule", response_model=MessageResponse)
+async def send_or_schedule_message(
+    message_id: int,
+    request: SendOrScheduleRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """
+    Therapist confirms a draft: sends now (send_at=null/past) or schedules
+    for a future date/time. The final edited content is saved before sending.
+    """
+    message_service = MessageService(db)
+
+    try:
+        message = await message_service.send_or_schedule_message(
+            message_id=message_id,
+            therapist_id=current_therapist.id,
+            final_content=request.content,
+            recipient_phone=request.recipient_phone,
+            send_at=request.send_at,
+        )
+        return MessageResponse.model_validate(message)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{message_id}/cancel", response_model=MessageResponse)
+async def cancel_message(
+    message_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """Cancel a SCHEDULED message. Removes the pending delivery job."""
+    message_service = MessageService(db)
+
+    try:
+        message = await message_service.cancel_message(
+            message_id=message_id,
+            therapist_id=current_therapist.id,
+        )
+        return MessageResponse.model_validate(message)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/{message_id}", response_model=MessageResponse)
+async def edit_scheduled_message(
+    message_id: int,
+    request: EditScheduledRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """Edit the content, recipient, or send time of a SCHEDULED message."""
+    message_service = MessageService(db)
+
+    try:
+        message = await message_service.edit_scheduled_message(
+            message_id=message_id,
+            therapist_id=current_therapist.id,
+            content=request.content,
+            recipient_phone=request.recipient_phone,
+            send_at=request.send_at,
+        )
+        return MessageResponse.model_validate(message)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

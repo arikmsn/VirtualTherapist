@@ -7,6 +7,7 @@ from app.models.session import Session as TherapySession, SessionSummary, Sessio
 from app.models.patient import Patient
 from app.core.agent import TherapyAgent, PatientInsightResult, SessionPrepBriefResult
 from app.services.audit_service import AuditService
+from app.security.encryption import decrypt_data
 from loguru import logger
 
 
@@ -78,57 +79,78 @@ class SessionService:
     async def generate_summary_from_audio(
         self,
         session_id: int,
-        audio_file_path: str,
-        agent: TherapyAgent
+        audio_bytes: bytes,
+        filename: str,
+        agent: TherapyAgent,
+        therapist_id: int,
+        language: str | None = None,
     ) -> SessionSummary:
         """
-        Generate session summary from audio recording
-        Uses AI to transcribe and summarize in therapist's style
+        PRD Golden Path: Record → Transcribe → Summarise → Review → Approve.
+
+        1. Transcribe audio via AudioService (Whisper ASR).
+        2. Feed transcript to agent.generate_session_summary (structured JSON).
+        3. Store transcript *and* summary separately (PRD audit requirement).
         """
+        from app.services.audio_service import AudioService
 
-        session = self.db.query(TherapySession).filter(TherapySession.id == session_id).first()
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
         if not session:
-            raise ValueError("Session not found")
+            raise ValueError("Session not found or does not belong to this therapist")
 
-        # Transcribe audio
+        # Step 1 — ASR transcription
+        audio_service = AudioService()
         logger.info(f"Transcribing audio for session {session_id}")
-        transcript = await self.audio_service.transcribe_audio(audio_file_path)
-
-        # Generate summary using AI agent
-        summary_prompt = f"""
-צור סיכום פגישה מהתמליל הבא בסגנון שלך האישי.
-
-**תמליל הפגישה:**
-{transcript}
-
-אנא צור סיכום מובנה הכולל:
-1. נושאים שנדונו
-2. התערבויות שבוצעו
-3. התקדמות המטופל
-4. משימות בית שהוטלו
-5. תוכנית לפגישה הבאה
-
-הסיכום צריך להיות בסגנון הכתיבה האישי שלך.
-"""
-
-        summary_text = await agent.generate_response(summary_prompt, context={
-            "session_number": session.session_number,
-            "patient_id": session.patient_id
-        })
-
-        # Parse and structure the summary
-        summary = await self._create_summary_from_text(
-            session_id=session_id,
-            summary_text=summary_text,
-            generated_from="audio"
+        transcript = await audio_service.transcribe_upload(
+            file_bytes=audio_bytes,
+            filename=filename,
+            language=language,
         )
 
-        # Update session
-        session.has_recording = True
-        session.audio_file_path = audio_file_path
-        session.summary_id = summary.id
+        # Step 2 — Structured summary from transcript (reuse same JSON-based prompt)
+        result = await agent.generate_session_summary(
+            notes=transcript,
+            context={
+                "session_number": session.session_number,
+                "patient_id": session.patient_id,
+            },
+        )
 
+        # Step 3 — Persist transcript + summary
+        summary = SessionSummary(
+            full_summary=result.full_summary,
+            topics_discussed=result.topics_discussed,
+            interventions_used=result.interventions_used,
+            patient_progress=result.patient_progress,
+            homework_assigned=result.homework_assigned,
+            next_session_plan=result.next_session_plan,
+            mood_observed=result.mood_observed,
+            risk_assessment=result.risk_assessment,
+            transcript=transcript,
+            generated_from="audio",
+            therapist_edited=False,
+            approved_by_therapist=False,
+        )
+
+        self.db.add(summary)
+        self.db.flush()
+
+        session.has_recording = True
+        session.summary_id = summary.id
         self.db.commit()
+        self.db.refresh(summary)
+
+        await self.audit_service.log_action(
+            user_id=therapist_id,
+            user_type="therapist",
+            action="generate",
+            resource_type="session_summary",
+            resource_id=summary.id,
+            action_details={"session_id": session_id, "generated_from": "audio"},
+        )
 
         logger.info(f"Generated summary from audio for session {session_id}")
         return summary
@@ -333,7 +355,18 @@ class SessionService:
         results = []
         for s in sessions:
             patient = self.db.query(Patient).filter(Patient.id == s.patient_id).first()
-            patient_name = patient.full_name_encrypted if patient else f"מטופל #{s.patient_id}"
+            if patient:
+                try:
+                    patient_name = decrypt_data(patient.full_name_encrypted)
+                except Exception:
+                    patient_name = patient.full_name_encrypted
+            else:
+                patient_name = f"מטופל #{s.patient_id}"
+
+            # Convert session_type enum to its string value for JSON serialisation
+            session_type_value = (
+                s.session_type.value if s.session_type else None
+            )
 
             results.append({
                 "id": s.id,
@@ -342,7 +375,7 @@ class SessionService:
                 "session_date": s.session_date,
                 "start_time": s.start_time,
                 "end_time": s.end_time,
-                "session_type": s.session_type,
+                "session_type": session_type_value,
                 "session_number": s.session_number,
                 "has_summary": s.summary_id is not None,
             })

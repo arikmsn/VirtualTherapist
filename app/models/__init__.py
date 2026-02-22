@@ -5,6 +5,7 @@ from app.models.patient import Patient, PatientStatus
 from app.models.session import Session, SessionSummary
 from app.models.message import Message, MessageStatus
 from app.models.audit import AuditLog
+from app.models.exercise import Exercise
 
 __all__ = [
     "Therapist",
@@ -16,4 +17,5 @@ __all__ = [
     "Message",
     "MessageStatus",
     "AuditLog",
+    "Exercise",
 ]

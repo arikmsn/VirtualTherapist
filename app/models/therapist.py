@@ -85,5 +85,22 @@ class TherapistProfile(BaseModel):
     onboarding_completed = Column(Boolean, default=False)
     onboarding_step = Column(Integer, default=0)
 
+    # Twin v0.1 Controls (PRD Feature 5) — editable post-onboarding
+    # Sliders: 1 = formal/exploratory, 5 = warm/directive
+    tone_warmth = Column(Integer, default=3)
+    directiveness = Column(Integer, default=3)
+    # Explicit rules: list of strings the AI must never do/say
+    prohibitions = Column(JSON, default=list)
+    # Free-text additional rules or constraints
+    custom_rules = Column(Text)
+    # Increments when therapist makes meaningful style changes (audit)
+    style_version = Column(Integer, default=1)
+
+    # Professional credentials — injected into AI system prompt
+    education = Column(Text)             # Degrees / academic background
+    certifications = Column(Text)        # Professional titles & certifications
+    years_of_experience = Column(String(50))  # e.g. "12" or "10-15"
+    areas_of_expertise = Column(Text)    # Comma-separated or free-text areas
+
     # Relationship
     therapist = relationship("Therapist", back_populates="profile")

@@ -11,11 +11,14 @@ class MessageStatus(str, enum.Enum):
     DRAFT = "draft"  # AI created, awaiting therapist review
     PENDING_APPROVAL = "pending_approval"  # Waiting for therapist approval
     APPROVED = "approved"  # Therapist approved, ready to send
-    SENT = "sent"  # Sent to patient
-    DELIVERED = "delivered"  # Delivered to patient
+    SCHEDULED = "scheduled"  # Approved + scheduled for future delivery
+    SENT = "sent"  # Sent to patient via channel
+    DELIVERED = "delivered"  # Delivered confirmation from channel
     READ = "read"  # Patient read the message
     REPLIED = "replied"  # Patient replied
     REJECTED = "rejected"  # Therapist rejected the message
+    CANCELLED = "cancelled"  # Therapist cancelled a scheduled message
+    FAILED = "failed"  # Delivery attempt failed (channel error)
 
 
 class MessageDirection(str, enum.Enum):
@@ -63,8 +66,13 @@ class Message(BaseModel):
     ai_prompt_used = Column(Text)  # The prompt used to generate this message
     ai_model = Column(String(100))  # Model that generated it
 
+    # Scheduling & Channel (Messages Center v1)
+    scheduled_send_at = Column(DateTime)  # If set + status=SCHEDULED, APScheduler sends at this time
+    channel = Column(String(50), default="whatsapp")  # "whatsapp" (extensible to sms, email)
+    recipient_phone = Column(String(100))  # Final send-to number; may differ from patient default
+
     # Patient Response
-    patient_response = Column(Text)  # If patient replied
+    patient_response = Column(Text)  # If patient replied (future: two-way flow)
     response_received_at = Column(DateTime)
 
     # Relationships

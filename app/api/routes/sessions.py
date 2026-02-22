@@ -1,6 +1,6 @@
 """Session management routes"""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session as DBSession
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -92,6 +92,7 @@ class PatchSummaryRequest(BaseModel):
 class SummaryResponse(BaseModel):
     id: int
     full_summary: Optional[str] = None
+    transcript: Optional[str] = None
     generated_from: Optional[str] = None
     therapist_edited: bool
     approved_by_therapist: bool
@@ -242,6 +243,41 @@ async def get_patient_sessions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/{session_id}", status_code=204)
+async def delete_session(
+    session_id: int,
+    notify_patient: bool = Query(default=False, description="Log intent to notify patient of cancellation"),
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Delete a session and its associated summary.
+    notify_patient flag is accepted and logged; no message is sent yet.
+    """
+    from app.models.session import Session as SessionModel, SessionSummary
+    from loguru import logger
+
+    session = db.query(SessionModel).filter(
+        SessionModel.id == session_id,
+        SessionModel.therapist_id == current_therapist.id,
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if notify_patient:
+        logger.info(
+            f"[session_delete] therapist={current_therapist.id} "
+            f"session={session_id} patient={session.patient_id} "
+            f"notify_patient=True - notification queued (not yet implemented)"
+        )
+
+    # Delete associated summary first (FK constraint)
+    db.query(SessionSummary).filter(SessionSummary.session_id == session_id).delete()
+    db.delete(session)
+    db.commit()
+
+
 @router.put("/{session_id}", response_model=SessionResponse)
 async def update_session(
     session_id: int,
@@ -293,6 +329,58 @@ async def generate_summary_from_text(
             therapist_notes=request.notes,
             agent=agent,
             therapist_id=current_therapist.id,
+        )
+        return SummaryResponse.model_validate(summary)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{session_id}/summary/from-audio", response_model=SummaryResponse)
+async def generate_summary_from_audio(
+    session_id: int,
+    audio: UploadFile = File(...),
+    language: Optional[str] = Form(default=None),
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    PRD Golden Path — Voice Recap:
+    Upload audio → ASR transcription → AI structured summary.
+
+    Accepts any audio format supported by Whisper (mp3, wav, m4a, ogg, webm).
+    Language defaults to settings.DEFAULT_LANGUAGE (Hebrew) if not specified.
+    """
+    from app.core.config import settings as app_settings
+
+    session_service = SessionService(db)
+    therapist_service = TherapistService(db)
+
+    # Read uploaded file
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+
+    max_size = app_settings.MAX_AUDIO_SIZE_MB * 1024 * 1024
+    if len(audio_bytes) > max_size:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio file too large ({len(audio_bytes)} bytes). Max: {max_size} bytes.",
+        )
+
+    try:
+        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+        summary = await session_service.generate_summary_from_audio(
+            session_id=session_id,
+            audio_bytes=audio_bytes,
+            filename=audio.filename or "recording.webm",
+            agent=agent,
+            therapist_id=current_therapist.id,
+            language=language,
         )
         return SummaryResponse.model_validate(summary)
 

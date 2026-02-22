@@ -8,12 +8,15 @@ import {
   PencilSquareIcon,
   LightBulbIcon,
   XMarkIcon,
+  MicrophoneIcon,
 } from '@heroicons/react/24/outline'
-import { sessionsAPI, patientsAPI } from '@/lib/api'
+import { sessionsAPI, patientsAPI, exercisesAPI } from '@/lib/api'
+import AudioRecorder from '@/components/AudioRecorder'
 
 interface SessionSummary {
   id: number
   full_summary: string | null
+  transcript: string | null
   topics_discussed: string[] | null
   interventions_used: string[] | null
   patient_progress: string | null
@@ -46,6 +49,15 @@ interface Session {
   summary_id?: number
 }
 
+interface Exercise {
+  id: number
+  description: string
+  completed: boolean
+  completed_at: string | null
+}
+
+type InputMode = 'text' | 'voice'
+
 export default function SessionDetailPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
@@ -60,12 +72,19 @@ export default function SessionDetailPage() {
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState('')
+  const [inputMode, setInputMode] = useState<InputMode>('voice')
+
+  // Transcript toggle (for side-by-side view)
+  const [showTranscript, setShowTranscript] = useState(true)
 
   // Prep brief state
   const [prepBrief, setPrepBrief] = useState<PrepBrief | null>(null)
   const [prepLoading, setPrepLoading] = useState(false)
   const [prepError, setPrepError] = useState('')
   const [showPrepPanel, setShowPrepPanel] = useState(searchParams.get('prep') === '1')
+
+  // Exercise tracking
+  const [exercises, setExercises] = useState<Exercise[]>([])
 
   // Editable fields
   const [editFullSummary, setEditFullSummary] = useState('')
@@ -93,6 +112,15 @@ export default function SessionDetailPage() {
           try {
             const summaryData = await sessionsAPI.getSummary(Number(sessionId))
             setSummary(summaryData)
+            // Load exercises linked to this summary
+            try {
+              const exData = await exercisesAPI.list(sessionData.patient_id)
+              setExercises(exData.filter((e: Exercise & { session_summary_id?: number }) =>
+                e.session_summary_id === summaryData.id
+              ))
+            } catch {
+              // exercises not critical
+            }
           } catch {
             // No summary yet — that's fine
           }
@@ -129,6 +157,7 @@ export default function SessionDetailPage() {
     }
   }
 
+  // --- Text-based summary generation ---
   const handleGenerateSummary = async () => {
     if (!notes.trim()) return
     setGenerating(true)
@@ -140,6 +169,23 @@ export default function SessionDetailPage() {
       setSession((prev) => prev ? { ...prev, summary_id: result.id } : prev)
     } catch (err: any) {
       const detail = err.response?.data?.detail || 'שגיאה ביצירת הסיכום'
+      setError(detail)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  // --- Voice Recap: audio blob → upload → transcript + summary ---
+  const handleAudioRecordingComplete = async (blob: Blob) => {
+    setGenerating(true)
+    setError('')
+
+    try {
+      const result = await sessionsAPI.generateSummaryFromAudio(Number(sessionId), blob)
+      setSummary(result)
+      setSession((prev) => prev ? { ...prev, summary_id: result.id } : prev)
+    } catch (err: any) {
+      const detail = err.response?.data?.detail || 'שגיאה בתמלול ויצירת הסיכום'
       setError(detail)
     } finally {
       setGenerating(false)
@@ -186,7 +232,6 @@ export default function SessionDetailPage() {
 
     try {
       const updates: Record<string, unknown> = { status: 'approved' }
-      // If editing, include the edited fields too
       if (editing) {
         updates.full_summary = editFullSummary
         updates.patient_progress = editProgress
@@ -290,50 +335,35 @@ export default function SessionDetailPage() {
             </div>
           ) : prepBrief ? (
             <div className="space-y-3 text-sm">
-              {/* Quick overview */}
               <div>
                 <h3 className="font-semibold text-amber-900 mb-1">סקירה מהירה</h3>
                 <p className="text-amber-800">{prepBrief.quick_overview}</p>
               </div>
-
-              {/* Recent progress */}
               <div>
                 <h3 className="font-semibold text-amber-900 mb-1">התקדמות אחרונה</h3>
                 <p className="text-amber-800">{prepBrief.recent_progress}</p>
               </div>
-
-              {/* Key points to revisit */}
               {prepBrief.key_points_to_revisit.length > 0 && (
                 <div>
                   <h3 className="font-semibold text-amber-900 mb-1">נקודות לחזור אליהן</h3>
                   <ul className="list-disc list-inside text-amber-800 space-y-0.5">
-                    {prepBrief.key_points_to_revisit.map((p, i) => (
-                      <li key={i}>{p}</li>
-                    ))}
+                    {prepBrief.key_points_to_revisit.map((p, i) => <li key={i}>{p}</li>)}
                   </ul>
                 </div>
               )}
-
-              {/* Watch out for */}
               {prepBrief.watch_out_for.length > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-2">
                   <h3 className="font-semibold text-red-800 mb-1">שים לב</h3>
                   <ul className="list-disc list-inside text-red-700 space-y-0.5">
-                    {prepBrief.watch_out_for.map((w, i) => (
-                      <li key={i}>{w}</li>
-                    ))}
+                    {prepBrief.watch_out_for.map((w, i) => <li key={i}>{w}</li>)}
                   </ul>
                 </div>
               )}
-
-              {/* Ideas for this session */}
               {prepBrief.ideas_for_this_session.length > 0 && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-2">
                   <h3 className="font-semibold text-green-800 mb-1">רעיונות לפגישה זו</h3>
                   <ul className="list-disc list-inside text-green-700 space-y-0.5">
-                    {prepBrief.ideas_for_this_session.map((idea, i) => (
-                      <li key={i}>{idea}</li>
-                    ))}
+                    {prepBrief.ideas_for_this_session.map((idea, i) => <li key={i}>{idea}</li>)}
                   </ul>
                 </div>
               )}
@@ -353,39 +383,79 @@ export default function SessionDetailPage() {
         </button>
       )}
 
-      {/* Notes Input */}
+      {/* Input Section — Voice Recap or Text Notes (only when no summary yet) */}
       {!summary && (
         <div className="card">
-          <h2 className="text-lg font-bold mb-3">רשימות הפגישה</h2>
-          <p className="text-sm text-gray-600 mb-3">
-            הקלד או הדבק את הרשימות מהפגישה. ה-AI יצור סיכום מובנה בסגנון שלך.
-          </p>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="input-field h-48 resize-none"
-            placeholder="למשל: המטופל דיווח על שיפור קל בחרדה. עבדנו על חשיפה הדרגתית למצבים חברתיים. הטלנו משימה של יומן מחשבות..."
-            disabled={generating}
-          />
-          <div className="flex items-center justify-between mt-4">
-            <span className="text-xs text-gray-400">
-              {notes.length > 0 ? `${notes.length} תווים` : ''}
-            </span>
+          <h2 className="text-lg font-bold mb-3">תיעוד הפגישה</h2>
+
+          {/* Mode Tabs */}
+          <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
             <button
-              onClick={handleGenerateSummary}
-              disabled={!notes.trim() || generating}
-              className="btn-primary disabled:opacity-50"
+              onClick={() => setInputMode('voice')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                inputMode === 'voice'
+                  ? 'bg-white text-therapy-calm shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
             >
-              {generating ? (
-                <span className="flex items-center gap-2">
-                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                  יוצר סיכום...
-                </span>
-              ) : (
-                'צור סיכום AI'
-              )}
+              <MicrophoneIcon className="h-4 w-4" />
+              סיכום קולי
+            </button>
+            <button
+              onClick={() => setInputMode('text')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                inputMode === 'text'
+                  ? 'bg-white text-therapy-calm shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <DocumentTextIcon className="h-4 w-4" />
+              רשימות טקסט
             </button>
           </div>
+
+          {/* Voice Recap Tab */}
+          {inputMode === 'voice' && (
+            <AudioRecorder
+              onRecordingComplete={handleAudioRecordingComplete}
+              processing={generating}
+            />
+          )}
+
+          {/* Text Notes Tab */}
+          {inputMode === 'text' && (
+            <>
+              <p className="text-sm text-gray-600 mb-3">
+                הקלד או הדבק את הרשימות מהפגישה. ה-AI יצור סיכום מובנה בסגנון שלך.
+              </p>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="input-field h-48 resize-none"
+                placeholder="למשל: המטופל דיווח על שיפור קל בחרדה. עבדנו על חשיפה הדרגתית למצבים חברתיים. הטלנו משימה של יומן מחשבות..."
+                disabled={generating}
+              />
+              <div className="flex items-center justify-between mt-4">
+                <span className="text-xs text-gray-400">
+                  {notes.length > 0 ? `${notes.length} תווים` : ''}
+                </span>
+                <button
+                  onClick={handleGenerateSummary}
+                  disabled={!notes.trim() || generating}
+                  className="btn-primary disabled:opacity-50"
+                >
+                  {generating ? (
+                    <span className="flex items-center gap-2">
+                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                      יוצר סיכום...
+                    </span>
+                  ) : (
+                    'צור סיכום AI'
+                  )}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -465,77 +535,85 @@ export default function SessionDetailPage() {
             )}
           </div>
 
-          {/* Full Summary — editable or display */}
-          {editing ? (
-            <div className="card">
-              <h3 className="font-bold text-gray-800 mb-2">סיכום כללי</h3>
-              <textarea
-                value={editFullSummary}
-                onChange={(e) => setEditFullSummary(e.target.value)}
-                className="input-field h-32 resize-none"
-              />
+          {/* Side-by-side: Transcript + Summary (PRD requirement for audio-generated summaries) */}
+          {summary.generated_from === 'audio' && summary.transcript && (
+            <div>
+              <button
+                onClick={() => setShowTranscript(!showTranscript)}
+                className="text-sm text-blue-600 hover:text-blue-800 mb-2"
+              >
+                {showTranscript ? 'הסתר תמליל' : 'הצג תמליל מקורי'}
+              </button>
+
+              {showTranscript && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Transcript panel */}
+                  <div className="card border-blue-200 bg-blue-50">
+                    <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
+                      <MicrophoneIcon className="h-4 w-4" />
+                      תמליל מקורי
+                    </h3>
+                    <p className="text-blue-700 whitespace-pre-line text-sm leading-relaxed">
+                      {summary.transcript}
+                    </p>
+                  </div>
+                  {/* Summary panel (side-by-side) */}
+                  <div className="card">
+                    <h3 className="font-bold text-gray-800 mb-2">סיכום AI</h3>
+                    <p className="text-gray-700 whitespace-pre-line text-sm leading-relaxed">
+                      {summary.full_summary}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
-          ) : (
-            summary.full_summary && (
-              <div className="card">
-                <h3 className="font-bold text-gray-800 mb-2">סיכום כללי</h3>
-                <p className="text-gray-700 whitespace-pre-line">{summary.full_summary}</p>
-              </div>
-            )
+          )}
+
+          {/* Full Summary (when not in side-by-side mode, or text-generated) */}
+          {!(summary.generated_from === 'audio' && summary.transcript && showTranscript) && (
+            <>
+              {editing ? (
+                <div className="card">
+                  <h3 className="font-bold text-gray-800 mb-2">סיכום כללי</h3>
+                  <textarea
+                    value={editFullSummary}
+                    onChange={(e) => setEditFullSummary(e.target.value)}
+                    className="input-field h-32 resize-none"
+                  />
+                </div>
+              ) : (
+                summary.full_summary && (
+                  <div className="card">
+                    <h3 className="font-bold text-gray-800 mb-2">סיכום כללי</h3>
+                    <p className="text-gray-700 whitespace-pre-line">{summary.full_summary}</p>
+                  </div>
+                )
+              )}
+            </>
           )}
 
           {/* Structured Sections */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <SummarySection
-              title="נושאים שנדונו"
-              items={summary.topics_discussed}
-            />
-            <SummarySection
-              title="התערבויות"
-              items={summary.interventions_used}
-            />
-            <SummarySection
-              title="משימות בית"
-              items={summary.homework_assigned}
-            />
+            <SummarySection title="נושאים שנדונו" items={summary.topics_discussed} />
+            <SummarySection title="התערבויות" items={summary.interventions_used} />
+            <SummarySection title="משימות בית" items={summary.homework_assigned} />
 
             {editing ? (
-              <EditableTextSection
-                title="התקדמות המטופל"
-                value={editProgress}
-                onChange={setEditProgress}
-              />
+              <EditableTextSection title="התקדמות המטופל" value={editProgress} onChange={setEditProgress} />
             ) : (
-              <SummaryTextSection
-                title="התקדמות המטופל"
-                text={summary.patient_progress}
-              />
+              <SummaryTextSection title="התקדמות המטופל" text={summary.patient_progress} />
             )}
 
             {editing ? (
-              <EditableTextSection
-                title="תוכנית לפגישה הבאה"
-                value={editNextPlan}
-                onChange={setEditNextPlan}
-              />
+              <EditableTextSection title="תוכנית לפגישה הבאה" value={editNextPlan} onChange={setEditNextPlan} />
             ) : (
-              <SummaryTextSection
-                title="תוכנית לפגישה הבאה"
-                text={summary.next_session_plan}
-              />
+              <SummaryTextSection title="תוכנית לפגישה הבאה" text={summary.next_session_plan} />
             )}
 
             {editing ? (
-              <EditableTextSection
-                title="מצב רוח נצפה"
-                value={editMood}
-                onChange={setEditMood}
-              />
+              <EditableTextSection title="מצב רוח נצפה" value={editMood} onChange={setEditMood} />
             ) : (
-              <SummaryTextSection
-                title="מצב רוח נצפה"
-                text={summary.mood_observed}
-              />
+              <SummaryTextSection title="מצב רוח נצפה" text={summary.mood_observed} />
             )}
           </div>
 
@@ -556,6 +634,17 @@ export default function SessionDetailPage() {
                 <p className="text-amber-700">{summary.risk_assessment}</p>
               </div>
             )
+          )}
+
+          {/* Exercise Tracker — interactive homework checkboxes */}
+          {session && (summary.homework_assigned?.length || exercises.length > 0) && (
+            <ExerciseTracker
+              patientId={session.patient_id}
+              summaryId={summary.id}
+              homeworkSuggestions={summary.homework_assigned || []}
+              exercises={exercises}
+              onExercisesChange={setExercises}
+            />
           )}
         </div>
       )}
@@ -604,6 +693,139 @@ function EditableTextSection({
         onChange={(e) => onChange(e.target.value)}
         className="input-field h-20 resize-none text-sm"
       />
+    </div>
+  )
+}
+
+function ExerciseTracker({
+  patientId,
+  summaryId,
+  homeworkSuggestions,
+  exercises,
+  onExercisesChange,
+}: {
+  patientId: number
+  summaryId: number
+  homeworkSuggestions: string[]
+  exercises: Exercise[]
+  onExercisesChange: (ex: Exercise[]) => void
+}) {
+  const [toggling, setToggling] = useState<number | null>(null)
+  const [adding, setAdding] = useState<string | null>(null)
+  const [newDesc, setNewDesc] = useState('')
+  const [addingCustom, setAddingCustom] = useState(false)
+
+  // Suggestions from homework_assigned that aren't yet tracked
+  const tracked = new Set(exercises.map((e) => e.description))
+  const untracked = homeworkSuggestions.filter((s) => !tracked.has(s))
+
+  const toggleExercise = async (ex: Exercise) => {
+    setToggling(ex.id)
+    try {
+      const updated = await exercisesAPI.patch(ex.id, { completed: !ex.completed })
+      onExercisesChange(exercises.map((e) => (e.id === ex.id ? updated : e)))
+    } catch (err) {
+      console.error('Error toggling exercise:', err)
+    } finally {
+      setToggling(null)
+    }
+  }
+
+  const trackSuggestion = async (desc: string) => {
+    setAdding(desc)
+    try {
+      const created = await exercisesAPI.create({ patient_id: patientId, description: desc, session_summary_id: summaryId })
+      onExercisesChange([...exercises, created])
+    } catch (err) {
+      console.error('Error tracking exercise:', err)
+    } finally {
+      setAdding(null)
+    }
+  }
+
+  const addCustom = async () => {
+    if (!newDesc.trim()) return
+    setAddingCustom(true)
+    try {
+      const created = await exercisesAPI.create({ patient_id: patientId, description: newDesc.trim(), session_summary_id: summaryId })
+      onExercisesChange([...exercises, created])
+      setNewDesc('')
+    } catch (err) {
+      console.error('Error adding custom exercise:', err)
+    } finally {
+      setAddingCustom(false)
+    }
+  }
+
+  return (
+    <div className="card border-green-200">
+      <h3 className="font-bold text-gray-800 mb-3">מעקב משימות</h3>
+
+      {/* Tracked exercises with checkboxes */}
+      {exercises.length > 0 && (
+        <ul className="space-y-2 mb-3">
+          {exercises.map((ex) => (
+            <li key={ex.id} className="flex items-start gap-3">
+              <button
+                onClick={() => toggleExercise(ex)}
+                disabled={toggling === ex.id}
+                className="mt-0.5 flex-shrink-0"
+                aria-label={ex.completed ? 'סמן כלא הושלם' : 'סמן כהושלם'}
+              >
+                {toggling === ex.id ? (
+                  <span className="w-5 h-5 rounded-full border-2 border-green-400 animate-spin border-t-transparent inline-block" />
+                ) : ex.completed ? (
+                  <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                ) : (
+                  <span className="w-5 h-5 rounded-full border-2 border-gray-400 inline-block" />
+                )}
+              </button>
+              <span className={`text-sm ${ex.completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                {ex.description}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Untracked homework suggestions — quick "add tracking" buttons */}
+      {untracked.length > 0 && (
+        <div className="mb-3">
+          <p className="text-xs text-gray-500 mb-1">מ-AI (לחץ למעקב):</p>
+          <div className="space-y-1">
+            {untracked.map((s) => (
+              <button
+                key={s}
+                onClick={() => trackSuggestion(s)}
+                disabled={adding === s}
+                className="w-full text-right text-sm px-3 py-1.5 border border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-green-400 hover:text-green-700 hover:bg-green-50 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                <span className="text-green-600">+</span>
+                {adding === s ? 'מוסיף...' : s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Custom exercise input */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newDesc}
+          onChange={(e) => setNewDesc(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }}
+          placeholder="הוסף משימה מותאמת..."
+          className="input-field flex-1 text-sm py-1.5"
+        />
+        <button
+          onClick={addCustom}
+          disabled={!newDesc.trim() || addingCustom}
+          className="btn-secondary text-sm py-1.5 px-3 disabled:opacity-50"
+        >
+          {addingCustom ? '...' : 'הוסף'}
+        </button>
+      </div>
     </div>
   )
 }

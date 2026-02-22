@@ -130,6 +130,54 @@ export const messagesAPI = {
     const response = await api.get(`/messages/patient/${patientId}`)
     return response.data
   },
+
+  // Messages Center v1 (Phase C)
+  generateDraft: async (patientId: number, messageType: string, context?: Record<string, string>) => {
+    const response = await api.post('/messages/generate', {
+      patient_id: patientId,
+      message_type: messageType,
+      context,
+    })
+    return response.data
+  },
+
+  sendOrSchedule: async (messageId: number, data: {
+    content: string
+    recipient_phone?: string
+    send_at?: string | null  // ISO datetime string or null
+  }) => {
+    const response = await api.post(`/messages/${messageId}/send-or-schedule`, {
+      content: data.content,
+      recipient_phone: data.recipient_phone || null,
+      send_at: data.send_at || null,
+    })
+    return response.data
+  },
+
+  cancelMessage: async (messageId: number) => {
+    const response = await api.post(`/messages/${messageId}/cancel`)
+    return response.data
+  },
+
+  editScheduled: async (messageId: number, data: {
+    content?: string
+    recipient_phone?: string
+    send_at?: string | null
+  }) => {
+    const response = await api.patch(`/messages/${messageId}`, data)
+    return response.data
+  },
+
+  // Message Control Center: all messages across all patients
+  getAll: async (params?: {
+    patient_id?: number
+    status?: string
+    date_from?: string
+    date_to?: string
+  }) => {
+    const response = await api.get('/messages/', { params })
+    return response.data
+  },
 }
 
 // Patients API
@@ -189,6 +237,8 @@ export const sessionsAPI = {
     session_date: string
     session_type?: string
     duration_minutes?: number
+    start_time?: string
+    end_time?: string
   }) => {
     const response = await api.post('/sessions/', data)
     return response.data
@@ -208,6 +258,20 @@ export const sessionsAPI = {
     const response = await api.post(`/sessions/${sessionId}/summary/from-text`, {
       notes,
     })
+    return response.data
+  },
+
+  generateSummaryFromAudio: async (sessionId: number, audioBlob: Blob, language?: string) => {
+    const formData = new FormData()
+    formData.append('audio', audioBlob, 'recording.webm')
+    if (language) {
+      formData.append('language', language)
+    }
+    const response = await api.post(
+      `/sessions/${sessionId}/summary/from-audio`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    )
     return response.data
   },
 
@@ -238,6 +302,10 @@ export const sessionsAPI = {
     const response = await api.post(`/sessions/${sessionId}/prep-brief`)
     return response.data
   },
+
+  delete: async (sessionId: number, notifyPatient = false) => {
+    await api.delete(`/sessions/${sessionId}`, { params: { notify_patient: notifyPatient } })
+  },
 }
 
 // Patient Summaries API
@@ -249,6 +317,55 @@ export const patientSummariesAPI = {
 
   generateInsight: async (patientId: number) => {
     const response = await api.post(`/patients/${patientId}/insight-summary`)
+    return response.data
+  },
+}
+
+// Exercises API
+export const exercisesAPI = {
+  list: async (patientId: number) => {
+    const response = await api.get('/exercises/', { params: { patient_id: patientId } })
+    return response.data
+  },
+
+  create: async (data: { patient_id: number; description: string; session_summary_id?: number }) => {
+    const response = await api.post('/exercises/', data)
+    return response.data
+  },
+
+  patch: async (exerciseId: number, data: { completed?: boolean; description?: string }) => {
+    const response = await api.patch(`/exercises/${exerciseId}`, data)
+    return response.data
+  },
+
+  delete: async (exerciseId: number) => {
+    await api.delete(`/exercises/${exerciseId}`)
+  },
+}
+
+// Therapist Profile API (Twin v0.1)
+export const therapistAPI = {
+  getProfile: async () => {
+    const response = await api.get('/therapist/profile')
+    return response.data
+  },
+
+  updateTwinControls: async (data: {
+    tone_warmth?: number
+    directiveness?: number
+    prohibitions?: string[]
+    custom_rules?: string | null
+    education?: string | null
+    certifications?: string | null
+    years_of_experience?: string | null
+    areas_of_expertise?: string | null
+  }) => {
+    const response = await api.patch('/therapist/profile', data)
+    return response.data
+  },
+
+  resetTwinControls: async () => {
+    const response = await api.post('/therapist/profile/reset')
     return response.data
   },
 }

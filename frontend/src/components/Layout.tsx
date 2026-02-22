@@ -6,6 +6,7 @@ import {
   UserGroupIcon,
   DocumentTextIcon,
   ArrowRightOnRectangleIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline'
 
 export default function Layout() {
@@ -23,6 +24,7 @@ export default function Layout() {
     { name: 'הודעות', href: '/messages', icon: ChatBubbleLeftRightIcon },
     { name: 'מטופלים', href: '/patients', icon: UserGroupIcon },
     { name: 'פגישות', href: '/sessions', icon: DocumentTextIcon },
+    { name: 'פרופיל AI', href: '/twin', icon: SparklesIcon },
   ]
 
   return (

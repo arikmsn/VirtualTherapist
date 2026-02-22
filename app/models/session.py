@@ -74,6 +74,9 @@ class SessionSummary(BaseModel):
     # Full Summary Text
     full_summary = Column(Text)  # Complete formatted summary
 
+    # Transcript (stored separately for audit — PRD Feature 2)
+    transcript = Column(Text)  # Raw ASR transcript, kept alongside summary
+
     # Metadata
     generated_from = Column(String(50))  # "audio", "text", "manual"
     therapist_edited = Column(Boolean, default=False)
