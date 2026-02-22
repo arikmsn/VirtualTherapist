@@ -1,7 +1,8 @@
 """Session service - handles therapy sessions and summary generation"""
 
+import asyncio
 from typing import Optional, Dict, Any, List
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 from app.models.session import Session as TherapySession, SessionSummary, SessionType, SummaryStatus
 from app.models.patient import Patient
@@ -9,6 +10,87 @@ from app.core.agent import TherapyAgent, PatientInsightResult, SessionPrepBriefR
 from app.services.audit_service import AuditService
 from app.security.encryption import decrypt_data
 from loguru import logger
+
+
+# Twilio Content Template SID for appointment reminders.
+# Template "appointment" (Utility, Hebrew) — variables:
+#   1=patient name, 2=therapist name, 3=clinic name, 4=session date, 5=session time
+APPOINTMENT_TEMPLATE_SID = "HX6975c9f8284208ae4b202035dac62c85"
+
+
+async def send_appointment_reminder(session_id: int) -> None:
+    """
+    Send a WhatsApp appointment reminder for the given session using the approved
+    Content Template.  Opens its own DB session so it is safe to call from
+    APScheduler jobs or asyncio.create_task — independent of the request lifecycle.
+
+    Best-effort: logs errors but never raises, so callers are never blocked.
+    """
+    # Deferred imports to avoid circular dependencies and heavy startup cost
+    from app.core.database import SessionLocal
+    from app.core.config import settings
+    from app.models.therapist import Therapist
+    from app.services.channels import get_channel
+
+    db = SessionLocal()
+    try:
+        session = db.query(TherapySession).filter(TherapySession.id == session_id).first()
+        if not session:
+            logger.warning(f"[appt_reminder] session {session_id} not found — skip")
+            return
+
+        patient = db.query(Patient).filter(Patient.id == session.patient_id).first()
+        therapist = db.query(Therapist).filter(Therapist.id == session.therapist_id).first()
+
+        if not patient or not therapist:
+            logger.warning(f"[appt_reminder] session {session_id}: patient/therapist missing — skip")
+            return
+
+        # Respect patient consent
+        if not patient.allow_ai_contact:
+            logger.info(f"[appt_reminder] session {session_id}: patient opted out of AI contact — skip")
+            return
+
+        if not patient.phone_encrypted:
+            logger.info(f"[appt_reminder] session {session_id}: patient has no phone — skip")
+            return
+
+        patient_phone = decrypt_data(patient.phone_encrypted)
+        patient_name = (
+            decrypt_data(patient.full_name_encrypted)
+            if patient.full_name_encrypted else "מטופל"
+        )
+
+        # Format date/time for the template
+        session_date_str = session.session_date.strftime("%d/%m/%Y")
+        session_time_str = session.start_time.strftime("%H:%M") if session.start_time else "לא צוינה"
+
+        channel = get_channel("whatsapp")
+        result = await channel.send(
+            to_phone=patient_phone,
+            body="",
+            content_sid=APPOINTMENT_TEMPLATE_SID,
+            content_variables={
+                "1": patient_name,
+                "2": therapist.full_name,
+                "3": settings.CLINIC_NAME,
+                "4": session_date_str,
+                "5": session_time_str,
+            },
+        )
+
+        if result["status"] == "sent":
+            logger.info(
+                f"[appt_reminder] session {session_id}: reminder sent to {patient_phone} "
+                f"(provider_id={result['provider_id']})"
+            )
+        else:
+            logger.error(f"[appt_reminder] session {session_id}: send failed — {result['error']}")
+
+    except Exception as exc:
+        logger.error(f"[appt_reminder] session {session_id}: unexpected error — {exc}")
+    finally:
+        db.close()
 
 
 class SessionService:
@@ -74,6 +156,28 @@ class SessionService:
         )
 
         logger.info(f"Created session {session.id} for patient {patient_id}")
+
+        # ── Appointment reminders ─────────────────────────────────────────────
+        # 1. Immediate confirmation (best-effort, does not block the response)
+        asyncio.create_task(send_appointment_reminder(session.id))
+
+        # 2. 24h-before reminder — only when a future start_time is provided
+        if session.start_time:
+            remind_at = session.start_time - timedelta(hours=24)
+            if remind_at > datetime.now():
+                from app.core.scheduler import scheduler
+                scheduler.add_job(
+                    send_appointment_reminder,
+                    trigger="date",
+                    run_date=remind_at,
+                    args=[session.id],
+                    id=f"appt_reminder_{session.id}",
+                    replace_existing=True,
+                )
+                logger.info(
+                    f"Scheduled 24h appointment reminder for session {session.id} at {remind_at}"
+                )
+
         return session
 
     async def generate_summary_from_audio(

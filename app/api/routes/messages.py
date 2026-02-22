@@ -34,6 +34,7 @@ class MessageResponse(BaseModel):
     channel: Optional[str] = None
     recipient_phone: Optional[str] = None
     sent_at: Optional[datetime] = None
+    related_session_id: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -275,7 +276,7 @@ class GenerateDraftRequest(BaseModel):
 
 class SendOrScheduleRequest(BaseModel):
     """Therapist confirms and sends/schedules a DRAFT message."""
-    content: str                       # Final (possibly edited) message text
+    content: Optional[str] = None      # Final message text; omitted for session_reminder (template-only)
     recipient_phone: Optional[str] = None  # Override patient default phone
     send_at: Optional[datetime] = None # None = send now; future = schedule
 
@@ -334,7 +335,7 @@ async def send_or_schedule_message(
         message = await message_service.send_or_schedule_message(
             message_id=message_id,
             therapist_id=current_therapist.id,
-            final_content=request.content,
+            final_content=request.content or "",
             recipient_phone=request.recipient_phone,
             send_at=request.send_at,
         )

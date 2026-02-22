@@ -52,8 +52,15 @@ class WhatsAppChannel(BaseChannel):
         try:
             if content_sid:
                 kwargs: dict = {"from_": self.from_number, "to": to, "content_sid": content_sid}
+                cv_serialized: str | None = None
                 if content_variables is not None:
-                    kwargs["content_variables"] = json.dumps(content_variables)
+                    cv_serialized = json.dumps(content_variables)
+                    kwargs["content_variables"] = cv_serialized
+                logger.info(
+                    f"[DEV] WhatsApp TEMPLATE payload → to={to} "
+                    f"content_sid={content_sid} "
+                    f"content_variables={cv_serialized!r}"
+                )
                 msg = self.client.messages.create(**kwargs)
                 logger.info(f"WhatsApp template sent: sid={msg.sid} to={to} content_sid={content_sid}")
             else:

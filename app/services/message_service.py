@@ -336,14 +336,9 @@ class MessageService:
         therapist_phone = therapist.phone or "" if therapist else ""
 
         if message_type == "session_reminder":
-            # Template-based — no AI call needed
-            session_date = (context or {}).get("session_date", "")
-            session_time = (context or {}).get("session_time", "")
-            date_str = f"{session_date} בשעה {session_time}" if session_time else session_date
-            content = (
-                f"היי {patient_name}, להזכירך שיש לך {date_str} פגישה אצל {therapist_name}. "
-                f"לכל שינוי או עדכון אנא צור/י קשר בטלפון {therapist_phone}."
-            ).strip()
+            # Template-only — no free-text stored or sent.
+            # deliver_message() uses the approved WhatsApp Content Template exclusively.
+            content = ""
             ai_prompt = None
 
         elif message_type == "task_reminder":
@@ -399,6 +394,7 @@ class MessageService:
             ai_model=settings.AI_MODEL if message_type == "task_reminder" else None,
             ai_prompt_used=ai_prompt,
             channel="whatsapp",
+            related_session_id=(context or {}).get("session_id") if message_type == "session_reminder" else None,
         )
 
         self.db.add(message)
@@ -442,7 +438,9 @@ class MessageService:
             raise ValueError(f"Can only confirm DRAFT messages (current status: {message.status})")
 
         # Persist final content and recipient
-        message.content = final_content
+        # session_reminder uses a fixed WhatsApp template — content is never editable
+        if message.message_type != "session_reminder":
+            message.content = final_content
         if recipient_phone:
             message.recipient_phone = recipient_phone
         message.approved_at = datetime.utcnow()
@@ -531,7 +529,8 @@ class MessageService:
         if message.status != MessageStatus.SCHEDULED:
             raise ValueError(f"Can only edit SCHEDULED messages (current status: {message.status})")
 
-        if content is not None:
+        # session_reminder content is template-only and cannot be edited
+        if content is not None and message.message_type != "session_reminder":
             message.content = content
         if recipient_phone is not None:
             message.recipient_phone = recipient_phone
@@ -573,7 +572,41 @@ class MessageService:
         # Send via channel
         from app.services.channels import get_channel
         channel = get_channel(message.channel or "whatsapp")
-        result = await channel.send(to_phone, message.content)
+
+        if message.message_type == "session_reminder":
+            # Use Content Template to avoid Twilio 63016 (outside 24h session window)
+            from app.security.encryption import decrypt_data as _decrypt
+            _TEMPLATE_SID = "HX6975c9f8284208ae4b202035dac62c85"
+
+            _patient = self.db.query(Patient).filter(Patient.id == message.patient_id).first()
+            _patient_name = _decrypt(_patient.full_name_encrypted) if (_patient and _patient.full_name_encrypted) else ""
+
+            _therapist = self.db.query(Therapist).filter(Therapist.id == message.therapist_id).first()
+            _therapist_name = _therapist.full_name if _therapist else ""
+
+            _session_date = ""
+            _session_time = ""
+            if message.related_session_id:
+                from app.models.session import Session as TherapySession
+                _sess = self.db.query(TherapySession).filter(TherapySession.id == message.related_session_id).first()
+                if _sess and _sess.start_time:
+                    _session_date = _sess.start_time.strftime("%d/%m/%Y")
+                    _session_time = _sess.start_time.strftime("%H:%M")
+
+            result = await channel.send(
+                to_phone,
+                message.content,
+                content_sid=_TEMPLATE_SID,
+                content_variables={
+                    "1": _patient_name,
+                    "2": _therapist_name,
+                    "3": settings.CLINIC_NAME,
+                    "4": _session_date,
+                    "5": _session_time,
+                },
+            )
+        else:
+            result = await channel.send(to_phone, message.content)
 
         if result["status"] == "sent":
             message.status = MessageStatus.SENT
@@ -581,7 +614,16 @@ class MessageService:
             logger.info(f"Message {message_id} sent OK (provider_id={result['provider_id']})")
         else:
             message.status = MessageStatus.FAILED
-            logger.error(f"Message {message_id} delivery failed: {result['error']}")
+            error_str = result.get("error", "")
+            if "63016" in error_str:
+                failure_reason = "outside 24h window - template required"
+                message.rejection_reason = failure_reason
+                logger.error(
+                    f"Message {message_id} rejected (63016 — outside 24h WhatsApp window). "
+                    f"patient_id={message.patient_id} phone={to_phone}. Use a Content Template."
+                )
+            else:
+                logger.error(f"Message {message_id} delivery failed: {error_str}")
 
         self.db.commit()
         self.db.refresh(message)

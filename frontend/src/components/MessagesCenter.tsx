@@ -195,13 +195,15 @@ export default function MessagesCenter({
   }
 
   const handleConfirm = async (sendAt: string | null) => {
-    if (!draftId || !content.trim()) return
+    if (!draftId) return
+    // task_reminder requires content; session_reminder uses template (no content needed)
+    if (messageType === 'task_reminder' && !content.trim()) return
     setConfirming(true)
     setConfirmError('')
     const recipientPhone = useCustomPhone ? customPhone : (patientPhone || undefined)
     try {
       await messagesAPI.sendOrSchedule(draftId, {
-        content,
+        content: messageType === 'session_reminder' ? undefined : content,
         recipient_phone: recipientPhone,
         send_at: sendAt,
       })
@@ -346,12 +348,14 @@ export default function MessagesCenter({
             {generating ? (
               <>
                 <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-therapy-calm"></span>
-                מייצר טיוטה...
+                {messageType === 'session_reminder' ? 'יוצר תזכורת...' : 'מייצר טיוטה...'}
               </>
             ) : (
               <>
                 <ArrowPathIcon className="h-4 w-4" />
-                {draftId ? 'ייצר מחדש' : 'ייצר טיוטה'}
+                {messageType === 'session_reminder'
+                  ? (draftId ? 'עדכן תצוגה מקדימה' : 'צור תזכורת')
+                  : (draftId ? 'ייצר מחדש' : 'ייצר טיוטה')}
               </>
             )}
           </button>
@@ -360,8 +364,23 @@ export default function MessagesCenter({
             <div className="text-sm text-red-700 bg-red-50 rounded p-2">{generatorError}</div>
           )}
 
-          {/* Content textarea */}
-          {(content || draftId) && (
+          {/* Content area — locked preview for session_reminder, editable for task_reminder */}
+          {draftId && messageType === 'session_reminder' ? (
+            <div className="rounded-xl border border-blue-200 bg-white p-4 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-blue-700 uppercase tracking-wide">
+                <span>📋</span>
+                <span>תבנית WhatsApp מאושרת — לא ניתן לעריכה</span>
+              </div>
+              <div className="text-sm text-gray-700 space-y-1 border-r-4 border-blue-300 pr-3">
+                <p><span className="text-gray-400">מטופל/ת: </span>{patientName}</p>
+                <p><span className="text-gray-400">תאריך: </span>{sessionDate || '—'}</p>
+                <p><span className="text-gray-400">שעה: </span>{sessionTime || '—'}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  ההודעה תישלח עם שם המטפל/ת ושם הקליניקה דרך תבנית WhatsApp מאושרת.
+                </p>
+              </div>
+            </div>
+          ) : (content || draftId) && messageType === 'task_reminder' ? (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 תוכן ההודעה <span className="text-gray-400 font-normal">(ניתן לערוך)</span>
@@ -374,7 +393,7 @@ export default function MessagesCenter({
               />
               <p className="text-xs text-gray-400 mt-1">{content.length} תווים</p>
             </div>
-          )}
+          ) : null}
 
           {/* Recipient */}
           {draftId && (
@@ -427,7 +446,7 @@ export default function MessagesCenter({
               <div className="flex gap-3">
                 <button
                   onClick={() => handleConfirm(null)}
-                  disabled={confirming || !content.trim()}
+                  disabled={confirming || (messageType === 'task_reminder' && !content.trim())}
                   className="btn-primary flex items-center gap-2 disabled:opacity-50"
                 >
                   {confirming && !showScheduler ? (
@@ -568,7 +587,11 @@ export default function MessagesCenter({
                   </div>
 
                   {/* Content */}
-                  {isEditing ? (
+                  {msg.message_type === 'session_reminder' ? (
+                    <p className="text-sm text-blue-600 italic flex items-center gap-1">
+                      <span>📋</span> תזכורת פגישה — נשלחה דרך תבנית WhatsApp
+                    </p>
+                  ) : isEditing ? (
                     <div className="space-y-2">
                       <textarea
                         value={editContent}
@@ -597,16 +620,18 @@ export default function MessagesCenter({
                     <p className="text-sm text-gray-700 whitespace-pre-line">{msg.content}</p>
                   )}
 
-                  {/* Scheduled actions */}
+                  {/* Scheduled actions — edit hidden for session_reminder (template content is locked) */}
                   {isScheduled && !isEditing && (
                     <div className="flex items-center gap-3 pt-1 border-t border-gray-100">
-                      <button
-                        onClick={() => { setEditingId(msg.id); setEditContent(msg.content) }}
-                        className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
-                      >
-                        <PencilSquareIcon className="h-4 w-4" />
-                        ערוך
-                      </button>
+                      {msg.message_type !== 'session_reminder' && (
+                        <button
+                          onClick={() => { setEditingId(msg.id); setEditContent(msg.content) }}
+                          className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+                        >
+                          <PencilSquareIcon className="h-4 w-4" />
+                          ערוך
+                        </button>
+                      )}
                       <button
                         onClick={() => handleCancel(msg.id)}
                         className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700"

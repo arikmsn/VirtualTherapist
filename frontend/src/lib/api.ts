@@ -142,12 +142,12 @@ export const messagesAPI = {
   },
 
   sendOrSchedule: async (messageId: number, data: {
-    content: string
+    content?: string           // omitted for session_reminder (template-only)
     recipient_phone?: string
-    send_at?: string | null  // ISO datetime string or null
+    send_at?: string | null    // ISO datetime string or null
   }) => {
     const response = await api.post(`/messages/${messageId}/send-or-schedule`, {
-      content: data.content,
+      content: data.content ?? null,
       recipient_phone: data.recipient_phone || null,
       send_at: data.send_at || null,
     })
