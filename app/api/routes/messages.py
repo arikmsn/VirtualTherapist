@@ -85,6 +85,7 @@ async def create_draft_message(
         return MessageResponse.model_validate(message)
 
     except Exception as e:
+        logger.exception(f"create_draft_message therapist={current_therapist.id} patient={request.patient_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -114,6 +115,7 @@ async def approve_message(
         }
 
     except Exception as e:
+        logger.exception(f"approve_message msg={request.message_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -141,6 +143,7 @@ async def reject_message(
         }
 
     except Exception as e:
+        logger.exception(f"reject_message msg={request.message_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -167,6 +170,7 @@ async def edit_message(
         }
 
     except Exception as e:
+        logger.exception(f"edit_message msg={request.message_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -193,6 +197,7 @@ async def send_message(
         }
 
     except Exception as e:
+        logger.exception(f"send_message msg={message_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -223,6 +228,7 @@ async def get_all_messages(
         messages = q.order_by(Message.created_at.desc()).all()
         return [MessageResponse.model_validate(m) for m in messages]
     except Exception as e:
+        logger.exception(f"get_all_messages therapist={current_therapist.id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -263,6 +269,7 @@ async def get_patient_messages(
         return [MessageResponse.model_validate(msg) for msg in messages]
 
     except Exception as e:
+        logger.exception(f"get_patient_messages patient={patient_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -317,6 +324,7 @@ async def generate_draft_message(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception(f"generate_draft_message therapist={current_therapist.id} patient={request.patient_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -346,6 +354,7 @@ async def send_or_schedule_message(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception(f"send_or_schedule_message msg={message_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -368,6 +377,7 @@ async def cancel_message(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception(f"cancel_message msg={message_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -394,4 +404,5 @@ async def edit_scheduled_message(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception(f"edit_scheduled_message msg={message_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))

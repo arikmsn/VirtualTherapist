@@ -7,6 +7,7 @@ from typing import Optional, List
 from app.api.deps import get_db, get_current_therapist
 from app.models.therapist import Therapist
 from app.services.therapist_service import TherapistService
+from loguru import logger
 
 router = APIRouter()
 
@@ -128,6 +129,7 @@ async def update_twin_controls(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(f"update_twin_controls therapist={current_therapist.id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -160,4 +162,5 @@ async def reset_twin_controls(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(f"reset_twin_controls therapist={current_therapist.id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -12,6 +12,7 @@ from app.services.patient_service import PatientService
 from app.services.session_service import SessionService
 from app.services.therapist_service import TherapistService
 from app.api.routes.sessions import SummaryResponse, PatientSummaryItem
+from loguru import logger
 
 router = APIRouter()
 
@@ -93,6 +94,7 @@ async def create_patient(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception(f"create_patient failed for therapist {current_therapist.id}: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -114,6 +116,7 @@ async def list_patients(
         return [PatientResponse.model_validate(p) for p in patients]
 
     except Exception as e:
+        logger.exception(f"list_patients failed for therapist {current_therapist.id}: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -162,6 +165,7 @@ async def update_patient(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(f"update_patient {patient_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -185,6 +189,7 @@ async def delete_patient(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(f"delete_patient {patient_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -216,6 +221,7 @@ async def get_patient_summaries(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(f"get_patient_summaries patient={patient_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -258,8 +264,11 @@ async def generate_patient_insight_summary(
         )
 
     except ValueError as e:
+        logger.exception(f"generate_patient_insight patient={patient_id} ValueError: {e!r}")
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
+        logger.exception(f"generate_patient_insight patient={patient_id} RuntimeError: {e!r}")
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
+        logger.exception(f"generate_patient_insight patient={patient_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))

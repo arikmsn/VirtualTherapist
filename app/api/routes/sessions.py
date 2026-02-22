@@ -10,6 +10,7 @@ from app.models.therapist import Therapist
 from app.models.session import SessionType
 from app.services.session_service import SessionService
 from app.services.therapist_service import TherapistService
+from loguru import logger
 
 router = APIRouter()
 
@@ -149,6 +150,7 @@ async def create_session(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception(f"create_session therapist={current_therapist.id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -170,6 +172,7 @@ async def list_sessions(
         return [SessionResponse.model_validate(s) for s in sessions]
 
     except Exception as e:
+        logger.exception(f"list_sessions therapist={current_therapist.id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -193,6 +196,7 @@ async def get_sessions_by_date(
         return [DailySessionItem(**item) for item in items]
 
     except Exception as e:
+        logger.exception(f"get_sessions_by_date therapist={current_therapist.id} date={effective_date} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -240,6 +244,7 @@ async def get_patient_sessions(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(f"get_patient_sessions patient={patient_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -272,9 +277,17 @@ async def delete_session(
             f"notify_patient=True - notification queued (not yet implemented)"
         )
 
-    # Delete associated summary first (FK constraint)
-    db.query(SessionSummary).filter(SessionSummary.session_id == session_id).delete()
+    # sessions.summary_id → session_summaries.id  (FK is on sessions side)
+    # Delete the session first to drop the FK reference, then delete the orphaned summary.
+    summary_id = session.summary_id
     db.delete(session)
+    db.flush()
+
+    if summary_id:
+        summary = db.query(SessionSummary).filter(SessionSummary.id == summary_id).first()
+        if summary:
+            db.delete(summary)
+
     db.commit()
 
 
@@ -301,6 +314,7 @@ async def update_session(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(f"update_session session={session_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -335,8 +349,10 @@ async def generate_summary_from_text(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
+        logger.exception(f"generate_summary_from_text session={session_id} RuntimeError: {e!r}")
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
+        logger.exception(f"generate_summary_from_text session={session_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -387,8 +403,10 @@ async def generate_summary_from_audio(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
+        logger.exception(f"generate_summary_from_audio session={session_id} RuntimeError: {e!r}")
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
+        logger.exception(f"generate_summary_from_audio session={session_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -418,6 +436,7 @@ async def get_session_summary(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception(f"get_session_summary session={session_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -444,6 +463,7 @@ async def patch_session_summary(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.exception(f"patch_session_summary session={session_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -467,6 +487,7 @@ async def approve_summary(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception(f"approve_summary session={request.session_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -491,6 +512,7 @@ async def edit_summary(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception(f"edit_summary session={request.session_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -535,6 +557,8 @@ async def generate_session_prep_brief(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
+        logger.exception(f"generate_prep_brief session={session_id} RuntimeError: {e!r}")
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
+        logger.exception(f"generate_prep_brief session={session_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
