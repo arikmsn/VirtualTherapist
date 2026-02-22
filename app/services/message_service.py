@@ -574,24 +574,49 @@ class MessageService:
         channel = get_channel(message.channel or "whatsapp")
 
         if message.message_type == "session_reminder":
-            # Use Content Template to avoid Twilio 63016 (outside 24h session window)
+            # Use Content Template to avoid Twilio 63016 (outside 24h session window).
+            # Template HX6ab2d8bbf149e9d05598bbecb4522eb6 has 4 variables:
+            #   {{1}} patient_name, {{2}} therapist_name, {{3}} date, {{4}} time
             from app.security.encryption import decrypt_data as _decrypt
-            _TEMPLATE_SID = "HX6975c9f8284208ae4b202035dac62c85"
+            from app.models.session import Session as TherapySession
+            _TEMPLATE_SID = "HX6ab2d8bbf149e9d05598bbecb4522eb6"
 
             _patient = self.db.query(Patient).filter(Patient.id == message.patient_id).first()
-            _patient_name = _decrypt(_patient.full_name_encrypted) if (_patient and _patient.full_name_encrypted) else ""
+            _patient_name = _decrypt(_patient.full_name_encrypted) if (_patient and _patient.full_name_encrypted) else "המטופל"
 
             _therapist = self.db.query(Therapist).filter(Therapist.id == message.therapist_id).first()
             _therapist_name = _therapist.full_name if _therapist else ""
 
-            _session_date = ""
-            _session_time = ""
+            _session_date = "לא צוין"
+            _session_time = "לא צוינה"
+
+            # Try the linked session first; fall back to the next upcoming session for this patient
+            _sess = None
             if message.related_session_id:
-                from app.models.session import Session as TherapySession
-                _sess = self.db.query(TherapySession).filter(TherapySession.id == message.related_session_id).first()
-                if _sess and _sess.start_time:
+                _sess = self.db.query(TherapySession).filter(
+                    TherapySession.id == message.related_session_id
+                ).first()
+
+            if _sess is None:
+                # Find the next upcoming (or most recent past) session for this patient
+                from datetime import date as _date
+                _sess = (
+                    self.db.query(TherapySession)
+                    .filter(
+                        TherapySession.patient_id == message.patient_id,
+                        TherapySession.therapist_id == message.therapist_id,
+                    )
+                    .order_by(TherapySession.session_date.desc())
+                    .first()
+                )
+
+            if _sess:
+                if _sess.start_time:
                     _session_date = _sess.start_time.strftime("%d/%m/%Y")
                     _session_time = _sess.start_time.strftime("%H:%M")
+                elif _sess.session_date:
+                    _session_date = _sess.session_date.strftime("%d/%m/%Y")
+                    # time stays "לא צוינה"
 
             result = await channel.send(
                 to_phone,
@@ -600,9 +625,8 @@ class MessageService:
                 content_variables={
                     "1": _patient_name,
                     "2": _therapist_name,
-                    "3": settings.CLINIC_NAME,
-                    "4": _session_date,
-                    "5": _session_time,
+                    "3": _session_date,
+                    "4": _session_time,
                 },
             )
         else:

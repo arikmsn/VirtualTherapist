@@ -280,6 +280,21 @@ export default function PatientProfilePage() {
     }
   }
 
+  const handleDeleteExercise = async (ex: ExerciseItem) => {
+    try {
+      await exercisesAPI.delete(ex.id)
+      setExercises((prev) => prev.filter((e) => e.id !== ex.id))
+      if (ex.completed) {
+        setPatient((prev) => prev ? {
+          ...prev,
+          completed_exercises_count: Math.max(0, prev.completed_exercises_count - 1),
+        } : prev)
+      }
+    } catch (err) {
+      console.error('Error deleting exercise:', err)
+    }
+  }
+
   const handleGenerateInsight = async () => {
     setInsightLoading(true)
     setInsightError('')
@@ -726,9 +741,17 @@ export default function PatientProfilePage() {
                     : <span className="w-5 h-5 rounded-full border-2 border-gray-400 inline-block" />
                   }
                 </button>
-                <span className={`text-sm ${ex.completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                <span className={`text-sm flex-1 ${ex.completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
                   {ex.description}
                 </span>
+                <button
+                  onClick={() => handleDeleteExercise(ex)}
+                  className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors"
+                  aria-label="הסר משימה"
+                  title="הסר משימה"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
               </li>
             ))}
           </ul>

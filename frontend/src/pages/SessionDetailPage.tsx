@@ -88,6 +88,9 @@ export default function SessionDetailPage() {
 
   // Editable fields
   const [editFullSummary, setEditFullSummary] = useState('')
+  const [editTopics, setEditTopics] = useState('')        // newline-separated list
+  const [editInterventions, setEditInterventions] = useState('')  // newline-separated list
+  const [editHomework, setEditHomework] = useState('')    // newline-separated list
   const [editProgress, setEditProgress] = useState('')
   const [editNextPlan, setEditNextPlan] = useState('')
   const [editMood, setEditMood] = useState('')
@@ -195,12 +198,18 @@ export default function SessionDetailPage() {
   const startEditing = () => {
     if (!summary) return
     setEditFullSummary(summary.full_summary || '')
+    setEditTopics((summary.topics_discussed || []).join('\n'))
+    setEditInterventions((summary.interventions_used || []).join('\n'))
+    setEditHomework((summary.homework_assigned || []).join('\n'))
     setEditProgress(summary.patient_progress || '')
     setEditNextPlan(summary.next_session_plan || '')
     setEditMood(summary.mood_observed || '')
     setEditRisk(summary.risk_assessment || '')
     setEditing(true)
   }
+
+  const splitLines = (val: string): string[] =>
+    val.split('\n').map((s) => s.trim()).filter(Boolean)
 
   const handleSaveDraft = async () => {
     setSaving(true)
@@ -209,6 +218,9 @@ export default function SessionDetailPage() {
     try {
       const updates: Record<string, unknown> = {
         full_summary: editFullSummary,
+        topics_discussed: splitLines(editTopics),
+        interventions_used: splitLines(editInterventions),
+        homework_assigned: splitLines(editHomework),
         patient_progress: editProgress,
         next_session_plan: editNextPlan,
         mood_observed: editMood,
@@ -234,6 +246,9 @@ export default function SessionDetailPage() {
       const updates: Record<string, unknown> = { status: 'approved' }
       if (editing) {
         updates.full_summary = editFullSummary
+        updates.topics_discussed = splitLines(editTopics)
+        updates.interventions_used = splitLines(editInterventions)
+        updates.homework_assigned = splitLines(editHomework)
         updates.patient_progress = editProgress
         updates.next_session_plan = editNextPlan
         updates.mood_observed = editMood
@@ -594,9 +609,23 @@ export default function SessionDetailPage() {
 
           {/* Structured Sections */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <SummarySection title="נושאים שנדונו" items={summary.topics_discussed} />
-            <SummarySection title="התערבויות" items={summary.interventions_used} />
-            <SummarySection title="משימות בית" items={summary.homework_assigned} />
+            {editing ? (
+              <EditableListSection title="נושאים שנדונו" value={editTopics} onChange={setEditTopics} />
+            ) : (
+              <SummarySection title="נושאים שנדונו" items={summary.topics_discussed} />
+            )}
+
+            {editing ? (
+              <EditableListSection title="התערבויות" value={editInterventions} onChange={setEditInterventions} />
+            ) : (
+              <SummarySection title="התערבויות" items={summary.interventions_used} />
+            )}
+
+            {editing ? (
+              <EditableListSection title="משימות בית" value={editHomework} onChange={setEditHomework} />
+            ) : (
+              <SummarySection title="משימות בית" items={summary.homework_assigned} />
+            )}
 
             {editing ? (
               <EditableTextSection title="התקדמות המטופל" value={editProgress} onChange={setEditProgress} />
@@ -692,6 +721,29 @@ function EditableTextSection({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="input-field h-20 resize-none text-sm"
+      />
+    </div>
+  )
+}
+
+function EditableListSection({
+  title,
+  value,
+  onChange,
+}: {
+  title: string
+  value: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <div className="card">
+      <h3 className="font-bold text-gray-800 mb-1">{title}</h3>
+      <p className="text-xs text-gray-400 mb-2">פריט אחד בכל שורה</p>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="input-field h-24 resize-none text-sm"
+        placeholder="פריט אחד בכל שורה..."
       />
     </div>
   )
