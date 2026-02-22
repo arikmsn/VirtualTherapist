@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { DocumentTextIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
+import {
+  DocumentTextIcon,
+  CheckCircleIcon,
+  PlusIcon,
+  XMarkIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI } from '@/lib/api'
 
 interface Session {
@@ -21,34 +27,137 @@ interface Patient {
   full_name: string
 }
 
+const SESSION_TYPES = [
+  { value: 'individual', label: 'פרטני' },
+  { value: 'couples', label: 'זוגי' },
+  { value: 'family', label: 'משפחתי' },
+  { value: 'group', label: 'קבוצתי' },
+  { value: 'intake', label: 'אינטייק' },
+  { value: 'follow_up', label: 'מעקב' },
+]
+
 export default function SessionsPage() {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<Session[]>([])
+  const [patients, setPatients] = useState<Patient[]>([])
   const [patientMap, setPatientMap] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'with_summary' | 'no_summary'>('all')
 
+  // Delete session modal state
+  const [deleteTarget, setDeleteTarget] = useState<Session | null>(null)
+  const [deleteStep, setDeleteStep] = useState<1 | 2>(1)
+  const [deleting, setDeleting] = useState(false)
+  const [notifyPatient, setNotifyPatient] = useState(false)
+
+  // Create session modal state
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
+  const [formData, setFormData] = useState({
+    patient_id: '',
+    session_date: new Date().toISOString().split('T')[0],
+    start_time: '',
+    session_type: 'individual',
+    duration_minutes: 50,
+  })
+
+  const loadSessions = async () => {
+    try {
+      const data = await sessionsAPI.list()
+      setSessions(data)
+    } catch (error) {
+      console.error('Error loading sessions:', error)
+    }
+  }
+
+  const loadPatients = async () => {
+    try {
+      const data = await patientsAPI.list()
+      setPatients(data)
+      const map: Record<number, string> = {}
+      data.forEach((p: Patient) => {
+        map[p.id] = p.full_name
+      })
+      setPatientMap(map)
+    } catch (error) {
+      console.error('Error loading patients:', error)
+    }
+  }
+
   useEffect(() => {
     const loadData = async () => {
-      try {
-        const [sessionsData, patientsData] = await Promise.all([
-          sessionsAPI.list(),
-          patientsAPI.list(),
-        ])
-        setSessions(sessionsData)
-        const map: Record<number, string> = {}
-        patientsData.forEach((p: Patient) => {
-          map[p.id] = p.full_name
-        })
-        setPatientMap(map)
-      } catch (error) {
-        console.error('Error loading sessions:', error)
-      } finally {
-        setLoading(false)
-      }
+      await Promise.all([loadSessions(), loadPatients()])
+      setLoading(false)
     }
     loadData()
   }, [])
+
+  const openDeleteModal = (session: Session) => {
+    setDeleteTarget(session)
+    setDeleteStep(1)
+    setNotifyPatient(false)
+  }
+
+  const closeDeleteModal = () => {
+    setDeleteTarget(null)
+    setDeleteStep(1)
+    setNotifyPatient(false)
+  }
+
+  const handleDeleteSession = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await sessionsAPI.delete(deleteTarget.id, notifyPatient)
+      setSessions((prev) => prev.filter((s) => s.id !== deleteTarget.id))
+      closeDeleteModal()
+    } catch (error) {
+      console.error('Error deleting session:', error)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleCreateSession = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCreateError('')
+
+    if (!formData.patient_id) {
+      setCreateError('יש לבחור מטופל')
+      return
+    }
+
+    setCreating(true)
+    try {
+      let startTime: string | undefined
+      if (formData.start_time) {
+        startTime = `${formData.session_date}T${formData.start_time}:00`
+      }
+
+      await sessionsAPI.create({
+        patient_id: Number(formData.patient_id),
+        session_date: formData.session_date,
+        session_type: formData.session_type,
+        duration_minutes: formData.duration_minutes,
+        start_time: startTime,
+      })
+
+      setShowCreateModal(false)
+      setFormData({
+        patient_id: '',
+        session_date: new Date().toISOString().split('T')[0],
+        start_time: '',
+        session_type: 'individual',
+        duration_minutes: 50,
+      })
+      await loadSessions()
+    } catch (error: any) {
+      setCreateError(error.response?.data?.detail || 'שגיאה ביצירת הפגישה')
+    } finally {
+      setCreating(false)
+    }
+  }
 
   const filteredSessions = sessions.filter((session) => {
     if (filter === 'with_summary') return session.summary_id != null
@@ -78,6 +187,13 @@ export default function SessionsPage() {
           <h1 className="text-3xl font-bold text-gray-900">פגישות וסיכומים</h1>
           <p className="text-gray-600 mt-2">כל הפגישות והסיכומים במקום אחד</p>
         </div>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="btn-primary flex items-center gap-2"
+        >
+          <PlusIcon className="h-5 w-5" />
+          פגישה חדשה
+        </button>
       </div>
 
       {/* Filters */}
@@ -155,7 +271,8 @@ export default function SessionsPage() {
                     )}
                     {session.session_type && (
                       <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">
-                        {session.session_type}
+                        {SESSION_TYPES.find((t) => t.value === session.session_type)?.label ||
+                          session.session_type}
                       </span>
                     )}
                   </div>
@@ -163,7 +280,7 @@ export default function SessionsPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-start">
                 {session.summary_id == null && (
                   <button
                     onClick={() => navigate(`/sessions/${session.id}`)}
@@ -180,6 +297,13 @@ export default function SessionsPage() {
                     צפה בסיכום
                   </button>
                 )}
+                <button
+                  onClick={() => openDeleteModal(session)}
+                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="מחק פגישה"
+                >
+                  <TrashIcon className="h-5 w-5" />
+                </button>
               </div>
             </div>
           </div>
@@ -194,9 +318,241 @@ export default function SessionsPage() {
           </h3>
           <p className="text-gray-600">
             {sessions.length === 0
-              ? 'צור פגישה חדשה דרך לוח הבקרה'
+              ? 'לחץ על "פגישה חדשה" כדי ליצור את הפגישה הראשונה'
               : 'נסה לשנות את הסינון'}
           </p>
+        </div>
+      )}
+
+      {/* Delete Session Modal (2-step) */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6" dir="rtl">
+            {deleteStep === 1 ? (
+              <>
+                <h2 className="text-xl font-bold text-amber-800 mb-3">מחיקת פגישה</h2>
+                <p className="text-gray-700 mb-2">
+                  האם אתה בטוח שברצונך למחוק את הפגישה של{' '}
+                  <strong>{patientMap[deleteTarget.patient_id] || `מטופל #${deleteTarget.patient_id}`}</strong>{' '}
+                  מתאריך{' '}
+                  <strong>
+                    {new Date(deleteTarget.session_date).toLocaleDateString('he-IL')}
+                  </strong>?
+                </p>
+                {deleteTarget.summary_id != null && (
+                  <p className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3 mb-4">
+                    שים לב: לפגישה זו יש סיכום. מחיקת הפגישה תמחק גם את הסיכום לצמיתות.
+                  </p>
+                )}
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={() => setDeleteStep(2)}
+                    className="flex-1 py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg transition-colors"
+                  >
+                    המשך
+                  </button>
+                  <button onClick={closeDeleteModal} className="btn-secondary flex-1">
+                    ביטול
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl font-bold text-red-800 mb-3">אישור סופי — מחיקה לצמיתות</h2>
+                <p className="text-gray-700 mb-4">
+                  פעולה זו בלתי הפיכה. הפגישה וכל הנתונים הקשורים אליה יימחקו לצמיתות.
+                </p>
+
+                <label className="flex items-center gap-3 mb-6 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={notifyPatient}
+                    onChange={(e) => setNotifyPatient(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-therapy-calm"
+                  />
+                  <span className="text-sm text-gray-700">
+                    רשום בלוג שהמטופל צריך להיות מיודע על הביטול
+                  </span>
+                </label>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleDeleteSession}
+                    disabled={deleting}
+                    className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+                  >
+                    {deleting ? 'מוחק...' : 'מחק לצמיתות'}
+                  </button>
+                  <button onClick={closeDeleteModal} className="btn-secondary flex-1">
+                    ביטול
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Create Session Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-900">פגישה חדשה</h2>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSession} className="space-y-4">
+              {/* Patient Select */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  מטופל/ת *
+                </label>
+                {patients.length === 0 ? (
+                  <div className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">
+                    לא נמצאו מטופלים.{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCreateModal(false)
+                        navigate('/patients')
+                      }}
+                      className="underline font-medium"
+                    >
+                      צור מטופל חדש
+                    </button>{' '}
+                    לפני יצירת פגישה.
+                  </div>
+                ) : (
+                  <select
+                    value={formData.patient_id}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, patient_id: e.target.value }))
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                    required
+                  >
+                    <option value="">בחר מטופל/ת...</option>
+                    {[...patients]
+                      .sort((a, b) => a.full_name.localeCompare(b.full_name, 'he'))
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.full_name}
+                        </option>
+                      ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Date */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  תאריך *
+                </label>
+                <input
+                  type="date"
+                  value={formData.session_date}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, session_date: e.target.value }))
+                  }
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                  required
+                />
+              </div>
+
+              {/* Start Time — select to guarantee 24h display */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  שעת התחלה
+                </label>
+                <select
+                  value={formData.start_time}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, start_time: e.target.value }))
+                  }
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                >
+                  <option value="">בחר שעה...</option>
+                  {Array.from({ length: 14 }, (_, i) => i + 7).map((hour) =>
+                    [0, 30].map((min) => {
+                      const val = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
+                      return <option key={val} value={val}>{val}</option>
+                    })
+                  )}
+                </select>
+              </div>
+
+              {/* Duration */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  משך (דקות)
+                </label>
+                <input
+                  type="number"
+                  value={formData.duration_minutes}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      duration_minutes: Number(e.target.value),
+                    }))
+                  }
+                  min={10}
+                  max={180}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                />
+              </div>
+
+              {/* Session Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  סוג פגישה
+                </label>
+                <select
+                  value={formData.session_type}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, session_type: e.target.value }))
+                  }
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                >
+                  {SESSION_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Error */}
+              {createError && (
+                <div className="text-red-600 text-sm bg-red-50 rounded-lg p-3">
+                  {createError}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={creating || patients.length === 0}
+                  className="btn-primary flex-1 disabled:opacity-50"
+                >
+                  {creating ? 'יוצר...' : 'צור פגישה'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="btn-secondary flex-1"
+                >
+                  ביטול
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

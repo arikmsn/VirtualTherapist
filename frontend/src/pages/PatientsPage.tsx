@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PlusIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import { patientsAPI } from '@/lib/api'
+import { PlusIcon, MagnifyingGlassIcon, XMarkIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
+import { patientsAPI, sessionsAPI } from '@/lib/api'
 
 interface Patient {
   id: number
@@ -18,11 +18,18 @@ interface Patient {
   created_at: string
 }
 
+interface Session {
+  id: number
+  session_date: string
+}
+
 export default function PatientsPage() {
   const navigate = useNavigate()
   const [patients, setPatients] = useState<Patient[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [showInactive, setShowInactive] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
 
   // Create form state
@@ -40,13 +47,24 @@ export default function PatientsPage() {
       setPatients(data)
     } catch (error) {
       console.error('Error loading patients:', error)
-    } finally {
-      setLoading(false)
+    }
+  }
+
+  const loadSessions = async () => {
+    try {
+      const data = await sessionsAPI.list()
+      setSessions(data)
+    } catch (error) {
+      console.error('Error loading sessions:', error)
     }
   }
 
   useEffect(() => {
-    loadPatients()
+    const init = async () => {
+      await Promise.all([loadPatients(), loadSessions()])
+      setLoading(false)
+    }
+    init()
   }, [])
 
   const handleCreatePatient = async () => {
@@ -69,11 +87,28 @@ export default function PatientsPage() {
     }
   }
 
-  const filteredPatients = patients.filter((p) =>
-    p.full_name.includes(searchTerm)
-  )
+  // Sessions this week
+  const now = new Date()
+  const dayOfWeek = now.getDay()
+  const startOfWeek = new Date(now)
+  startOfWeek.setDate(now.getDate() - dayOfWeek)
+  startOfWeek.setHours(0, 0, 0, 0)
+  const endOfWeek = new Date(startOfWeek)
+  endOfWeek.setDate(startOfWeek.getDate() + 7)
+  const sessionsThisWeek = sessions.filter((s) => {
+    const d = new Date(s.session_date)
+    return d >= startOfWeek && d < endOfWeek
+  }).length
 
   const activeCount = patients.filter((p) => p.status === 'active').length
+  const completedExercisesCount = patients.reduce((sum, p) => sum + p.completed_exercises_count, 0)
+
+  const filteredPatients = patients
+    .filter((p) => showInactive || p.status !== 'inactive')
+    .filter((p) => p.full_name.includes(searchTerm))
+    .sort((a, b) => a.full_name.localeCompare(b.full_name, 'he'))
+
+  const inactiveCount = patients.filter((p) => p.status === 'inactive').length
 
   if (loading) {
     return (
@@ -103,17 +138,36 @@ export default function PatientsPage() {
         </button>
       </div>
 
-      {/* Search */}
+      {/* Search + inactive toggle */}
       <div className="card">
-        <div className="relative">
-          <MagnifyingGlassIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="input-field pr-10"
-            placeholder="חפש מטופל..."
-          />
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1">
+            <MagnifyingGlassIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="input-field pr-10"
+              placeholder="חפש מטופל..."
+            />
+          </div>
+          {inactiveCount > 0 && (
+            <button
+              onClick={() => setShowInactive((v) => !v)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                showInactive
+                  ? 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              {showInactive ? (
+                <EyeSlashIcon className="h-4 w-4" />
+              ) : (
+                <EyeIcon className="h-4 w-4" />
+              )}
+              {showInactive ? 'הסתר לא פעילים' : `הצג לא פעילים (${inactiveCount})`}
+            </button>
+          )}
         </div>
       </div>
 
@@ -124,14 +178,12 @@ export default function PatientsPage() {
           <div className="text-sm text-blue-700 mt-1">מטופלים פעילים</div>
         </div>
         <div className="card bg-green-50 border border-green-200">
-          <div className="text-3xl font-bold text-green-900">{patients.length}</div>
-          <div className="text-sm text-green-700 mt-1">סה״כ מטופלים</div>
+          <div className="text-3xl font-bold text-green-900">{sessionsThisWeek}</div>
+          <div className="text-sm text-green-700 mt-1">פגישות השבוע</div>
         </div>
-        <div className="card bg-amber-50 border border-amber-200">
-          <div className="text-3xl font-bold text-amber-900">
-            {patients.reduce((sum, p) => sum + p.missed_exercises_count, 0)}
-          </div>
-          <div className="text-sm text-amber-700 mt-1">תרגילים שהוחמצו</div>
+        <div className="card bg-purple-50 border border-purple-200">
+          <div className="text-3xl font-bold text-purple-900">{completedExercisesCount}</div>
+          <div className="text-sm text-purple-700 mt-1">תרגילים שהושלמו</div>
         </div>
       </div>
 
@@ -140,11 +192,17 @@ export default function PatientsPage() {
         <div className="card text-center py-12">
           <div className="text-6xl mb-4">👥</div>
           <h3 className="text-xl font-bold text-gray-900 mb-2">
-            {patients.length === 0 ? 'אין מטופלים עדיין' : 'לא נמצאו תוצאות'}
+            {patients.length === 0
+              ? 'אין מטופלים עדיין'
+              : !showInactive && inactiveCount > 0 && activeCount === 0
+              ? 'כל המטופלים לא פעילים'
+              : 'לא נמצאו תוצאות'}
           </h3>
           <p className="text-gray-600">
             {patients.length === 0
               ? 'לחץ על "מטופל חדש" כדי להוסיף את המטופל הראשון'
+              : !showInactive && inactiveCount > 0 && activeCount === 0
+              ? 'לחץ על "הצג לא פעילים" כדי לראות את כל המטופלים'
               : 'נסה לחפש עם מונח אחר'}
           </p>
         </div>
@@ -154,7 +212,7 @@ export default function PatientsPage() {
             <div
               key={patient.id}
               className="card hover:shadow-xl transition-all cursor-pointer"
-              onClick={() => navigate(`/patients/${patient.id}/summaries`)}
+              onClick={() => navigate(`/patients/${patient.id}`)}
             >
               {/* Patient Header */}
               <div className="flex items-center gap-3 mb-4">
@@ -197,11 +255,20 @@ export default function PatientsPage() {
               <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-2 gap-2">
                 <button
                   className="text-sm btn-secondary py-2"
-                  onClick={(e) => { e.stopPropagation(); navigate(`/patients/${patient.id}/summaries`) }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    navigate(`/patients/${patient.id}`, { state: { initialTab: 'summaries' } })
+                  }}
                 >
                   סיכומים
                 </button>
-                <button className="text-sm btn-secondary py-2">
+                <button
+                  className="text-sm btn-secondary py-2"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    navigate(`/patients/${patient.id}`, { state: { initialTab: 'inbetween' } })
+                  }}
+                >
                   שלח הודעה
                 </button>
               </div>
