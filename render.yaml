@@ -2,6 +2,7 @@ services:
   - type: web
     name: virtualtherapist-api
     env: python
+    pythonVersion: "3.11.9"
     plan: free
     region: frankfurt      # closest to IL; change to oregon/ohio if preferred
     buildCommand: >-
