@@ -5,7 +5,7 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PLACEHOLDER_PATTERNS = [
-    "your-openai-key", "your-anthropic-key",
+    "your-openai-key",
     "sk-your-", "replace_with_your", "your-",
     "change-me", "placeholder",
 ]
@@ -41,9 +41,8 @@ class Settings(BaseSettings):
 
     # AI Configuration
     OPENAI_API_KEY: str | None = None
-    ANTHROPIC_API_KEY: str | None = None
-    AI_PROVIDER: Literal["openai", "anthropic"] = "anthropic"
-    AI_MODEL: str = "claude-3-5-sonnet-20241022"
+    AI_PROVIDER: Literal["openai"] = "openai"
+    AI_MODEL: str = "gpt-4o"
     TEMPERATURE: float = 0.7
     MAX_TOKENS: int = 2000
 
@@ -96,17 +95,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_ai_keys(self) -> "Settings":
-        key_field = (
-            "ANTHROPIC_API_KEY" if self.AI_PROVIDER == "anthropic"
-            else "OPENAI_API_KEY"
-        )
-        key_value = getattr(self, key_field)
-
-        if is_placeholder_key(key_value):
+        if is_placeholder_key(self.OPENAI_API_KEY):
             msg = (
-                f"{key_field} is missing or a placeholder. "
-                f"AI features (chat, summaries) will not work. "
-                f"Set a valid key in .env for AI_PROVIDER='{self.AI_PROVIDER}'."
+                "OPENAI_API_KEY is missing or a placeholder. "
+                "AI features (chat, summaries) will not work. "
+                "Set a valid key in .env."
             )
             if self.ENVIRONMENT == "production":
                 raise ValueError(msg)

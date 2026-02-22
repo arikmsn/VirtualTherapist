@@ -5,7 +5,6 @@ This is the heart of the system - the personalized AI therapist assistant
 
 from typing import Optional, Dict, Any, List
 import json
-from anthropic import Anthropic
 from openai import AsyncOpenAI
 from app.core.config import settings
 from app.models.therapist import TherapistProfile
@@ -89,20 +88,13 @@ class TherapyAgent:
         from app.core.config import is_placeholder_key
 
         self.profile = therapist_profile
-        self.ai_provider = settings.AI_PROVIDER
         self.client = None
 
-        # Initialize AI client only if a real key is available
-        if self.ai_provider == "anthropic":
-            if not is_placeholder_key(settings.ANTHROPIC_API_KEY):
-                self.client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-            else:
-                logger.warning("Anthropic client not initialized: missing or placeholder API key")
-        elif self.ai_provider == "openai":
-            if not is_placeholder_key(settings.OPENAI_API_KEY):
-                self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-            else:
-                logger.warning("OpenAI client not initialized: missing or placeholder API key")
+        # Initialize OpenAI client only if a real key is available
+        if not is_placeholder_key(settings.OPENAI_API_KEY):
+            self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        else:
+            logger.warning("OpenAI client not initialized: missing or placeholder API key")
 
         self.system_prompt = self._build_system_prompt()
 
@@ -295,8 +287,7 @@ class TherapyAgent:
         """
         if self.client is None:
             raise RuntimeError(
-                "AI client not initialized. "
-                f"Set a valid API key in .env for AI_PROVIDER='{self.ai_provider}'."
+                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
             )
 
         try:
@@ -305,11 +296,7 @@ class TherapyAgent:
             if context:
                 full_prompt = f"הקשר: {context}\n\n{message}"
 
-            # Generate response based on provider
-            if self.ai_provider == "anthropic":
-                response = await self._generate_anthropic(full_prompt)
-            else:
-                response = await self._generate_openai(full_prompt)
+            response = await self._generate_openai(full_prompt)
 
             therapist_email = (
                 self.profile.therapist.email if self.profile else "Unknown"
@@ -333,8 +320,7 @@ class TherapyAgent:
         """
         if self.client is None:
             raise RuntimeError(
-                "AI client not initialized. "
-                f"Set a valid API key in .env for AI_PROVIDER='{self.ai_provider}'."
+                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
             )
 
         summary_prompt = f"""\
@@ -369,11 +355,7 @@ class TherapyAgent:
         full_prompt = ctx_str + summary_prompt
 
         try:
-            if self.ai_provider == "anthropic":
-                raw = await self._generate_anthropic(full_prompt)
-            else:
-                raw = await self._generate_openai(full_prompt)
-
+            raw = await self._generate_openai(full_prompt)
             return self._parse_summary_json(raw)
 
         except Exception as e:
@@ -430,8 +412,7 @@ class TherapyAgent:
         """
         if self.client is None:
             raise RuntimeError(
-                "AI client not initialized. "
-                f"Set a valid API key in .env for AI_PROVIDER='{self.ai_provider}'."
+                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
             )
 
         # Build timeline text
@@ -479,11 +460,7 @@ class TherapyAgent:
 """
 
         try:
-            if self.ai_provider == "anthropic":
-                raw = await self._generate_anthropic(prompt)
-            else:
-                raw = await self._generate_openai(prompt)
-
+            raw = await self._generate_openai(prompt)
             return self._parse_insight_json(raw)
 
         except Exception as e:
@@ -533,8 +510,7 @@ class TherapyAgent:
         """
         if self.client is None:
             raise RuntimeError(
-                "AI client not initialized. "
-                f"Set a valid API key in .env for AI_PROVIDER='{self.ai_provider}'."
+                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
             )
 
         timeline_parts = []
@@ -586,11 +562,7 @@ class TherapyAgent:
 """
 
         try:
-            if self.ai_provider == "anthropic":
-                raw = await self._generate_anthropic(prompt)
-            else:
-                raw = await self._generate_openai(prompt)
-
+            raw = await self._generate_openai(prompt)
             return self._parse_prep_brief_json(raw)
 
         except Exception as e:
@@ -625,19 +597,6 @@ class TherapyAgent:
             watch_out_for=data.get("watch_out_for", []),
             ideas_for_this_session=data.get("ideas_for_this_session", []),
         )
-
-    async def _generate_anthropic(self, prompt: str) -> str:
-        """Generate response using Anthropic Claude"""
-        response = self.client.messages.create(
-            model=settings.AI_MODEL,
-            max_tokens=settings.MAX_TOKENS,
-            temperature=settings.TEMPERATURE,
-            system=self.system_prompt,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return response.content[0].text
 
     async def _generate_openai(self, prompt: str) -> str:
         """Generate response using OpenAI"""
