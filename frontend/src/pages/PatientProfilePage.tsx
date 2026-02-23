@@ -155,6 +155,13 @@ export default function PatientProfilePage() {
     (s) => s.summary.status === 'approved' || s.summary.approved_by_therapist
   ).length
 
+  // Lock body scroll when any modal is open
+  useEffect(() => {
+    const locked = showEditPatient || showInactiveConfirm || showNewSession
+    document.body.style.overflow = locked ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [showEditPatient, showInactiveConfirm, showNewSession])
+
   // Load patient + sessions on mount
   useEffect(() => {
     const load = async () => {
@@ -875,101 +882,110 @@ export default function PatientProfilePage() {
         </div>
       )}
 
-      {/* ── New Session Modal ── */}
+      {/* ── New Session Modal ──
+          Mobile: top-aligned with mt-8 breathing room, scrollable content, sticky header+footer
+          Desktop: vertically centered, max 85vh */}
       {showNewSession && patient && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6" dir="rtl">
-            <div className="flex items-center justify-between mb-6">
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh]">
+
+            {/* Sticky header */}
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
               <h2 className="text-xl font-bold text-gray-900">פגישה חדשה</h2>
               <button
                 onClick={() => setShowNewSession(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 p-1 touch-manipulation"
               >
                 <XMarkIcon className="h-6 w-6" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateSession} className="space-y-4">
-              {/* Patient — read-only */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">מטופל/ת</label>
-                <div className="input-field bg-gray-50 text-gray-700 cursor-not-allowed">
-                  {patient.full_name}
+            {/* Scrollable form body + sticky footer */}
+            <form onSubmit={handleCreateSession} className="flex flex-col flex-1 min-h-0">
+              <div className="overflow-y-auto flex-1 px-4 sm:px-6 py-4 space-y-4">
+
+                {/* Patient — read-only */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">מטופל/ת</label>
+                  <div className="input-field bg-gray-50 text-gray-700 cursor-not-allowed">
+                    {patient.full_name}
+                  </div>
                 </div>
+
+                {/* Date */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">תאריך *</label>
+                  <input
+                    type="date"
+                    value={newSessionForm.session_date}
+                    onChange={(e) => setNewSessionForm((f) => ({ ...f, session_date: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                    required
+                  />
+                </div>
+
+                {/* Start Time */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">שעת התחלה</label>
+                  <select
+                    value={newSessionForm.start_time}
+                    onChange={(e) => setNewSessionForm((f) => ({ ...f, start_time: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                  >
+                    <option value="">בחר שעה...</option>
+                    {Array.from({ length: 14 }, (_, i) => i + 7).map((hour) =>
+                      [0, 30].map((min) => {
+                        const val = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
+                        return <option key={val} value={val}>{val}</option>
+                      })
+                    )}
+                  </select>
+                </div>
+
+                {/* Duration */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">משך (דקות)</label>
+                  <input
+                    type="number"
+                    value={newSessionForm.duration_minutes}
+                    onChange={(e) => setNewSessionForm((f) => ({ ...f, duration_minutes: Number(e.target.value) }))}
+                    min={10} max={180}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                  />
+                </div>
+
+                {/* Session Type */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">סוג פגישה</label>
+                  <select
+                    value={newSessionForm.session_type}
+                    onChange={(e) => setNewSessionForm((f) => ({ ...f, session_type: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                  >
+                    {SESSION_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {newSessionError && (
+                  <div className="text-red-600 text-sm bg-red-50 rounded-lg p-3">{newSessionError}</div>
+                )}
               </div>
 
-              {/* Date */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">תאריך *</label>
-                <input
-                  type="date"
-                  value={newSessionForm.session_date}
-                  onChange={(e) => setNewSessionForm((f) => ({ ...f, session_date: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
-                  required
-                />
-              </div>
-
-              {/* Start Time — select, consistent with SessionsPage */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">שעת התחלה</label>
-                <select
-                  value={newSessionForm.start_time}
-                  onChange={(e) => setNewSessionForm((f) => ({ ...f, start_time: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
-                >
-                  <option value="">בחר שעה...</option>
-                  {Array.from({ length: 14 }, (_, i) => i + 7).map((hour) =>
-                    [0, 30].map((min) => {
-                      const val = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
-                      return <option key={val} value={val}>{val}</option>
-                    })
-                  )}
-                </select>
-              </div>
-
-              {/* Duration */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">משך (דקות)</label>
-                <input
-                  type="number"
-                  value={newSessionForm.duration_minutes}
-                  onChange={(e) => setNewSessionForm((f) => ({ ...f, duration_minutes: Number(e.target.value) }))}
-                  min={10} max={180}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
-                />
-              </div>
-
-              {/* Session Type */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">סוג פגישה</label>
-                <select
-                  value={newSessionForm.session_type}
-                  onChange={(e) => setNewSessionForm((f) => ({ ...f, session_type: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
-                >
-                  {SESSION_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {newSessionError && (
-                <div className="text-red-600 text-sm bg-red-50 rounded-lg p-3">{newSessionError}</div>
-              )}
-
-              <div className="flex gap-3 pt-2">
+              {/* Sticky footer — always visible */}
+              <div className="flex gap-3 px-4 sm:px-6 py-4 border-t border-gray-100 flex-shrink-0">
                 <button
                   type="submit"
                   disabled={newSessionCreating}
-                  className="btn-primary flex-1 disabled:opacity-50"
+                  className="btn-primary flex-1 disabled:opacity-50 min-h-[44px] touch-manipulation"
                 >
                   {newSessionCreating ? 'יוצר...' : 'צור פגישה'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowNewSession(false)}
-                  className="btn-secondary flex-1"
+                  className="btn-secondary flex-1 min-h-[44px] touch-manipulation"
                 >
                   ביטול
                 </button>

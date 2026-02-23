@@ -159,6 +159,13 @@ export default function SessionsPage() {
     }
   }
 
+  // Lock body scroll whenever a modal is open
+  useEffect(() => {
+    const locked = !!deleteTarget || showCreateModal
+    document.body.style.overflow = locked ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [deleteTarget, showCreateModal])
+
   const filteredSessions = sessions.filter((session) => {
     if (filter === 'with_summary') return session.summary_id != null
     if (filter === 'no_summary') return session.summary_id == null
@@ -182,14 +189,14 @@ export default function SessionsPage() {
   return (
     <div className="space-y-6 animate-fade-in" dir="rtl">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">פגישות וסיכומים</h1>
-          <p className="text-gray-600 mt-2">כל הפגישות והסיכומים במקום אחד</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">פגישות וסיכומים</h1>
+          <p className="text-gray-600 mt-1 sm:mt-2 text-sm sm:text-base">כל הפגישות והסיכומים במקום אחד</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="btn-primary flex items-center gap-2"
+          className="btn-primary flex items-center gap-2 flex-shrink-0 min-h-[44px] touch-manipulation"
         >
           <PlusIcon className="h-5 w-5" />
           פגישה חדשה
@@ -393,160 +400,167 @@ export default function SessionsPage() {
         </div>
       )}
 
-      {/* Create Session Modal */}
+      {/* Create Session Modal
+          Mobile: top-aligned with mt-8 breathing room, scrollable content, sticky header+footer
+          Desktop: vertically centered, max 85vh */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6">
-            <div className="flex items-center justify-between mb-6">
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh]">
+
+            {/* Sticky header */}
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
               <h2 className="text-xl font-bold text-gray-900">פגישה חדשה</h2>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 p-1 touch-manipulation"
               >
                 <XMarkIcon className="h-6 w-6" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateSession} className="space-y-4">
-              {/* Patient Select */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  מטופל/ת *
-                </label>
-                {patients.length === 0 ? (
-                  <div className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">
-                    לא נמצאו מטופלים.{' '}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowCreateModal(false)
-                        navigate('/patients')
-                      }}
-                      className="underline font-medium"
+            {/* Scrollable form body + sticky footer */}
+            <form onSubmit={handleCreateSession} className="flex flex-col flex-1 min-h-0">
+              <div className="overflow-y-auto flex-1 px-4 sm:px-6 py-4 space-y-4">
+
+                {/* Patient Select */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    מטופל/ת *
+                  </label>
+                  {patients.length === 0 ? (
+                    <div className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">
+                      לא נמצאו מטופלים.{' '}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCreateModal(false)
+                          navigate('/patients')
+                        }}
+                        className="underline font-medium"
+                      >
+                        צור מטופל חדש
+                      </button>{' '}
+                      לפני יצירת פגישה.
+                    </div>
+                  ) : (
+                    <select
+                      value={formData.patient_id}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, patient_id: e.target.value }))
+                      }
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                      required
                     >
-                      צור מטופל חדש
-                    </button>{' '}
-                    לפני יצירת פגישה.
-                  </div>
-                ) : (
-                  <select
-                    value={formData.patient_id}
+                      <option value="">בחר מטופל/ת...</option>
+                      {[...patients]
+                        .sort((a, b) => a.full_name.localeCompare(b.full_name, 'he'))
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.full_name}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Date */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    תאריך *
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.session_date}
                     onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, patient_id: e.target.value }))
+                      setFormData((prev) => ({ ...prev, session_date: e.target.value }))
                     }
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
                     required
+                  />
+                </div>
+
+                {/* Start Time */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    שעת התחלה
+                  </label>
+                  <select
+                    value={formData.start_time}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, start_time: e.target.value }))
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
                   >
-                    <option value="">בחר מטופל/ת...</option>
-                    {[...patients]
-                      .sort((a, b) => a.full_name.localeCompare(b.full_name, 'he'))
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.full_name}
-                        </option>
-                      ))}
+                    <option value="">בחר שעה...</option>
+                    {Array.from({ length: 14 }, (_, i) => i + 7).map((hour) =>
+                      [0, 30].map((min) => {
+                        const val = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
+                        return <option key={val} value={val}>{val}</option>
+                      })
+                    )}
                   </select>
+                </div>
+
+                {/* Duration */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    משך (דקות)
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.duration_minutes}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        duration_minutes: Number(e.target.value),
+                      }))
+                    }
+                    min={10}
+                    max={180}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                  />
+                </div>
+
+                {/* Session Type */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    סוג פגישה
+                  </label>
+                  <select
+                    value={formData.session_type}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, session_type: e.target.value }))
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                  >
+                    {SESSION_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {createError && (
+                  <div className="text-red-600 text-sm bg-red-50 rounded-lg p-3">
+                    {createError}
+                  </div>
                 )}
               </div>
 
-              {/* Date */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  תאריך *
-                </label>
-                <input
-                  type="date"
-                  value={formData.session_date}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, session_date: e.target.value }))
-                  }
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
-                  required
-                />
-              </div>
-
-              {/* Start Time — select to guarantee 24h display */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  שעת התחלה
-                </label>
-                <select
-                  value={formData.start_time}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, start_time: e.target.value }))
-                  }
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
-                >
-                  <option value="">בחר שעה...</option>
-                  {Array.from({ length: 14 }, (_, i) => i + 7).map((hour) =>
-                    [0, 30].map((min) => {
-                      const val = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
-                      return <option key={val} value={val}>{val}</option>
-                    })
-                  )}
-                </select>
-              </div>
-
-              {/* Duration */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  משך (דקות)
-                </label>
-                <input
-                  type="number"
-                  value={formData.duration_minutes}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      duration_minutes: Number(e.target.value),
-                    }))
-                  }
-                  min={10}
-                  max={180}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
-                />
-              </div>
-
-              {/* Session Type */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  סוג פגישה
-                </label>
-                <select
-                  value={formData.session_type}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, session_type: e.target.value }))
-                  }
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
-                >
-                  {SESSION_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Error */}
-              {createError && (
-                <div className="text-red-600 text-sm bg-red-50 rounded-lg p-3">
-                  {createError}
-                </div>
-              )}
-
-              {/* Actions */}
-              <div className="flex gap-3 pt-2">
+              {/* Sticky footer — always visible */}
+              <div className="flex gap-3 px-4 sm:px-6 py-4 border-t border-gray-100 flex-shrink-0">
                 <button
                   type="submit"
                   disabled={creating || patients.length === 0}
-                  className="btn-primary flex-1 disabled:opacity-50"
+                  className="btn-primary flex-1 disabled:opacity-50 min-h-[44px] touch-manipulation"
                 >
                   {creating ? 'יוצר...' : 'צור פגישה'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="btn-secondary flex-1"
+                  className="btn-secondary flex-1 min-h-[44px] touch-manipulation"
                 >
                   ביטול
                 </button>
