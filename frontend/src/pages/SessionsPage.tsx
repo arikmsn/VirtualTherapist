@@ -243,14 +243,14 @@ export default function SessionsPage() {
       <div className="space-y-4">
         {filteredSessions.map((session) => (
           <div key={session.id} className="card hover:shadow-xl transition-shadow">
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
               {/* Session Info */}
-              <div className="flex items-start gap-4 flex-1">
-                <div className="w-12 h-12 bg-therapy-calm text-white rounded-full flex items-center justify-center">
+              <div className="flex items-start gap-4 flex-1 min-w-0">
+                <div className="w-12 h-12 bg-therapy-calm text-white rounded-full flex items-center justify-center flex-shrink-0">
                   <DocumentTextIcon className="h-6 w-6" />
                 </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
                     <h3 className="text-lg font-bold">
                       {patientMap[session.patient_id] || `מטופל #${session.patient_id}`}
                     </h3>
@@ -266,7 +266,7 @@ export default function SessionsPage() {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
                     <span>
                       {new Date(session.session_date).toLocaleDateString('he-IL')}
                     </span>
@@ -286,12 +286,12 @@ export default function SessionsPage() {
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex gap-2 items-start">
+              {/* Actions — stacked row below info on mobile, inline on desktop */}
+              <div className="flex gap-2 items-center flex-shrink-0">
                 {session.summary_id == null && (
                   <button
                     onClick={() => navigate(`/sessions/${session.id}`)}
-                    className="btn-primary whitespace-nowrap"
+                    className="btn-primary flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
                   >
                     צור סיכום
                   </button>
@@ -299,14 +299,14 @@ export default function SessionsPage() {
                 {session.summary_id != null && (
                   <button
                     onClick={() => navigate(`/sessions/${session.id}`)}
-                    className="btn-secondary whitespace-nowrap"
+                    className="btn-secondary flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
                   >
                     צפה בסיכום
                   </button>
                 )}
                 <button
                   onClick={() => openDeleteModal(session)}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors touch-manipulation flex-shrink-0"
                   title="מחק פגישה"
                 >
                   <TrashIcon className="h-5 w-5" />
@@ -405,10 +405,10 @@ export default function SessionsPage() {
           Desktop: vertically centered, max 85vh */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh]">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] overflow-x-hidden">
 
             {/* Sticky header */}
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
+            <div className="flex items-center justify-between px-3 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
               <h2 className="text-xl font-bold text-gray-900">פגישה חדשה</h2>
               <button
                 onClick={() => setShowCreateModal(false)}
@@ -420,7 +420,7 @@ export default function SessionsPage() {
 
             {/* Scrollable form body + sticky footer */}
             <form onSubmit={handleCreateSession} className="flex flex-col flex-1 min-h-0">
-              <div className="overflow-y-auto flex-1 px-4 sm:px-6 py-4 space-y-4">
+              <div className="overflow-y-auto flex-1 px-3 sm:px-6 py-4 space-y-4">
 
                 {/* Patient Select */}
                 <div>
@@ -549,7 +549,7 @@ export default function SessionsPage() {
               </div>
 
               {/* Sticky footer — always visible */}
-              <div className="flex gap-3 px-4 sm:px-6 py-4 border-t border-gray-100 flex-shrink-0">
+              <div className="flex gap-3 px-3 sm:px-6 py-4 border-t border-gray-100 flex-shrink-0">
                 <button
                   type="submit"
                   disabled={creating || patients.length === 0}
