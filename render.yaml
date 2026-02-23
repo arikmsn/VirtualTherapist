@@ -38,16 +38,13 @@ services:
 
       # ── AI ───────────────────────────────────────────────────────────────
       - key: AI_PROVIDER
-        value: anthropic
+        value: openai
 
       - key: AI_MODEL
-        value: claude-3-5-sonnet-20241022
+        value: gpt-4o
 
-      - key: ANTHROPIC_API_KEY
-        sync: false          # REQUIRED when AI_PROVIDER=anthropic
-
-      # - key: OPENAI_API_KEY
-      #   sync: false        # REQUIRED instead if AI_PROVIDER=openai
+      - key: OPENAI_API_KEY
+        sync: false          # REQUIRED — OpenAI API key
 
       # ── CORS ─────────────────────────────────────────────────────────────
       - key: CORS_ORIGINS
@@ -69,3 +66,13 @@ services:
 
       - key: TWILIO_WHATSAPP_NUMBER
         sync: false          # OPTIONAL — e.g. whatsapp:+14155238886
+
+      # ── WhatsApp provider routing ─────────────────────────────────────────
+      - key: WHATSAPP_PROVIDER
+        value: green_api     # "green_api" (default) or "twilio"
+
+      - key: GREEN_API_INSTANCE_ID
+        sync: false          # REQUIRED when WHATSAPP_PROVIDER=green_api
+
+      - key: GREEN_API_TOKEN
+        sync: false          # REQUIRED when WHATSAPP_PROVIDER=green_api
