@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PlusIcon, MagnifyingGlassIcon, XMarkIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import { patientsAPI, sessionsAPI } from '@/lib/api'
+import PhoneInput from '@/components/PhoneInput'
 
 interface Patient {
   id: number
@@ -301,12 +302,10 @@ export default function PatientsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">טלפון</label>
-                <input
-                  type="text"
+                <PhoneInput
                   value={newPatient.phone}
-                  onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })}
-                  className="input-field"
-                  placeholder="050-1234567"
+                  onChange={(e164) => setNewPatient({ ...newPatient, phone: e164 })}
+                  className="w-full"
                 />
               </div>
               <div>

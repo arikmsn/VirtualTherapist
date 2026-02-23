@@ -442,7 +442,8 @@ class MessageService:
         if message.message_type != "session_reminder":
             message.content = final_content
         if recipient_phone:
-            message.recipient_phone = recipient_phone
+            from app.utils.phone import normalize_phone
+            message.recipient_phone = normalize_phone(recipient_phone)
         message.approved_at = datetime.utcnow()
 
         now = datetime.utcnow()
@@ -533,7 +534,11 @@ class MessageService:
         if content is not None and message.message_type != "session_reminder":
             message.content = content
         if recipient_phone is not None:
-            message.recipient_phone = recipient_phone
+            if recipient_phone:
+                from app.utils.phone import normalize_phone
+                message.recipient_phone = normalize_phone(recipient_phone)
+            else:
+                message.recipient_phone = recipient_phone
         if send_at is not None:
             message.scheduled_send_at = send_at
             # Reschedule APScheduler job
@@ -569,12 +574,11 @@ class MessageService:
             self.db.commit()
             return message
 
-        # Send via channel
-        from app.services.channels import get_channel
-        channel = get_channel(message.channel or "whatsapp")
+        # Send via whatsapp_service (routes to Green API or Twilio based on WHATSAPP_PROVIDER)
+        from app.services.whatsapp_service import send_whatsapp_message
 
         if message.message_type == "session_reminder":
-            # Use Content Template to avoid Twilio 63016 (outside 24h session window).
+            # Use Content Template (Twilio) or plain-text fallback (Green API).
             # Template HX6ab2d8bbf149e9d05598bbecb4522eb6 has 4 variables:
             #   {{1}} patient_name, {{2}} therapist_name, {{3}} date, {{4}} time
             from app.security.encryption import decrypt_data as _decrypt
@@ -590,7 +594,7 @@ class MessageService:
             _session_date = "לא צוין"
             _session_time = "לא צוינה"
 
-            # Try the linked session first; fall back to the next upcoming session for this patient
+            # Try the linked session first; fall back to the most recent session for this patient
             _sess = None
             if message.related_session_id:
                 _sess = self.db.query(TherapySession).filter(
@@ -598,8 +602,6 @@ class MessageService:
                 ).first()
 
             if _sess is None:
-                # Find the next upcoming (or most recent past) session for this patient
-                from datetime import date as _date
                 _sess = (
                     self.db.query(TherapySession)
                     .filter(
@@ -616,9 +618,8 @@ class MessageService:
                     _session_time = _sess.start_time.strftime("%H:%M")
                 elif _sess.session_date:
                     _session_date = _sess.session_date.strftime("%d/%m/%Y")
-                    # time stays "לא צוינה"
 
-            result = await channel.send(
+            result = await send_whatsapp_message(
                 to_phone,
                 message.content,
                 content_sid=_TEMPLATE_SID,
@@ -630,7 +631,7 @@ class MessageService:
                 },
             )
         else:
-            result = await channel.send(to_phone, message.content)
+            result = await send_whatsapp_message(to_phone, message.content)
 
         if result["status"] == "sent":
             message.status = MessageStatus.SENT

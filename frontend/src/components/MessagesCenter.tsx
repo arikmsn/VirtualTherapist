@@ -26,6 +26,7 @@ import {
   PlusIcon,
 } from '@heroicons/react/24/outline'
 import { messagesAPI } from '@/lib/api'
+import PhoneInput from '@/components/PhoneInput'
 
 // --- Types ---
 
@@ -422,14 +423,13 @@ export default function MessagesCenter({
                   <span className="text-sm text-gray-700">מספר אחר:</span>
                 </label>
                 {useCustomPhone && (
-                  <input
-                    type="tel"
-                    value={customPhone}
-                    onChange={(e) => setCustomPhone(e.target.value)}
-                    placeholder="+972501234567"
-                    className="input-field mr-6"
-                    dir="ltr"
-                  />
+                  <div className="mr-6">
+                    <PhoneInput
+                      value={customPhone}
+                      onChange={(e164) => setCustomPhone(e164)}
+                      className="w-full"
+                    />
+                  </div>
                 )}
               </div>
             </div>

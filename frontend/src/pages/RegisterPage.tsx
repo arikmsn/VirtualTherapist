@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/useAuth'
 import { authAPI } from '@/lib/api'
+import PhoneInput from '@/components/PhoneInput'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -100,12 +101,10 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               טלפון (אופציונלי)
             </label>
-            <input
-              type="tel"
+            <PhoneInput
               value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              className="input-field"
-              placeholder="050-1234567"
+              onChange={(e164) => setFormData({ ...formData, phone: e164 })}
+              className="w-full"
             />
           </div>
 

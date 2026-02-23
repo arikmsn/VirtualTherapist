@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.patient import Patient, PatientStatus
 from app.security.encryption import encrypt_data, decrypt_data
 from app.services.audit_service import AuditService
+from app.utils.phone import normalize_phone
 from loguru import logger
 
 
@@ -44,7 +45,7 @@ class PatientService:
         patient = Patient(
             therapist_id=therapist_id,
             full_name_encrypted=encrypt_data(full_name),
-            phone_encrypted=encrypt_data(phone) if phone else None,
+            phone_encrypted=encrypt_data(normalize_phone(phone)) if phone else None,
             email_encrypted=encrypt_data(email) if email else None,
             start_date=start_date,
             primary_concerns=(
@@ -128,6 +129,10 @@ class PatientService:
 
         if not patient:
             raise ValueError("Patient not found")
+
+        # Normalize phone to E.164 before encrypting
+        if update_data.get("phone"):
+            update_data = {**update_data, "phone": normalize_phone(update_data["phone"])}
 
         for field, value in update_data.items():
             if value is None:

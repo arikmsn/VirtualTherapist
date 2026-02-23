@@ -35,12 +35,21 @@ async def register(
 
     therapist_service = TherapistService(db)
 
+    # Normalize therapist phone to E.164 if provided
+    phone = request.phone
+    if phone:
+        from app.utils.phone import normalize_phone
+        try:
+            phone = normalize_phone(phone)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
     try:
         therapist = await therapist_service.create_therapist(
             email=request.email,
             password=request.password,
             full_name=request.full_name,
-            phone=request.phone
+            phone=phone
         )
 
         # Create access token

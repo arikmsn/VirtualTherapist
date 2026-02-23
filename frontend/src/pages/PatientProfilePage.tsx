@@ -12,6 +12,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import MessagesCenter from '@/components/MessagesCenter'
+import PhoneInput from '@/components/PhoneInput'
 import {
   ArrowRightIcon,
   CalendarIcon,
@@ -790,12 +791,10 @@ export default function PatientProfilePage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">טלפון</label>
-                <input
-                  type="text"
+                <PhoneInput
                   value={editForm.phone}
-                  onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
-                  placeholder="050-1234567"
+                  onChange={(e164) => setEditForm((f) => ({ ...f, phone: e164 }))}
+                  className="w-full"
                 />
               </div>
               <div>

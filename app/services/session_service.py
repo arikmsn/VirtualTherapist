@@ -30,7 +30,7 @@ async def send_appointment_reminder(session_id: int) -> None:
     from app.core.database import SessionLocal
     from app.core.config import settings
     from app.models.therapist import Therapist
-    from app.services.channels import get_channel
+    from app.services.whatsapp_service import send_whatsapp_message
 
     db = SessionLocal()
     try:
@@ -65,10 +65,9 @@ async def send_appointment_reminder(session_id: int) -> None:
         session_date_str = session.session_date.strftime("%d/%m/%Y")
         session_time_str = session.start_time.strftime("%H:%M") if session.start_time else "לא צוינה"
 
-        channel = get_channel("whatsapp")
-        result = await channel.send(
-            to_phone=patient_phone,
-            body="",
+        result = await send_whatsapp_message(
+            patient_phone,
+            "",
             content_sid=APPOINTMENT_TEMPLATE_SID,
             content_variables={
                 "1": patient_name,

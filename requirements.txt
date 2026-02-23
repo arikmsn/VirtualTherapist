@@ -70,4 +70,5 @@ urllib3==2.6.3
 uvicorn==0.41.0
 watchfiles==1.1.1
 websockets==16.0
+whatsapp-api-client-python==0.0.51
 yarl==1.22.0

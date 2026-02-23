@@ -77,6 +77,13 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str | None = None
     TWILIO_WHATSAPP_NUMBER: str | None = None  # e.g. "whatsapp:+14155238886"
 
+    # WhatsApp provider routing
+    # "green_api" (default) — uses Green API (whatsapp-api-client-python)
+    # "twilio"              — uses Twilio WhatsApp Business API (requires TWILIO_* vars above)
+    WHATSAPP_PROVIDER: str = "green_api"
+    GREEN_API_INSTANCE_ID: str | None = None   # Green API instance ID
+    GREEN_API_TOKEN: str | None = None         # Green API access token
+
     # CORS
     # Comma-separated list of allowed frontend origins.
     # In production set to your Vercel URL, e.g. "https://app.vercel.app".
