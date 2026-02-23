@@ -168,6 +168,11 @@ export const messagesAPI = {
     return response.data
   },
 
+  deleteMessage: async (messageId: number) => {
+    const response = await api.delete(`/messages/${messageId}`)
+    return response.data
+  },
+
   // Message Control Center: all messages across all patients
   getAll: async (params?: {
     patient_id?: number
@@ -396,6 +401,7 @@ export const therapistAPI = {
     directiveness?: number
     prohibitions?: string[]
     custom_rules?: string | null
+    approach_description?: string | null
     education?: string | null
     certifications?: string | null
     years_of_experience?: string | null

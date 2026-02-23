@@ -386,6 +386,24 @@ async def cancel_message(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/{message_id}", status_code=200)
+async def delete_draft_message(
+    message_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """Delete a DRAFT message. Only DRAFT messages can be deleted."""
+    message_service = MessageService(db)
+    try:
+        await message_service.delete_message(message_id, current_therapist.id)
+        return {"message": "Message deleted"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"delete_draft_message msg={message_id} failed: {e!r}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.patch("/{message_id}", response_model=MessageResponse)
 async def edit_scheduled_message(
     message_id: int,

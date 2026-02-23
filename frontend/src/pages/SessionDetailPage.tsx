@@ -422,7 +422,7 @@ export default function SessionDetailPage() {
       {!showPrepPanel && (
         <button
           onClick={() => { setShowPrepPanel(true) }}
-          className="text-sm px-4 py-2 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors flex items-center gap-2"
+          className="btn-secondary flex items-center gap-2"
         >
           <LightBulbIcon className="h-4 w-4" />
           הכנה לפגישה
@@ -598,6 +598,13 @@ export default function SessionDetailPage() {
                     <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
                       <MicrophoneIcon className="h-4 w-4" />
                       תמליל מקורי
+                      <span className="text-xs font-normal text-blue-500 mr-1">
+                        {new Date(
+                          summary.created_at.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(summary.created_at)
+                            ? summary.created_at
+                            : summary.created_at + 'Z'
+                        ).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </span>
                     </h3>
                     <p className="text-blue-700 whitespace-pre-line text-sm leading-relaxed">
                       {summary.transcript}

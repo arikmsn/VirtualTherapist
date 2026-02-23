@@ -18,6 +18,7 @@ import {
   PlusIcon,
 } from '@heroicons/react/24/outline'
 import { messagesAPI, patientsAPI } from '@/lib/api'
+import { TrashIcon } from '@heroicons/react/24/outline'
 
 // --- Types ---
 
@@ -62,9 +63,17 @@ const TYPE_LABELS: Record<string, string> = {
   check_in: "צ'ק-אין",
 }
 
+// Parse ISO timestamp as UTC even when the backend omits the 'Z' suffix
+function parseUTC(iso: string): Date {
+  if (!iso.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(iso)) {
+    return new Date(iso + 'Z')
+  }
+  return new Date(iso)
+}
+
 function formatDt(iso: string | null): string {
   if (!iso) return '—'
-  return new Date(iso).toLocaleString('he-IL', {
+  return parseUTC(iso).toLocaleString('he-IL', {
     day: '2-digit',
     month: '2-digit',
     year: '2-digit',
@@ -143,11 +152,21 @@ export default function MessagesPage() {
     }
   }
 
+  const handleDelete = async (messageId: number) => {
+    if (!confirm('למחוק את הטיוטה?')) return
+    try {
+      await messagesAPI.deleteMessage(messageId)
+      await load()
+    } catch (err) {
+      console.error('Delete failed:', err)
+    }
+  }
+
   const sortedPatients = [...patients].sort((a, b) =>
     a.full_name.localeCompare(b.full_name, 'he')
   )
 
-  const allStatuses = Object.keys(STATUS_META)
+  const FILTER_STATUSES = ['draft', 'scheduled', 'sent', 'failed']
 
   return (
     <div className="space-y-6 animate-fade-in" dir="rtl">
@@ -201,7 +220,7 @@ export default function MessagesPage() {
               onChange={(e) => setFilterStatus(e.target.value)}
             >
               <option value="">הכל</option>
-              {allStatuses.map((s) => (
+              {FILTER_STATUSES.map((s) => (
                 <option key={s} value={s}>{STATUS_META[s].label}</option>
               ))}
             </select>
@@ -326,6 +345,26 @@ export default function MessagesPage() {
                     >
                       <XMarkIcon className="h-4 w-4" />
                       בטל תזמון
+                    </button>
+                  </div>
+                )}
+
+                {/* DRAFT controls */}
+                {msg.status === 'draft' && !isEditing && (
+                  <div className="flex items-center gap-4 pt-1 border-t border-gray-100">
+                    <button
+                      onClick={() => navigate(`/patients/${msg.patient_id}`, { state: { initialTab: 'inbetween' } })}
+                      className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      <PencilSquareIcon className="h-4 w-4" />
+                      ערוך
+                    </button>
+                    <button
+                      onClick={() => handleDelete(msg.id)}
+                      className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                      מחק טיוטה
                     </button>
                   </div>
                 )}

@@ -12,7 +12,6 @@
 import { useState, useEffect } from 'react'
 import {
   SparklesIcon,
-  ArrowPathIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
   PlusIcon,
@@ -45,15 +44,30 @@ interface TherapistProfile {
   areas_of_expertise: string | null
 }
 
-const APPROACH_LABELS: Record<string, string> = {
-  cbt: 'CBT — טיפול קוגניטיבי-התנהגותי',
-  psychodynamic: 'פסיכודינמי',
-  humanistic: 'הומניסטי',
-  integrative: 'אינטגרטיבי',
-  dbt: 'DBT — טיפול דיאלקטי-התנהגותי',
-  act: 'ACT — טיפול בקבלה ומחויבות',
-  psychodrama: 'פסיכודרמה',
-  other: 'אחר',
+const MODALITIES = [
+  { value: 'CBT', label: 'CBT — קוגניטיבי-התנהגותי' },
+  { value: 'DBT', label: 'DBT — דיאלקטי-התנהגותי' },
+  { value: 'ACT', label: 'ACT — קבלה ומחויבות' },
+  { value: 'EMDR', label: 'EMDR' },
+  { value: 'psychodynamic', label: 'פסיכודינמי' },
+  { value: 'humanistic', label: 'הומניסטי' },
+  { value: 'gestalt', label: 'גשטלט' },
+  { value: 'integrative', label: 'אינטגרטיבי' },
+  { value: 'psychodrama', label: 'פסיכודרמה' },
+  { value: 'other', label: 'אחר' },
+]
+
+const MODALITY_VALUES = MODALITIES.map((m) => m.value)
+
+function parseModalities(profile: TherapistProfile): string[] {
+  const result = new Set<string>()
+  if (profile.therapeutic_approach) result.add(profile.therapeutic_approach)
+  if (profile.approach_description) {
+    profile.approach_description.split(',').map((s) => s.trim()).forEach((v) => {
+      if (MODALITY_VALUES.includes(v)) result.add(v)
+    })
+  }
+  return [...result]
 }
 
 const WARMTH_LABELS: Record<number, string> = {
@@ -135,15 +149,18 @@ export default function TwinProfilePage() {
   const [customRules, setCustomRules] = useState('')
   const [newProhibition, setNewProhibition] = useState('')
 
+  // Therapeutic modalities (multi-select for approach_description)
+  const [selectedModalities, setSelectedModalities] = useState<string[]>([])
+  const [initModalities, setInitModalities] = useState<string[]>([])
+
   // Professional credentials
   const [education, setEducation] = useState('')
   const [certifications, setCertifications] = useState('')
   const [yearsOfExperience, setYearsOfExperience] = useState('')
   const [areasOfExpertise, setAreasOfExpertise] = useState('')
 
-  // Save / reset state
+  // Save state
   const [saving, setSaving] = useState(false)
-  const [resetting, setResetting] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [saveError, setSaveError] = useState('')
 
@@ -153,6 +170,7 @@ export default function TwinProfilePage() {
       directiveness !== profile.directiveness ||
       customRules !== (profile.custom_rules || '') ||
       JSON.stringify(prohibitions) !== JSON.stringify(profile.prohibitions || []) ||
+      JSON.stringify([...selectedModalities].sort()) !== JSON.stringify([...initModalities].sort()) ||
       education !== (profile.education || '') ||
       certifications !== (profile.certifications || '') ||
       yearsOfExperience !== (profile.years_of_experience || '') ||
@@ -168,6 +186,9 @@ export default function TwinProfilePage() {
         setDirectiveness(data.directiveness)
         setProhibitions(data.prohibitions || [])
         setCustomRules(data.custom_rules || '')
+        const mods = parseModalities(data)
+        setSelectedModalities(mods)
+        setInitModalities(mods)
         setEducation(data.education || '')
         setCertifications(data.certifications || '')
         setYearsOfExperience(data.years_of_experience || '')
@@ -191,38 +212,21 @@ export default function TwinProfilePage() {
         directiveness,
         prohibitions,
         custom_rules: customRules || null,
+        approach_description: selectedModalities.length > 0 ? selectedModalities.join(', ') : null,
         education: education || null,
         certifications: certifications || null,
         years_of_experience: yearsOfExperience || null,
         areas_of_expertise: areasOfExpertise || null,
       })
       setProfile(updated)
+      const mods = parseModalities(updated)
+      setInitModalities(mods)
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
     } catch (err: any) {
       setSaveError(err.response?.data?.detail || 'שגיאה בשמירה')
     } finally {
       setSaving(false)
-    }
-  }
-
-  const handleReset = async () => {
-    if (!confirm('לאפס את כל ההגדרות לברירת המחדל?')) return
-    setResetting(true)
-    setSaveError('')
-    try {
-      const updated = await therapistAPI.resetTwinControls()
-      setProfile(updated)
-      setToneWarmth(3)
-      setDirectiveness(3)
-      setProhibitions([])
-      setCustomRules('')
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3000)
-    } catch (err: any) {
-      setSaveError(err.response?.data?.detail || 'שגיאה באיפוס')
-    } finally {
-      setResetting(false)
     }
   }
 
@@ -280,71 +284,69 @@ export default function TwinProfilePage() {
         </div>
       </div>
 
-      {/* ── Section 1: Onboarding-collected style (read-only) ── */}
+      {/* ── Section 1: Therapeutic modalities (editable multi-select) ── */}
       <div className="card">
-        <h2 className="text-lg font-bold text-gray-800 mb-4">פרופיל בסיסי (מהאפיון)</h2>
-        <div className="space-y-3 text-sm">
-          <div className="flex gap-3">
-            <span className="text-gray-500 w-32 flex-shrink-0">גישה טיפולית:</span>
-            <span className="font-medium text-gray-800">
-              {APPROACH_LABELS[profile.therapeutic_approach] || profile.therapeutic_approach}
-            </span>
-          </div>
-
-          {profile.approach_description && (
-            <div className="flex gap-3">
-              <span className="text-gray-500 w-32 flex-shrink-0">תיאור גישה:</span>
-              <span className="text-gray-700">{profile.approach_description}</span>
-            </div>
-          )}
-
-          {profile.tone && (
-            <div className="flex gap-3">
-              <span className="text-gray-500 w-32 flex-shrink-0">סגנון תקשורת:</span>
-              <span className="text-gray-700">{profile.tone}</span>
-            </div>
-          )}
-
-          {profile.message_length_preference && (
-            <div className="flex gap-3">
-              <span className="text-gray-500 w-32 flex-shrink-0">אורך הודעות:</span>
-              <span className="text-gray-700">{profile.message_length_preference}</span>
-            </div>
-          )}
-
-          {profile.follow_up_frequency && (
-            <div className="flex gap-3">
-              <span className="text-gray-500 w-32 flex-shrink-0">תדירות מעקב:</span>
-              <span className="text-gray-700">{profile.follow_up_frequency}</span>
-            </div>
-          )}
-
-          {profile.common_terminology && profile.common_terminology.length > 0 && (
-            <div className="flex gap-3">
-              <span className="text-gray-500 w-32 flex-shrink-0">מושגים:</span>
-              <div className="flex flex-wrap gap-1">
-                {profile.common_terminology.map((t, i) => (
-                  <span key={i} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">
-                    {t}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {profile.preferred_exercises && profile.preferred_exercises.length > 0 && (
-            <div className="flex gap-3">
-              <span className="text-gray-500 w-32 flex-shrink-0">תרגילים מועדפים:</span>
-              <div className="flex flex-wrap gap-1">
-                {profile.preferred_exercises.map((e, i) => (
-                  <span key={i} className="px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-xs">
-                    {e}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+        <h2 className="text-lg font-bold text-gray-800 mb-1">גישות טיפוליות</h2>
+        <p className="text-sm text-gray-500 mb-4">בחר את כל השיטות הטיפוליות בהן אתה עובד</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {MODALITIES.map((m) => {
+            const checked = selectedModalities.includes(m.value)
+            return (
+              <label
+                key={m.value}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors text-sm ${
+                  checked
+                    ? 'border-therapy-calm bg-blue-50 text-therapy-calm font-medium'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => {
+                    setSelectedModalities((prev) =>
+                      prev.includes(m.value)
+                        ? prev.filter((v) => v !== m.value)
+                        : [...prev, m.value]
+                    )
+                  }}
+                  className="accent-therapy-calm"
+                />
+                {m.label}
+              </label>
+            )
+          })}
         </div>
+
+        {/* Other onboarding-collected fields — read-only */}
+        {(profile.tone || profile.message_length_preference || profile.follow_up_frequency ||
+          (profile.common_terminology && profile.common_terminology.length > 0) ||
+          (profile.preferred_exercises && profile.preferred_exercises.length > 0)) && (
+          <div className="mt-4 pt-4 border-t border-gray-100 space-y-2 text-sm">
+            {profile.tone && (
+              <div className="flex gap-3">
+                <span className="text-gray-500 w-32 flex-shrink-0">סגנון:</span>
+                <span className="text-gray-700">{profile.tone}</span>
+              </div>
+            )}
+            {profile.message_length_preference && (
+              <div className="flex gap-3">
+                <span className="text-gray-500 w-32 flex-shrink-0">אורך הודעות:</span>
+                <span className="text-gray-700">{profile.message_length_preference}</span>
+              </div>
+            )}
+            {profile.common_terminology && profile.common_terminology.length > 0 && (
+              <div className="flex gap-3">
+                <span className="text-gray-500 w-32 flex-shrink-0">מושגים:</span>
+                <div className="flex flex-wrap gap-1">
+                  {profile.common_terminology.map((t, i) => (
+                    <span key={i} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Section 2: Twin Controls (editable) ── */}
@@ -380,7 +382,7 @@ export default function TwinProfilePage() {
       {/* ── Section 3: Prohibitions ── */}
       <div className="card space-y-4">
         <div>
-          <h2 className="text-lg font-bold text-gray-800">מגבלות — מה ה-AI לא יגיד</h2>
+          <h2 className="text-lg font-bold text-gray-800">מגבלות — מה אסור ל-AI להגיד</h2>
           <p className="text-sm text-gray-500 mt-0.5">
             הוסף כללים ברורים שה-AI צריך להימנע מהם בכל מקרה
           </p>
@@ -435,7 +437,7 @@ export default function TwinProfilePage() {
         <div>
           <h2 className="text-lg font-bold text-gray-800">כללים מותאמים אישית</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            הוראות נוספות לה-AI בשפה חופשית — יסגנון, גישה, דרך טיפול בנושאים ספציפיים
+            הוראות בשפה חופשית לבינה מלאכותית, סגנון, גישה, ודרך טיפול מועדפת בנושאים ספציפיים.
           </p>
         </div>
         <textarea
@@ -531,15 +533,6 @@ export default function TwinProfilePage() {
             </div>
 
             <div className="flex items-center gap-3 flex-shrink-0">
-              <button
-                onClick={handleReset}
-                disabled={resetting || saving}
-                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-              >
-                <ArrowPathIcon className={`h-4 w-4 ${resetting ? 'animate-spin' : ''}`} />
-                {resetting ? 'מאפס...' : 'אפס לברירת מחדל'}
-              </button>
-
               <button
                 onClick={handleSave}
                 disabled={!isDirty || saving}

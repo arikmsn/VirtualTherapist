@@ -24,6 +24,7 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   PlusIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline'
 import { messagesAPI } from '@/lib/api'
 import PhoneInput from '@/components/PhoneInput'
@@ -73,9 +74,17 @@ const TYPE_LABELS: Record<string, string> = {
   session: 'תזכורת',
 }
 
+// Parse ISO timestamp as UTC even when the backend omits the 'Z' suffix
+function parseUTC(iso: string): Date {
+  if (!iso.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(iso)) {
+    return new Date(iso + 'Z')
+  }
+  return new Date(iso)
+}
+
 function formatDatetime(iso: string | null): string {
   if (!iso) return ''
-  return new Date(iso).toLocaleString('he-IL', {
+  return parseUTC(iso).toLocaleString('he-IL', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -125,6 +134,12 @@ export default function MessagesCenter({
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editContent, setEditContent] = useState('')
   const [editSaving, setEditSaving] = useState(false)
+
+  // Draft saved notice (shown when closing composer with an unsent draft)
+  const [draftSavedNotice, setDraftSavedNotice] = useState(false)
+
+  // Deleting a draft
+  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
@@ -239,6 +254,43 @@ export default function MessagesCenter({
     }
   }
 
+  const handleCloseComposer = () => {
+    if (draftId) {
+      // Draft was already saved in DB by generateDraft — notify user before closing
+      setDraftSavedNotice(true)
+      setTimeout(() => {
+        setDraftSavedNotice(false)
+        resetComposer()
+        loadHistory()
+      }, 1800)
+    } else {
+      resetComposer()
+    }
+  }
+
+  const handleDeleteDraft = async (messageId: number) => {
+    if (!confirm('למחוק את הטיוטה?')) return
+    setDeletingId(messageId)
+    try {
+      await messagesAPI.deleteMessage(messageId)
+      await loadHistory()
+    } catch (err) {
+      console.error('Delete draft failed:', err)
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const handleEditDraft = (msg: Message) => {
+    // Reopen composer pre-loaded with this draft
+    setComposerOpen(true)
+    setDraftId(msg.id)
+    setContent(msg.content || '')
+    if (msg.message_type === 'task_reminder' || msg.message_type === 'session_reminder') {
+      setMessageType(msg.message_type)
+    }
+  }
+
   const todayInputMin = (() => {
     const now = new Date()
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
@@ -278,12 +330,19 @@ export default function MessagesCenter({
         <div className="card border-blue-200 bg-blue-50 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-blue-900">יצירת הודעה חדשה</h3>
-            <button
-              onClick={resetComposer}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <XMarkIcon className="h-5 w-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              {draftSavedNotice && (
+                <span className="text-xs text-green-700 bg-green-50 px-2 py-1 rounded-lg">
+                  הטיוטה נשמרה
+                </span>
+              )}
+              <button
+                onClick={handleCloseComposer}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
           {/* Message type selector */}
@@ -488,7 +547,7 @@ export default function MessagesCenter({
                   תזמן לשעה אחרת
                 </button>
                 <button
-                  onClick={resetComposer}
+                  onClick={handleCloseComposer}
                   className="btn-secondary min-h-[44px] sm:min-h-0 touch-manipulation"
                 >
                   ביטול
@@ -621,11 +680,7 @@ export default function MessagesCenter({
                   </div>
 
                   {/* Content */}
-                  {msg.message_type === 'session_reminder' ? (
-                    <p className="text-sm text-blue-600 italic flex items-center gap-1">
-                      <span>📋</span> תזכורת פגישה — נשלחה דרך תבנית WhatsApp
-                    </p>
-                  ) : isEditing ? (
+                  {isEditing ? (
                     <div className="space-y-2">
                       <textarea
                         value={editContent}
@@ -651,7 +706,30 @@ export default function MessagesCenter({
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-700 whitespace-pre-line">{msg.content}</p>
+                    <p className="text-sm text-gray-700 whitespace-pre-line">
+                      {msg.content || (msg.message_type === 'session_reminder' ? '📋 תזכורת פגישה — תבנית WhatsApp' : '')}
+                    </p>
+                  )}
+
+                  {/* DRAFT actions — edit (reopen composer) + delete */}
+                  {msg.status === 'draft' && !isEditing && (
+                    <div className="flex items-center gap-3 pt-1 border-t border-gray-100">
+                      <button
+                        onClick={() => handleEditDraft(msg)}
+                        className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+                      >
+                        <PencilSquareIcon className="h-4 w-4" />
+                        ערוך
+                      </button>
+                      <button
+                        onClick={() => handleDeleteDraft(msg.id)}
+                        disabled={deletingId === msg.id}
+                        className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 disabled:opacity-50"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                        {deletingId === msg.id ? 'מוחק...' : 'מחק'}
+                      </button>
+                    </div>
                   )}
 
                   {/* Scheduled actions — edit hidden for session_reminder (template content is locked) */}

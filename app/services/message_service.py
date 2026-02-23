@@ -336,9 +336,18 @@ class MessageService:
         therapist_phone = therapist.phone or "" if therapist else ""
 
         if message_type == "session_reminder":
-            # Template-only — no free-text stored or sent.
-            # deliver_message() uses the approved WhatsApp Content Template exclusively.
-            content = ""
+            # Template-only — deliver_message() uses the approved WhatsApp Content Template.
+            # Store a human-readable preview in content so history shows something useful.
+            session_date = (context or {}).get("session_date", "")
+            session_time_val = (context or {}).get("session_time", "")
+            parts = ["תזכורת לפגישה"]
+            if session_date:
+                parts.append(f"בתאריך {session_date}")
+            if session_time_val:
+                parts.append(f"בשעה {session_time_val}")
+            if therapist_name:
+                parts.append(f"עם {therapist_name}")
+            content = " ".join(parts)
             ai_prompt = None
 
         elif message_type == "task_reminder":
@@ -540,6 +549,19 @@ class MessageService:
         self.db.commit()
         self.db.refresh(message)
         return message
+
+    async def delete_message(self, message_id: int, therapist_id: int) -> None:
+        """Delete a DRAFT message. Only DRAFT status can be deleted."""
+        message = self.db.query(Message).filter(
+            Message.id == message_id,
+            Message.therapist_id == therapist_id,
+        ).first()
+        if not message:
+            raise ValueError("Message not found")
+        if message.status != MessageStatus.DRAFT:
+            raise ValueError(f"Can only delete DRAFT messages (current status: {message.status})")
+        self.db.delete(message)
+        self.db.commit()
 
     async def deliver_due_messages(self) -> int:
         """

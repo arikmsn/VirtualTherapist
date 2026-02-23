@@ -51,6 +51,8 @@ class UpdateTwinControlsRequest(BaseModel):
     directiveness: Optional[int] = Field(default=None, ge=1, le=5)
     prohibitions: Optional[List[str]] = None
     custom_rules: Optional[str] = None
+    # Therapeutic modalities (stored as comma-separated values in approach_description)
+    approach_description: Optional[str] = None
     # Professional credentials
     education: Optional[str] = None
     certifications: Optional[str] = None
