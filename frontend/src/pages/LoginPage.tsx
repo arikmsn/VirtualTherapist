@@ -18,7 +18,7 @@ export default function LoginPage() {
 
     try {
       const data = await authAPI.login(email, password)
-      login(data.access_token, { id: 1, email, fullName: 'User' })
+      login(data.access_token, { id: data.therapist_id, email: data.email, fullName: data.full_name })
       navigate('/dashboard')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'שגיאה בהתחברות')

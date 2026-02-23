@@ -17,6 +17,9 @@ router = APIRouter()
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str
+    therapist_id: int
+    full_name: str
+    email: str
 
 
 class RegisterRequest(BaseModel):
@@ -60,7 +63,10 @@ async def register(
 
         return {
             "access_token": access_token,
-            "token_type": "bearer"
+            "token_type": "bearer",
+            "therapist_id": therapist.id,
+            "full_name": therapist.full_name,
+            "email": therapist.email,
         }
 
     except ValueError as e:
@@ -105,5 +111,8 @@ async def login(
 
     return {
         "access_token": access_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "therapist_id": therapist.id,
+        "full_name": therapist.full_name,
+        "email": therapist.email,
     }
