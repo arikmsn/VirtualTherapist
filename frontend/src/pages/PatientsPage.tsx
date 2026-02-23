@@ -1,6 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PlusIcon, MagnifyingGlassIcon, XMarkIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
+import {
+  PlusIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  ChevronLeftIcon,
+  DocumentTextIcon,
+  ChatBubbleLeftRightIcon,
+} from '@heroicons/react/24/outline'
 import { patientsAPI, sessionsAPI } from '@/lib/api'
 import PhoneInput from '@/components/PhoneInput'
 
@@ -123,16 +132,16 @@ export default function PatientsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in" dir="rtl">
+    <div className="space-y-3 md:space-y-6 animate-fade-in" dir="rtl">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">מטופלים</h1>
-          <p className="text-gray-600 mt-2">נהל את כל המטופלים שלך במקום אחד</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">מטופלים</h1>
+          <p className="hidden sm:block text-gray-600 mt-2">נהל את כל המטופלים שלך במקום אחד</p>
         </div>
         <button
           onClick={() => setShowCreateForm(true)}
-          className="btn-primary flex items-center gap-2"
+          className="btn-primary flex items-center gap-2 flex-shrink-0 min-h-[44px] touch-manipulation"
         >
           <PlusIcon className="h-5 w-5" />
           מטופל חדש
@@ -172,19 +181,27 @@ export default function PatientsPage() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="card bg-blue-50 border border-blue-200">
-          <div className="text-3xl font-bold text-blue-900">{activeCount}</div>
-          <div className="text-sm text-blue-700 mt-1">מטופלים פעילים</div>
+      {/* Stats — slim 3-col strip on mobile, spacious cards on md+ */}
+      <div className="grid grid-cols-3 gap-2 md:gap-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl flex flex-col items-center md:items-start py-2 px-2 md:py-5 md:px-6">
+          <div className="text-2xl md:text-3xl font-bold text-blue-900 leading-none">{activeCount}</div>
+          <div className="text-[11px] md:text-sm text-blue-700 mt-1 text-center md:text-start leading-tight">
+            <span>פעילים</span>
+          </div>
         </div>
-        <div className="card bg-green-50 border border-green-200">
-          <div className="text-3xl font-bold text-green-900">{sessionsThisWeek}</div>
-          <div className="text-sm text-green-700 mt-1">פגישות השבוע</div>
+        <div className="bg-green-50 border border-green-200 rounded-xl flex flex-col items-center md:items-start py-2 px-2 md:py-5 md:px-6">
+          <div className="text-2xl md:text-3xl font-bold text-green-900 leading-none">{sessionsThisWeek}</div>
+          <div className="text-[11px] md:text-sm text-green-700 mt-1 text-center md:text-start leading-tight">
+            <span className="md:hidden">פגישות<br/>השבוע</span>
+            <span className="hidden md:inline">פגישות השבוע</span>
+          </div>
         </div>
-        <div className="card bg-purple-50 border border-purple-200">
-          <div className="text-3xl font-bold text-purple-900">{completedExercisesCount}</div>
-          <div className="text-sm text-purple-700 mt-1">תרגילים שהושלמו</div>
+        <div className="bg-purple-50 border border-purple-200 rounded-xl flex flex-col items-center md:items-start py-2 px-2 md:py-5 md:px-6">
+          <div className="text-2xl md:text-3xl font-bold text-purple-900 leading-none">{completedExercisesCount}</div>
+          <div className="text-[11px] md:text-sm text-purple-700 mt-1 text-center md:text-start leading-tight">
+            <span className="md:hidden">תרגילים</span>
+            <span className="hidden md:inline">תרגילים שהושלמו</span>
+          </div>
         </div>
       </div>
 
@@ -208,21 +225,21 @@ export default function PatientsPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-4">
           {filteredPatients.map((patient) => (
             <div
               key={patient.id}
-              className="card hover:shadow-xl transition-all cursor-pointer"
+              className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md active:bg-gray-50 transition-all cursor-pointer px-4 py-3 md:p-6"
               onClick={() => navigate(`/patients/${patient.id}`)}
             >
-              {/* Patient Header */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 bg-therapy-calm text-white rounded-full flex items-center justify-center font-bold text-lg">
+              {/* Patient Header — always visible */}
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 md:w-12 md:h-12 bg-therapy-calm text-white rounded-full flex items-center justify-center font-bold md:text-lg flex-shrink-0">
                   {patient.full_name.charAt(0)}
                 </div>
-                <div className="flex-1">
-                  <div className="font-bold text-lg">{patient.full_name}</div>
-                  <div className={`badge text-xs ${
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-base md:text-lg leading-tight truncate">{patient.full_name}</div>
+                  <div className={`badge text-xs mt-0.5 ${
                     patient.status === 'active' ? 'badge-approved' : 'badge-draft'
                   }`}>
                     {patient.status === 'active' ? 'פעיל' :
@@ -230,10 +247,35 @@ export default function PatientsPage() {
                      patient.status === 'completed' ? 'הושלם' : 'לא פעיל'}
                   </div>
                 </div>
+
+                {/* Mobile: icon action buttons + chevron navigation hint */}
+                <div className="md:hidden flex items-center gap-0.5 flex-shrink-0">
+                  <button
+                    className="p-2 text-gray-400 hover:text-therapy-calm hover:bg-blue-50 rounded-lg touch-manipulation"
+                    title="סיכומים"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      navigate(`/patients/${patient.id}`, { state: { initialTab: 'summaries' } })
+                    }}
+                  >
+                    <DocumentTextIcon className="h-5 w-5" />
+                  </button>
+                  <button
+                    className="p-2 text-gray-400 hover:text-therapy-calm hover:bg-blue-50 rounded-lg touch-manipulation"
+                    title="שלח הודעה"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      navigate(`/patients/${patient.id}`, { state: { initialTab: 'inbetween' } })
+                    }}
+                  >
+                    <ChatBubbleLeftRightIcon className="h-5 w-5" />
+                  </button>
+                  <ChevronLeftIcon className="h-4 w-4 text-gray-300 mr-1" />
+                </div>
               </div>
 
-              {/* Patient Stats */}
-              <div className="space-y-2 text-sm">
+              {/* Patient Stats — desktop only */}
+              <div className="hidden md:block mt-4 space-y-2 text-sm">
                 {patient.phone && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">טלפון:</span>
@@ -252,8 +294,8 @@ export default function PatientsPage() {
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-2 gap-2">
+              {/* Actions — desktop only, full text buttons */}
+              <div className="hidden md:grid mt-4 pt-4 border-t border-gray-200 grid-cols-2 gap-2">
                 <button
                   className="text-sm btn-secondary py-2"
                   onClick={(e) => {
@@ -280,16 +322,19 @@ export default function PatientsPage() {
 
       {/* Create Patient Modal */}
       {showCreateForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" dir="rtl">
-          <div className="bg-white rounded-xl p-8 max-w-lg w-full mx-4 animate-fade-in">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold">מטופל חדש</h2>
-              <button onClick={() => setShowCreateForm(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] overflow-x-hidden">
+
+            {/* Sticky header */}
+            <div className="flex items-center justify-between px-3 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-xl font-bold">מטופל חדש</h2>
+              <button onClick={() => setShowCreateForm(false)} className="touch-manipulation p-1">
                 <XMarkIcon className="h-6 w-6 text-gray-500 hover:text-gray-700" />
               </button>
             </div>
 
-            <div className="space-y-4">
+            {/* Scrollable body */}
+            <div className="overflow-y-auto flex-1 px-3 sm:px-6 py-4 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">שם מלא *</label>
                 <input
@@ -329,17 +374,18 @@ export default function PatientsPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            {/* Sticky footer */}
+            <div className="flex gap-3 px-3 sm:px-6 py-4 border-t border-gray-100 flex-shrink-0">
               <button
                 onClick={handleCreatePatient}
                 disabled={!newPatient.full_name.trim() || creating}
-                className="btn-primary flex-1 disabled:opacity-50"
+                className="btn-primary flex-1 disabled:opacity-50 min-h-[44px] touch-manipulation"
               >
                 {creating ? 'יוצר...' : 'צור מטופל'}
               </button>
               <button
                 onClick={() => setShowCreateForm(false)}
-                className="btn-secondary flex-1"
+                className="btn-secondary flex-1 min-h-[44px] touch-manipulation"
               >
                 ביטול
               </button>
