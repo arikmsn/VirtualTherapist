@@ -38,6 +38,9 @@ export default function Layout() {
     navigate('/login')
   }
 
+  // Show full name when available, fall back to email; hide block if neither exists
+  const displayName = user?.fullName?.trim() || user?.email || null
+
   const navigation = [
     { name: 'ראשי', href: '/dashboard', icon: HomeIcon },
     { name: 'הודעות', href: '/messages', icon: ChatBubbleLeftRightIcon },
@@ -94,11 +97,15 @@ export default function Layout() {
 
             {/* User menu */}
             <div className="flex items-center gap-2 sm:gap-4">
-              {/* User name + email — hidden on mobile */}
-              <div className="hidden sm:block text-sm text-gray-700">
-                <div className="font-medium">{user?.fullName}</div>
-                <div className="text-xs text-gray-500">{user?.email}</div>
-              </div>
+              {/* Therapist identity — hidden on mobile */}
+              {displayName && (
+                <div className="hidden sm:block text-sm text-gray-700">
+                  <div className="font-medium">{displayName}</div>
+                  {user?.fullName?.trim() && user?.email && (
+                    <div className="text-xs text-gray-500">{user.email}</div>
+                  )}
+                </div>
+              )}
 
               {/* Logout — icon-only on mobile, full label on desktop */}
               <button
@@ -135,12 +142,16 @@ export default function Layout() {
               )
             })}
 
-            {/* User info + logout inside drawer */}
+            {/* Therapist identity + logout inside drawer */}
             <div className="pt-3 mt-2 border-t border-gray-100">
-              <div className="text-sm text-gray-700 px-3 mb-2">
-                <div className="font-medium">{user?.fullName}</div>
-                <div className="text-xs text-gray-500">{user?.email}</div>
-              </div>
+              {displayName && (
+                <div className="text-sm text-gray-700 px-3 mb-2">
+                  <div className="font-medium">{displayName}</div>
+                  {user?.fullName?.trim() && user?.email && (
+                    <div className="text-xs text-gray-500">{user.email}</div>
+                  )}
+                </div>
+              )}
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-red-600 hover:bg-red-50 w-full min-h-[44px] touch-manipulation"
