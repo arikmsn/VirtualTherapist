@@ -30,7 +30,7 @@ import {
   TrashIcon,
   BookOpenIcon,
 } from '@heroicons/react/24/outline'
-import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI, agentAPI } from '@/lib/api'
+import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI } from '@/lib/api'
 
 const SESSION_TYPES = [
   { value: 'individual', label: 'פרטני' },
@@ -120,11 +120,10 @@ export default function PatientProfilePage() {
 
   // Notebook state
   const [notebookText, setNotebookText] = useState('')
-  const [notebookAiResponse, setNotebookAiResponse] = useState<string | null>(null)
-  const [notebookAiLoading, setNotebookAiLoading] = useState(false)
   const [notebookSaving, setNotebookSaving] = useState(false)
   const [notes, setNotes] = useState<NoteItem[]>([])
   const [notesLoading, setNotesLoading] = useState(false)
+  const [viewingNote, setViewingNote] = useState<NoteItem | null>(null)
 
   // AI toggle saving state
   const [toggleAiSaving, setToggleAiSaving] = useState(false)
@@ -273,23 +272,6 @@ export default function PatientProfilePage() {
     }
   }
 
-  const handleAiAssist = async () => {
-    if (!notebookText.trim() || !patient) return
-    setNotebookAiLoading(true)
-    setNotebookAiResponse(null)
-    try {
-      const result = await agentAPI.chat(
-        `עזור לי לחשוב על הנושאים הבאים לגבי המטופל ${patient.full_name}:\n\n${notebookText}`,
-        { patient_name: patient.full_name, context_type: 'therapist_notebook' }
-      )
-      setNotebookAiResponse(result.response)
-    } catch (err) {
-      console.error('AI assist error:', err)
-    } finally {
-      setNotebookAiLoading(false)
-    }
-  }
-
   const handleSaveNote = async () => {
     if (!notebookText.trim()) return
     setNotebookSaving(true)
@@ -297,7 +279,6 @@ export default function PatientProfilePage() {
       const newNote = await patientNotesAPI.create(pid, notebookText)
       setNotes((prev) => [newNote, ...prev])
       setNotebookText('')
-      setNotebookAiResponse(null)
     } catch (err) {
       console.error('Save note error:', err)
     } finally {
@@ -610,39 +591,20 @@ export default function PatientProfilePage() {
           onChange={(e) => setNotebookText(e.target.value)}
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm resize-none"
           rows={3}
+          maxLength={1000}
           placeholder="רשום מחשבות, השערות, רעיונות על המטופל..."
         />
+        <p className="text-right text-xs text-gray-400 -mt-1">{notebookText.length}/1000</p>
 
-        <div className="flex gap-2 mt-2">
-          <button
-            onClick={handleAiAssist}
-            disabled={!notebookText.trim() || notebookAiLoading}
-            className="btn-secondary text-sm flex items-center gap-1.5 flex-1 disabled:opacity-50"
-          >
-            {notebookAiLoading ? (
-              <><span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-therapy-calm inline-block"></span>מעבד...</>
-            ) : (
-              <><SparklesIcon className="h-4 w-4" />עזור לי</>
-            )}
-          </button>
+        <div className="flex gap-2 mt-2 justify-end">
           <button
             onClick={handleSaveNote}
             disabled={!notebookText.trim() || notebookSaving}
-            className="btn-primary text-sm flex items-center gap-1.5 flex-1 disabled:opacity-50"
+            className="btn-primary text-sm disabled:opacity-50"
           >
             {notebookSaving ? 'שומר...' : 'שמור'}
           </button>
         </div>
-
-        {notebookAiResponse && (
-          <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-3">
-            <div className="flex items-center gap-1.5 mb-2">
-              <SparklesIcon className="h-4 w-4 text-purple-600" />
-              <span className="text-xs font-medium text-purple-700">AI הצעות</span>
-            </div>
-            <p className="text-sm text-gray-700 whitespace-pre-line">{notebookAiResponse}</p>
-          </div>
-        )}
 
         {notesLoading ? (
           <div className="flex items-center justify-center py-4 mt-2">
@@ -653,7 +615,11 @@ export default function PatientProfilePage() {
             <h3 className="text-xs font-medium text-gray-500">פתקים שמורים</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {notes.map((note) => (
-                <div key={note.id} className="bg-gray-50 rounded-lg p-3">
+                <div
+                  key={note.id}
+                  className="bg-gray-50 rounded-lg p-3 cursor-pointer hover:bg-gray-100 transition-colors"
+                  onClick={() => setViewingNote(note)}
+                >
                   <p className="text-sm text-gray-700 whitespace-pre-line line-clamp-3">{note.content}</p>
                   <div className="flex items-center justify-between mt-1.5">
                     <span className="text-xs text-gray-400">
@@ -662,7 +628,7 @@ export default function PatientProfilePage() {
                       })}
                     </span>
                     <button
-                      onClick={() => handleDeleteNote(note.id)}
+                      onClick={(e) => { e.stopPropagation(); handleDeleteNote(note.id) }}
                       className="text-gray-300 hover:text-red-400 transition-colors touch-manipulation"
                       title="מחק פתק"
                     >
@@ -978,6 +944,48 @@ export default function PatientProfilePage() {
           >
             סמן כלא פעיל
           </button>
+        </div>
+      )}
+
+      {/* ── View Note Modal ── */}
+      {viewingNote && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-lg font-bold text-gray-900">פתק</h2>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-400">
+                  {new Date(viewingNote.created_at).toLocaleDateString('he-IL', {
+                    day: 'numeric', month: 'long', year: 'numeric',
+                  })}
+                </span>
+                <button
+                  onClick={() => setViewingNote(null)}
+                  className="text-gray-400 hover:text-gray-600 p-1 touch-manipulation"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1 px-5 py-4">
+              <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{viewingNote.content}</p>
+            </div>
+            <div className="flex gap-3 px-5 py-4 border-t border-gray-100 flex-shrink-0">
+              <button
+                onClick={() => { handleDeleteNote(viewingNote.id); setViewingNote(null) }}
+                className="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 rounded-lg px-3 py-2 transition-colors"
+              >
+                <TrashIcon className="h-4 w-4" />
+                מחק
+              </button>
+              <button
+                onClick={() => setViewingNote(null)}
+                className="btn-secondary flex-1 min-h-[40px] touch-manipulation"
+              >
+                סגור
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowRightIcon,
@@ -625,7 +625,9 @@ export default function SessionDetailPage() {
                     value={editFullSummary}
                     onChange={(e) => setEditFullSummary(e.target.value)}
                     className="input-field h-32 resize-none"
+                    maxLength={3000}
                   />
+                  <p className="text-right text-xs text-gray-400 mt-1">{editFullSummary.length}/3000</p>
                 </div>
               ) : (
                 summary.full_summary && (
@@ -976,24 +978,63 @@ function ExerciseTracker({
         </div>
       )}
 
-      {/* Custom exercise input */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={newDesc}
-          onChange={(e) => setNewDesc(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }}
-          placeholder="הוסף משימה מותאמת..."
-          className="input-field flex-1 text-sm py-1.5"
+      {/* Custom exercise input — auto-expanding textarea */}
+      <AutoExpandTextarea
+        value={newDesc}
+        onChange={setNewDesc}
+        onSubmit={addCustom}
+        disabled={addingCustom}
+      />
+    </div>
+  )
+}
+
+// Auto-expanding textarea for task description input
+function AutoExpandTextarea({
+  value,
+  onChange,
+  onSubmit,
+  disabled,
+}: {
+  value: string
+  onChange: (v: string) => void
+  onSubmit: () => void
+  disabled: boolean
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const MAX = 200
+
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [value])
+
+  return (
+    <div className="space-y-1">
+      <div className="flex gap-2 items-end">
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value.slice(0, MAX))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit() }
+          }}
+          placeholder="הוסף משימה מותאמת... (Enter לשמירה, Shift+Enter לשורה חדשה)"
+          rows={2}
+          className="input-field flex-1 text-sm py-1.5 resize-none overflow-hidden min-h-[36px]"
+          style={{ height: 'auto' }}
         />
         <button
-          onClick={addCustom}
-          disabled={!newDesc.trim() || addingCustom}
-          className="btn-secondary text-sm py-1.5 px-3 disabled:opacity-50"
+          onClick={onSubmit}
+          disabled={!value.trim() || disabled}
+          className="btn-secondary text-sm py-1.5 px-3 disabled:opacity-50 flex-shrink-0"
         >
-          {addingCustom ? '...' : 'הוסף'}
+          {disabled ? '...' : 'הוסף'}
         </button>
       </div>
+      <p className="text-right text-xs text-gray-400">{value.length}/{MAX}</p>
     </div>
   )
 }

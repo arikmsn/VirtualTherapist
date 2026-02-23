@@ -171,6 +171,7 @@ export default function OnboardingPage() {
                 <option value="DBT">DBT - טיפול דיאלקטי התנהגותי</option>
                 <option value="ACT">ACT - טיפול קבלה ומחויבות</option>
                 <option value="integrative">אינטגרטיבית</option>
+                <option value="psychodrama">פסיכודרמה</option>
               </select>
             </div>
             <div>

@@ -250,16 +250,21 @@ export default function MessagesCenter({
 
   return (
     <div className="space-y-5">
-      {/* Open composer button */}
-      {!composerOpen && (
-        <button
-          onClick={() => setComposerOpen(true)}
-          className="btn-primary flex items-center gap-2 min-h-[44px] touch-manipulation"
-        >
-          <PlusIcon className="h-5 w-5" />
-          הודעה חדשה
-        </button>
-      )}
+      {/* Header row: message count (right in RTL) + new message button (left in RTL) */}
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-gray-500">
+          {messages.length > 0 ? `סה"כ הודעות: ${messages.length}` : ''}
+        </span>
+        {!composerOpen && (
+          <button
+            onClick={() => setComposerOpen(true)}
+            className="btn-primary flex items-center gap-2 min-h-[44px] touch-manipulation"
+          >
+            <PlusIcon className="h-5 w-5" />
+            הודעה חדשה
+          </button>
+        )}
+      </div>
 
       {/* ── Composer ── */}
       {composerOpen && (

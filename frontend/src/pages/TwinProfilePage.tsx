@@ -52,6 +52,7 @@ const APPROACH_LABELS: Record<string, string> = {
   integrative: 'אינטגרטיבי',
   dbt: 'DBT — טיפול דיאלקטי-התנהגותי',
   act: 'ACT — טיפול בקבלה ומחויבות',
+  psychodrama: 'פסיכודרמה',
   other: 'אחר',
 }
 

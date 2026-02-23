@@ -11,6 +11,7 @@ import {
   CalendarDaysIcon,
 } from '@heroicons/react/24/outline'
 import { patientsAPI, sessionsAPI, messagesAPI } from '@/lib/api'
+import { useAuth } from '@/auth/useAuth'
 
 interface Patient {
   id: number
@@ -84,8 +85,18 @@ interface SimpleSession {
   summary_id?: number
 }
 
+function getGreeting(name: string | null): string {
+  const hour = new Date().getHours()
+  const firstName = name?.split(' ')[0] || ''
+  const suffix = firstName ? `, ${firstName}` : ''
+  if (hour >= 5 && hour < 12) return `בוקר טוב${suffix}`
+  if (hour >= 12 && hour < 18) return `צהריים טובים${suffix}`
+  return `ערב טוב${suffix}`
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [showMessagePickerModal, setShowMessagePickerModal] = useState(false)
   const [showSummaryModal, setShowSummaryModal] = useState(false)
   const [allSessions, setAllSessions] = useState<SimpleSession[]>([])
@@ -168,7 +179,9 @@ export default function DashboardPage() {
     <div className="space-y-5 sm:space-y-8 animate-fade-in">
       {/* Welcome Header */}
       <div className="card bg-gradient-to-l from-therapy-calm to-therapy-gentle text-white">
-        <h1 className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2">לוח הפגישות להיום</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2">
+          {getGreeting(user?.fullName || null)} 👋
+        </h1>
         <p className="text-indigo-100 text-base sm:text-lg">
           ניהול מטופלים, סיכומים והודעות במקום אחד
         </p>

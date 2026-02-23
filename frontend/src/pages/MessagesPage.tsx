@@ -15,6 +15,7 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   ArrowPathIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline'
 import { messagesAPI, patientsAPI } from '@/lib/api'
 
@@ -80,6 +81,7 @@ export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
+  const [showPatientPicker, setShowPatientPicker] = useState(false)
 
   // Filters
   const [filterPatient, setFilterPatient] = useState('')
@@ -154,16 +156,25 @@ export default function MessagesPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">מרכז הודעות</h1>
           <p className="text-gray-600 mt-1 text-sm">
-            ניטור וניהול כל ההודעות לכל המטופלים. יצירת הודעות חדשות — דרך פרופיל המטופל.
+            ניטור וניהול כל ההודעות לכל המטופלים.
           </p>
         </div>
-        <button
-          onClick={load}
-          className="btn-secondary flex items-center gap-2 text-sm"
-        >
-          <ArrowPathIcon className="h-4 w-4" />
-          רענן
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPatientPicker(true)}
+            className="btn-primary flex items-center gap-2 text-sm min-h-[40px] touch-manipulation"
+          >
+            <PlusIcon className="h-4 w-4" />
+            הודעה חדשה
+          </button>
+          <button
+            onClick={load}
+            className="btn-secondary flex items-center gap-2 text-sm"
+          >
+            <ArrowPathIcon className="h-4 w-4" />
+            רענן
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -328,6 +339,43 @@ export default function MessagesPage() {
               </div>
             )
           })}
+        </div>
+      )}
+      {/* Patient Picker Modal */}
+      {showPatientPicker && (
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] animate-fade-in">
+            <div className="px-5 sm:px-8 py-4 sm:py-6 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-xl sm:text-2xl font-bold">הודעה חדשה — בחר מטופל</h2>
+              <p className="text-sm text-gray-500 mt-1">בחר מטופל כדי לפתוח את מרכז ההודעות שלו</p>
+            </div>
+            <div className="overflow-y-auto flex-1 px-5 sm:px-8 py-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">מטופל/ת</label>
+              <select
+                className="input-field"
+                defaultValue=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setShowPatientPicker(false)
+                    navigate(`/patients/${e.target.value}`, { state: { initialTab: 'inbetween' } })
+                  }
+                }}
+              >
+                <option value="">-- בחר מטופל --</option>
+                {sortedPatients.map((p) => (
+                  <option key={p.id} value={p.id}>{p.full_name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="px-5 sm:px-8 py-4 border-t border-gray-100 flex-shrink-0">
+              <button
+                onClick={() => setShowPatientPicker(false)}
+                className="btn-secondary w-full min-h-[44px] touch-manipulation"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

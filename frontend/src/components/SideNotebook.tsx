@@ -14,11 +14,10 @@
 import { useState, useEffect } from 'react'
 import {
   XMarkIcon,
-  SparklesIcon,
   TrashIcon,
   TagIcon,
 } from '@heroicons/react/24/outline'
-import { therapistNotesAPI, agentAPI } from '@/lib/api'
+import { therapistNotesAPI } from '@/lib/api'
 
 interface SideNote {
   id: number
@@ -43,10 +42,6 @@ export default function SideNotebook({ open, onClose }: Props) {
   const [editorTitle, setEditorTitle] = useState('')
   const [editorContent, setEditorContent] = useState('')
   const [editorTags, setEditorTags] = useState('')   // comma-separated input
-
-  // AI assist
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiResponse, setAiResponse] = useState<string | null>(null)
 
   const [saving, setSaving] = useState(false)
 
@@ -78,7 +73,6 @@ export default function SideNotebook({ open, onClose }: Props) {
     setEditorTitle('')
     setEditorContent('')
     setEditorTags('')
-    setAiResponse(null)
   }
 
   const loadNoteIntoEditor = (note: SideNote) => {
@@ -86,7 +80,6 @@ export default function SideNotebook({ open, onClose }: Props) {
     setEditorTitle(note.title || '')
     setEditorContent(note.content)
     setEditorTags((note.tags || []).join(', '))
-    setAiResponse(null)
   }
 
   const handleSave = async () => {
@@ -125,21 +118,6 @@ export default function SideNotebook({ open, onClose }: Props) {
       setNotes((prev) => prev.filter((n) => n.id !== noteId))
       if (editingId === noteId) resetEditor()
     } catch { /* swallow */ }
-  }
-
-  const handleAiAssist = async () => {
-    if (!editorContent.trim()) return
-    setAiLoading(true)
-    setAiResponse(null)
-    try {
-      const result = await agentAPI.chat(
-        `עזור לי לפתח את הרעיון הבא. זהו פתק אישי שלי כמטפל, לא קשור למטופל ספציפי:\n\n${editorContent}`,
-        { context_type: 'therapist_side_notebook' }
-      )
-      setAiResponse(result.response)
-    } catch { /* swallow */ } finally {
-      setAiLoading(false)
-    }
   }
 
   const formatDate = (iso: string) =>
@@ -191,8 +169,10 @@ export default function SideNotebook({ open, onClose }: Props) {
               onChange={(e) => setEditorContent(e.target.value)}
               placeholder="רשום רעיון, תובנה, לינק..."
               rows={4}
+              maxLength={1000}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm resize-none"
             />
+            <p className="text-right text-xs text-gray-400 -mt-1">{editorContent.length}/1000</p>
 
             {/* Tags input */}
             <div className="flex items-center gap-2">
@@ -206,52 +186,23 @@ export default function SideNotebook({ open, onClose }: Props) {
               />
             </div>
 
-            {/* AI response */}
-            {aiResponse && (
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <SparklesIcon className="h-4 w-4 text-purple-600" />
-                  <span className="text-xs font-medium text-purple-700">AI הצעות</span>
-                  <button
-                    onClick={() => setAiResponse(null)}
-                    className="mr-auto text-purple-400 hover:text-purple-600"
-                  >
-                    <XMarkIcon className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                <p className="text-sm text-gray-700 whitespace-pre-line">{aiResponse}</p>
-              </div>
-            )}
-
             {/* Action buttons */}
-            <div className="flex gap-2">
-              <button
-                onClick={handleAiAssist}
-                disabled={!editorContent.trim() || aiLoading}
-                className="btn-secondary text-sm flex items-center gap-1.5 disabled:opacity-50"
-              >
-                {aiLoading
-                  ? <><span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-therapy-calm inline-block" />מעבד...</>
-                  : <><SparklesIcon className="h-4 w-4" />עזור לי עם זה</>
-                }
-              </button>
-              <div className="flex gap-2 mr-auto">
-                {editingId !== null && (
-                  <button
-                    onClick={resetEditor}
-                    className="btn-secondary text-sm"
-                  >
-                    חדש
-                  </button>
-                )}
+            <div className="flex gap-2 justify-end">
+              {editingId !== null && (
                 <button
-                  onClick={handleSave}
-                  disabled={!editorContent.trim() || saving}
-                  className="btn-primary text-sm disabled:opacity-50"
+                  onClick={resetEditor}
+                  className="btn-secondary text-sm"
                 >
-                  {saving ? 'שומר...' : editingId !== null ? 'עדכן' : 'שמור'}
+                  חדש
                 </button>
-              </div>
+              )}
+              <button
+                onClick={handleSave}
+                disabled={!editorContent.trim() || saving}
+                className="btn-primary text-sm disabled:opacity-50"
+              >
+                {saving ? 'שומר...' : editingId !== null ? 'עדכן' : 'שמור'}
+              </button>
             </div>
           </div>
 

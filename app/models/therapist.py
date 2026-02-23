@@ -16,6 +16,7 @@ class TherapeuticApproach(str, enum.Enum):
     ACT = "ACT"  # Acceptance and Commitment Therapy
     EMDR = "EMDR"
     INTEGRATIVE = "integrative"
+    PSYCHODRAMA = "psychodrama"
     OTHER = "other"
 
 
