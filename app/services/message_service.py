@@ -446,10 +446,17 @@ class MessageService:
             message.recipient_phone = normalize_phone(recipient_phone)
         message.approved_at = datetime.now(timezone.utc)
 
-        # Normalize send_at: attach UTC tzinfo if it arrives naive from DB
+        # Normalize send_at: attach UTC tzinfo if it arrives naive
         if send_at is not None and send_at.tzinfo is None:
             send_at = send_at.replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
+        logger.info(
+            "send_or_schedule_message: msg=%d send_at=%s now=%s decision=%s",
+            message_id,
+            send_at.isoformat() if send_at else "None",
+            now.isoformat(),
+            "immediate" if (send_at is None or send_at <= now) else f"schedule_at={send_at.isoformat()}",
+        )
         if send_at is None or send_at <= now:
             # Send immediately
             self.db.commit()

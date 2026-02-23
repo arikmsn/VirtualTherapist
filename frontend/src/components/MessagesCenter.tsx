@@ -244,7 +244,14 @@ export default function MessagesCenter({
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
   })()
 
-  const datetimeLocalMin = new Date().toISOString().slice(0, 16)
+  // datetime-local min MUST use local time (not UTC). toISOString() gives UTC,
+  // which would set the min 2-3 hours in the past for Israeli users, allowing
+  // them to pick a time that looks future but is already past on the server.
+  const datetimeLocalMin = (() => {
+    const now = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
+  })()
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -467,7 +474,13 @@ export default function MessagesCenter({
                   )}
                 </button>
                 <button
-                  onClick={() => setShowScheduler((v) => !v)}
+                  onClick={() => {
+                    const opening = !showScheduler
+                    setShowScheduler(opening)
+                    // Pre-select 'custom' so the panel never starts with sendWhen==='now'
+                    // (which would silently send immediately if confirm is clicked)
+                    if (opening && sendWhen === 'now') setSendWhen('custom')
+                  }}
                   disabled={confirming}
                   className={`btn-secondary flex items-center justify-center gap-2 disabled:opacity-50 min-h-[44px] sm:min-h-0 touch-manipulation ${showScheduler ? 'ring-2 ring-therapy-calm' : ''}`}
                 >
@@ -529,7 +542,13 @@ export default function MessagesCenter({
                   </div>
                   <button
                     onClick={() => handleConfirm(buildSendAt())}
-                    disabled={confirming || (messageType === 'task_reminder' && !content.trim()) || (sendWhen === 'today' && !sendTime) || (sendWhen === 'custom' && !sendDatetime)}
+                    disabled={
+                      confirming ||
+                      (messageType === 'task_reminder' && !content.trim()) ||
+                      sendWhen === 'now' ||                        // must pick today/custom
+                      (sendWhen === 'today' && !sendTime) ||
+                      (sendWhen === 'custom' && !sendDatetime)
+                    }
                     className="btn-primary flex items-center justify-center gap-2 disabled:opacity-50 text-sm w-full min-h-[44px] sm:min-h-0 sm:w-auto touch-manipulation"
                   >
                     {confirming && showScheduler ? (

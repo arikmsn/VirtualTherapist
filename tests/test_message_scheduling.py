@@ -238,3 +238,48 @@ async def test_send_at_naive_is_normalized_to_utc(db, draft_message):
         )
 
     mock_scheduler.add_job.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_future_send_at_never_delivers_immediately(db, draft_message):
+    """
+    Regression: send_at 5 minutes in the future must NOT trigger
+    deliver_message immediately.  The bug was that datetime.utcnow() (naive)
+    was compared against a tz-aware send_at -> TypeError, which masked the
+    scheduling path entirely.  After the fix both sides are tz-aware UTC and
+    the comparison must correctly route to the scheduler, not to delivery.
+    """
+    msg = draft_message["message"]
+    therapist = draft_message["therapist"]
+
+    # Simulate what Pydantic produces when the frontend sends
+    # e.g. "2026-02-23T18:05:00.000Z" (UTC ISO string from buildSendAt())
+    send_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    assert send_at.tzinfo is not None  # must be tz-aware
+
+    svc = _make_service(db)
+
+    with patch.object(svc, "deliver_message", new_callable=AsyncMock) as mock_deliver, \
+         patch("app.core.scheduler.scheduler") as mock_scheduler:
+
+        mock_scheduler.add_job = MagicMock()
+
+        await svc.send_or_schedule_message(
+            message_id=msg.id,
+            therapist_id=therapist.id,
+            final_content=msg.content,
+            recipient_phone=msg.recipient_phone,
+            send_at=send_at,
+        )
+
+    # CRITICAL: must NOT deliver immediately
+    mock_deliver.assert_not_awaited()
+
+    # Must register an APScheduler job
+    mock_scheduler.add_job.assert_called_once()
+
+    # Message must be SCHEDULED, not SENT
+    db.refresh(msg)
+    assert msg.status == MessageStatus.SCHEDULED
+    # scheduled_send_at stored as naive UTC (SQLite strips tzinfo)
+    assert msg.scheduled_send_at == send_at.replace(tzinfo=None)

@@ -341,6 +341,11 @@ async def send_or_schedule_message(
     """
     message_service = MessageService(db)
 
+    logger.info(
+        "send_or_schedule: msg=%d raw_send_at=%r (type=%s)",
+        message_id, request.send_at, type(request.send_at).__name__,
+    )
+
     try:
         message = await message_service.send_or_schedule_message(
             message_id=message_id,
