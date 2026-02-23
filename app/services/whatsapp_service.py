@@ -50,21 +50,39 @@ async def send_via_green_api(phone: str, message: str) -> SendResult:
     """Send a plain-text WhatsApp message via Green API."""
     from app.core.config import settings
 
-    # Defensive normalisation — neither phone nor message should ever be None here,
-    # but guard explicitly so the library never receives a non-string argument.
+    # ── Guard: phone ──────────────────────────────────────────────────────────
     if not phone:
         err = "send_via_green_api: phone is empty/None — cannot send"
         logger.error(err)
         return SendResult(status="failed", provider_id="", error=err)
 
+    # ── Guard: message ────────────────────────────────────────────────────────
     safe_message = message if isinstance(message, str) else (str(message) if message is not None else "")
     if not safe_message:
-        logger.warning(f"[GreenAPI] message body is empty for {phone} — sending placeholder")
-        safe_message = "תזכורת פגישה"  # bare fallback so Green API has something to send
+        logger.warning(f"[GreenAPI] message body is empty for {phone} — using placeholder")
+        safe_message = "תזכורת פגישה"
+
+    # ── Guard: credentials ────────────────────────────────────────────────────
+    # The Green API library builds a URL via url.replace("{idInstance}", instance_id).
+    # If either credential is None the library raises TypeError: replace() argument 2
+    # must be str, not None.  Catch this before handing control to the library.
+    instance_id = settings.GREEN_API_INSTANCE_ID
+    api_token = settings.GREEN_API_TOKEN
+    if not instance_id or not api_token:
+        err = (
+            "GREEN_API_INSTANCE_ID or GREEN_API_TOKEN is not set — "
+            "message not sent. Configure these env vars in Render."
+        )
+        logger.error(f"[GreenAPI] {err} (phone={phone})")
+        return SendResult(status="failed", provider_id="", error=err)
+
+    # Coerce to str so the library never receives a non-string argument
+    instance_id = str(instance_id)
+    api_token = str(api_token)
 
     try:
         from whatsapp_api_client_python import API
-        green_api = API.GreenAPI(settings.GREEN_API_INSTANCE_ID, settings.GREEN_API_TOKEN)
+        green_api = API.GreenAPI(instance_id, api_token)
         chat_id = format_phone_to_green_api(phone)
         logger.info(f"[GreenAPI] Sending to {chat_id}: {safe_message!r}")
         response = green_api.sending.sendMessage(chat_id, safe_message)
@@ -72,7 +90,7 @@ async def send_via_green_api(phone: str, message: str) -> SendResult:
         logger.info(f"[GreenAPI] Sent to {chat_id}: idMessage={id_message}")
         return SendResult(status="sent", provider_id=id_message, error="")
     except Exception as e:
-        logger.error(f"[GreenAPI] Send failed to {phone}: {e}")
+        logger.exception(f"[GreenAPI] Send failed to {phone}: {e}")
         return SendResult(status="failed", provider_id="", error=str(e))
 
 
