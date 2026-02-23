@@ -41,7 +41,7 @@ services:
         value: openai
 
       - key: AI_MODEL
-        value: gpt-4o
+        value: gpt-4o-mini
 
       - key: OPENAI_API_KEY
         sync: false          # REQUIRED — OpenAI API key
