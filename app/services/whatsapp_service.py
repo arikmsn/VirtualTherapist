@@ -16,45 +16,58 @@ def format_phone_to_green_api(phone: str) -> str:
 
 
 def _build_plain_text(content_variables: dict) -> str:
-    """Build a plain-text Hebrew reminder from Twilio template content_variables."""
-    if len(content_variables) == 4:
+    """Build a plain-text Hebrew reminder from Twilio template content_variables.
+
+    Normalises every value to a non-None string first so that neither
+    f-strings nor str.join() can raise TypeError on None values.
+    """
+    # Normalise: None → "", everything else → str
+    v = {k: ("" if val is None else str(val)) for k, val in content_variables.items()}
+
+    if len(v) == 4:
         # Session reminder: 1=patient, 2=therapist, 3=date, 4=time
-        patient = content_variables.get("1", "")
-        therapist = content_variables.get("2", "")
-        date = content_variables.get("3", "")
-        time = content_variables.get("4", "")
-        parts = [f"שלום {patient},", f"זוהי תזכורת לפגישתך עם {therapist}"]
+        parts = [f"שלום {v.get('1', '')},", f"זוהי תזכורת לפגישתך עם {v.get('2', '')}"]
+        date = v.get("3", "")
+        time = v.get("4", "")
         if date and date != "לא צוין":
             parts.append(f"בתאריך {date}")
         if time and time != "לא צוינה":
             parts.append(f"בשעה {time}.")
         return " ".join(parts)
 
-    if len(content_variables) == 5:
+    if len(v) == 5:
         # Appointment reminder: 1=patient, 2=therapist, 3=clinic, 4=date, 5=time
-        patient = content_variables.get("1", "")
-        therapist = content_variables.get("2", "")
-        clinic = content_variables.get("3", "")
-        date = content_variables.get("4", "")
-        time = content_variables.get("5", "")
         return (
-            f"שלום {patient}, זוהי תזכורת לפגישתך עם {therapist} "
-            f"מקליניקת {clinic} בתאריך {date} בשעה {time}."
+            f"שלום {v.get('1', '')}, זוהי תזכורת לפגישתך עם {v.get('2', '')} "
+            f"מקליניקת {v.get('3', '')} בתאריך {v.get('4', '')} בשעה {v.get('5', '')}."
         )
 
-    # Fallback: join all variable values
-    return " ".join(content_variables.values())
+    # Fallback: join all values (now guaranteed to be strings)
+    return " ".join(v.values())
 
 
 async def send_via_green_api(phone: str, message: str) -> SendResult:
     """Send a plain-text WhatsApp message via Green API."""
     from app.core.config import settings
 
+    # Defensive normalisation — neither phone nor message should ever be None here,
+    # but guard explicitly so the library never receives a non-string argument.
+    if not phone:
+        err = "send_via_green_api: phone is empty/None — cannot send"
+        logger.error(err)
+        return SendResult(status="failed", provider_id="", error=err)
+
+    safe_message = message if isinstance(message, str) else (str(message) if message is not None else "")
+    if not safe_message:
+        logger.warning(f"[GreenAPI] message body is empty for {phone} — sending placeholder")
+        safe_message = "תזכורת פגישה"  # bare fallback so Green API has something to send
+
     try:
         from whatsapp_api_client_python import API
         green_api = API.GreenAPI(settings.GREEN_API_INSTANCE_ID, settings.GREEN_API_TOKEN)
         chat_id = format_phone_to_green_api(phone)
-        response = green_api.sending.sendMessage(chat_id, message)
+        logger.info(f"[GreenAPI] Sending to {chat_id}: {safe_message!r}")
+        response = green_api.sending.sendMessage(chat_id, safe_message)
         id_message = str(response.data.get("idMessage", "")) if response.data else ""
         logger.info(f"[GreenAPI] Sent to {chat_id}: idMessage={id_message}")
         return SendResult(status="sent", provider_id=id_message, error="")
