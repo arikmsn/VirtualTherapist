@@ -158,11 +158,11 @@ export default function DashboardPage() {
   const isToday = selectedDate === todayISO()
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-5 sm:space-y-8 animate-fade-in">
       {/* Welcome Header */}
       <div className="card bg-gradient-to-l from-therapy-calm to-therapy-gentle text-white">
-        <h1 className="text-3xl font-bold mb-2">לוח הפגישות להיום</h1>
-        <p className="text-indigo-100 text-lg">
+        <h1 className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2">לוח הפגישות להיום</h1>
+        <p className="text-indigo-100 text-base sm:text-lg">
           ניהול מטופלים, סיכומים והודעות במקום אחד
         </p>
       </div>
@@ -226,11 +226,11 @@ export default function DashboardPage() {
             {dailySessions.map((session) => (
               <div
                 key={session.id}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors gap-2 sm:gap-0"
               >
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 sm:gap-4">
                   {/* Time */}
-                  <div className="text-lg font-mono font-semibold text-therapy-calm min-w-[60px]">
+                  <div className="text-base sm:text-lg font-mono font-semibold text-therapy-calm min-w-[52px] sm:min-w-[60px]">
                     {formatTime(session.start_time) || '—'}
                   </div>
 
@@ -244,29 +244,28 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* Summary badge */}
-                  {session.has_summary ? (
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                      יש סיכום
-                    </span>
-                  ) : (
-                    <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
+                  {/* Summary badge — hidden on mobile to save space */}
+                  <span className="hidden sm:inline text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                    {session.has_summary ? 'יש סיכום' : ''}
+                  </span>
+                  {!session.has_summary && (
+                    <span className="hidden sm:inline text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
                       ללא סיכום
                     </span>
                   )}
                 </div>
 
-                {/* Action buttons */}
+                {/* Action buttons — full-width side-by-side on mobile */}
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => navigate(`/sessions/${session.id}`)}
-                    className="text-sm px-3 py-1 bg-therapy-calm text-white rounded-lg hover:bg-therapy-calm/90 transition-colors"
+                    className="flex-1 sm:flex-none text-sm px-3 py-2 sm:py-1 bg-therapy-calm text-white rounded-lg hover:bg-therapy-calm/90 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
                   >
                     פתח סשן
                   </button>
                   <button
                     onClick={() => navigate(`/sessions/${session.id}?prep=1`)}
-                    className="text-sm px-3 py-1 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors"
+                    className="flex-1 sm:flex-none text-sm px-3 py-2 sm:py-1 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
                   >
                     הכנה לפגישה
                   </button>

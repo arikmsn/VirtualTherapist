@@ -408,22 +408,26 @@ export default function PatientProfilePage() {
 
       {/* Patient header card */}
       <div className="card">
-        <div className="flex items-start gap-5">
+        <div className="flex items-start gap-4 sm:gap-5">
           {/* Avatar */}
-          <div className="w-16 h-16 bg-therapy-calm text-white rounded-full flex items-center justify-center font-bold text-2xl flex-shrink-0">
+          <div className="w-12 h-12 sm:w-16 sm:h-16 bg-therapy-calm text-white rounded-full flex items-center justify-center font-bold text-xl sm:text-2xl flex-shrink-0">
             {patient.full_name.charAt(0)}
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-bold text-gray-900">{patient.full_name}</h1>
-              <span className={`badge text-xs ${patient.status === 'active' ? 'badge-approved' : 'badge-draft'}`}>
+            {/* Name row — wraps on mobile */}
+            <div className="flex items-start gap-2 sm:gap-3 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">{patient.full_name}</h1>
+              <span className={`badge text-xs mt-0.5 ${patient.status === 'active' ? 'badge-approved' : 'badge-draft'}`}>
                 {statusLabel(patient.status)}
               </span>
+            </div>
+            {/* Action buttons on a separate row on mobile */}
+            <div className="flex items-center gap-2 flex-wrap mt-2">
               {/* Edit + status actions */}
               <button
                 onClick={handleEditOpen}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-therapy-calm border border-gray-200 rounded-lg px-2 py-1 hover:border-therapy-calm transition-colors"
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-therapy-calm border border-gray-200 rounded-lg px-2 py-1.5 hover:border-therapy-calm transition-colors min-h-[32px] touch-manipulation"
               >
                 <PencilSquareIcon className="h-3.5 w-3.5" />
                 ערוך פרטים
@@ -431,14 +435,14 @@ export default function PatientProfilePage() {
               {patient.status !== 'inactive' ? (
                 <button
                   onClick={() => { setInactiveStep(1); setShowInactiveConfirm(true) }}
-                  className="text-xs text-amber-600 hover:text-amber-800 border border-amber-200 rounded-lg px-2 py-1 hover:border-amber-400 transition-colors"
+                  className="text-xs text-amber-600 hover:text-amber-800 border border-amber-200 rounded-lg px-2 py-1.5 hover:border-amber-400 transition-colors min-h-[32px] touch-manipulation"
                 >
                   סמן כלא פעיל
                 </button>
               ) : (
                 <button
                   onClick={handleReactivate}
-                  className="text-xs text-green-600 hover:text-green-800 border border-green-200 rounded-lg px-2 py-1 hover:border-green-400 transition-colors"
+                  className="text-xs text-green-600 hover:text-green-800 border border-green-200 rounded-lg px-2 py-1.5 hover:border-green-400 transition-colors min-h-[32px] touch-manipulation"
                 >
                   הפעל מחדש
                 </button>
@@ -484,9 +488,9 @@ export default function PatientProfilePage() {
         </div>
       </div>
 
-      {/* Tab navigation */}
-      <div className="border-b border-gray-200">
-        <nav className="flex gap-0 -mb-px">
+      {/* Tab navigation — horizontally scrollable on mobile */}
+      <div className="border-b border-gray-200 -mx-4 sm:mx-0 px-4 sm:px-0">
+        <nav className="flex gap-0 -mb-px overflow-x-auto scrollbar-none">
           {([
             { key: 'sessions', label: 'פגישות', icon: CalendarIcon },
             { key: 'summaries', label: 'סיכומים ותובנות', icon: SparklesIcon },
@@ -495,7 +499,7 @@ export default function PatientProfilePage() {
             <button
               key={key}
               onClick={() => setTab(key)}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap min-h-[44px] touch-manipulation flex-shrink-0 ${
                 tab === key
                   ? 'border-therapy-calm text-therapy-calm'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -589,8 +593,8 @@ export default function PatientProfilePage() {
         <div className="space-y-5">
           {/* AI Insight panel */}
           <div className="card border-purple-200 bg-purple-50">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2 flex-wrap">
                 <SparklesIcon className="h-5 w-5 text-purple-600" />
                 <h2 className="text-lg font-bold text-purple-900">סיכום עומק AI</h2>
                 <span className="text-xs text-purple-600">({approvedCount} סיכומים מאושרים)</span>
@@ -598,7 +602,7 @@ export default function PatientProfilePage() {
               <button
                 onClick={handleGenerateInsight}
                 disabled={approvedCount === 0 || insightLoading}
-                className="btn-primary disabled:opacity-50 flex items-center gap-2 text-sm"
+                className="btn-primary disabled:opacity-50 flex items-center gap-2 text-sm self-start sm:self-auto min-h-[40px] touch-manipulation"
               >
                 {insightLoading ? (
                   <>

@@ -254,7 +254,7 @@ export default function MessagesCenter({
       {!composerOpen && (
         <button
           onClick={() => setComposerOpen(true)}
-          className="btn-primary flex items-center gap-2"
+          className="btn-primary flex items-center gap-2 min-h-[44px] touch-manipulation"
         >
           <PlusIcon className="h-5 w-5" />
           הודעה חדשה
@@ -311,7 +311,7 @@ export default function MessagesCenter({
           )}
 
           {messageType === 'session_reminder' && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">תאריך הפגישה</label>
                 <input
@@ -442,12 +442,12 @@ export default function MessagesCenter({
           {/* Primary actions: Send now | Schedule */}
           {draftId && (
             <div className="space-y-3">
-              {/* First-class action buttons */}
-              <div className="flex gap-3">
+              {/* First-class action buttons — stack on mobile, row on sm+ */}
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <button
                   onClick={() => handleConfirm(null)}
                   disabled={confirming || (messageType === 'task_reminder' && !content.trim())}
-                  className="btn-primary flex items-center gap-2 disabled:opacity-50"
+                  className="btn-primary flex items-center justify-center gap-2 disabled:opacity-50 min-h-[44px] sm:min-h-0 touch-manipulation"
                 >
                   {confirming && !showScheduler ? (
                     <>
@@ -464,14 +464,14 @@ export default function MessagesCenter({
                 <button
                   onClick={() => setShowScheduler((v) => !v)}
                   disabled={confirming}
-                  className={`btn-secondary flex items-center gap-2 disabled:opacity-50 ${showScheduler ? 'ring-2 ring-therapy-calm' : ''}`}
+                  className={`btn-secondary flex items-center justify-center gap-2 disabled:opacity-50 min-h-[44px] sm:min-h-0 touch-manipulation ${showScheduler ? 'ring-2 ring-therapy-calm' : ''}`}
                 >
                   <ClockIcon className="h-4 w-4" />
                   תזמן לשעה אחרת
                 </button>
                 <button
                   onClick={resetComposer}
-                  className="btn-secondary"
+                  className="btn-secondary min-h-[44px] sm:min-h-0 touch-manipulation"
                 >
                   ביטול
                 </button>
@@ -481,45 +481,51 @@ export default function MessagesCenter({
               {showScheduler && (
                 <div className="bg-white border border-blue-200 rounded-xl p-4 space-y-3">
                   <p className="text-sm font-medium text-gray-700">בחר מועד שליחה</p>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {([
                       { value: 'today', label: 'היום בשעה' },
                       { value: 'custom', label: 'תאריך ושעה ספציפיים' },
                     ] as const).map(({ value, label }) => (
-                      <label key={value} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          checked={sendWhen === value}
-                          onChange={() => setSendWhen(value)}
-                          className="accent-therapy-calm"
-                        />
-                        <span className="text-sm text-gray-700">{label}</span>
-                        {value === 'today' && sendWhen === 'today' && (
+                      <div key={value} className="space-y-1">
+                        <label className="flex items-center gap-2 cursor-pointer">
                           <input
-                            type="time"
-                            value={sendTime}
-                            min={todayInputMin}
-                            onChange={(e) => setSendTime(e.target.value)}
-                            className="input-field w-28 text-sm"
+                            type="radio"
+                            checked={sendWhen === value}
+                            onChange={() => setSendWhen(value)}
+                            className="accent-therapy-calm"
                           />
+                          <span className="text-sm text-gray-700">{label}</span>
+                        </label>
+                        {value === 'today' && sendWhen === 'today' && (
+                          <div className="mr-6">
+                            <input
+                              type="time"
+                              value={sendTime}
+                              min={todayInputMin}
+                              onChange={(e) => setSendTime(e.target.value)}
+                              className="input-field w-full sm:w-28 text-sm"
+                            />
+                          </div>
                         )}
                         {value === 'custom' && sendWhen === 'custom' && (
-                          <input
-                            type="datetime-local"
-                            value={sendDatetime}
-                            min={datetimeLocalMin}
-                            onChange={(e) => setSendDatetime(e.target.value)}
-                            className="input-field text-sm"
-                            dir="ltr"
-                          />
+                          <div className="mr-6">
+                            <input
+                              type="datetime-local"
+                              value={sendDatetime}
+                              min={datetimeLocalMin}
+                              onChange={(e) => setSendDatetime(e.target.value)}
+                              className="input-field w-full text-sm"
+                              dir="ltr"
+                            />
+                          </div>
                         )}
-                      </label>
+                      </div>
                     ))}
                   </div>
                   <button
                     onClick={() => handleConfirm(buildSendAt())}
-                    disabled={confirming || !content.trim() || (sendWhen === 'today' && !sendTime) || (sendWhen === 'custom' && !sendDatetime)}
-                    className="btn-primary flex items-center gap-2 disabled:opacity-50 text-sm"
+                    disabled={confirming || (messageType === 'task_reminder' && !content.trim()) || (sendWhen === 'today' && !sendTime) || (sendWhen === 'custom' && !sendDatetime)}
+                    className="btn-primary flex items-center justify-center gap-2 disabled:opacity-50 text-sm w-full min-h-[44px] sm:min-h-0 sm:w-auto touch-manipulation"
                   >
                     {confirming && showScheduler ? (
                       <>
@@ -562,18 +568,22 @@ export default function MessagesCenter({
 
               return (
                 <div key={msg.id} className="card space-y-2">
-                  {/* Header row */}
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2 text-sm">
+                  {/* Header row — two lines on mobile */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+                    <div className="flex items-center gap-2 text-sm flex-wrap">
                       <span className="font-medium text-gray-700">
                         {TYPE_LABELS[msg.message_type || ''] || msg.message_type || 'הודעה'}
                       </span>
                       {msg.recipient_phone && (
                         <span className="text-gray-400 text-xs" dir="ltr">{msg.recipient_phone}</span>
                       )}
+                      {/* Badge visible inline on mobile */}
+                      <span className={`badge text-xs sm:hidden ${statusMeta.className}`}>
+                        {statusMeta.label}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`badge text-xs ${statusMeta.className}`}>
+                      <span className={`badge text-xs hidden sm:inline ${statusMeta.className}`}>
                         {statusMeta.label}
                       </span>
                       <span className="text-xs text-gray-400">
