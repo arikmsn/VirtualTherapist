@@ -225,6 +225,95 @@ async def get_patient_summaries(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class NoteCreate(BaseModel):
+    content: str
+
+
+class NoteResponse(BaseModel):
+    id: int
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/{patient_id}/notes", response_model=List[NoteResponse])
+async def list_patient_notes(
+    patient_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """List therapist notebook notes for a patient (newest first)"""
+    from app.models.patient import PatientNote
+    from sqlalchemy import desc
+
+    service = PatientService(db)
+    patient = await service.get_patient(patient_id=patient_id, therapist_id=current_therapist.id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    notes = (
+        db.query(PatientNote)
+        .filter(PatientNote.patient_id == patient_id, PatientNote.therapist_id == current_therapist.id)
+        .order_by(desc(PatientNote.created_at))
+        .all()
+    )
+    return [NoteResponse.model_validate(n) for n in notes]
+
+
+@router.post("/{patient_id}/notes", response_model=NoteResponse, status_code=201)
+async def create_patient_note(
+    patient_id: int,
+    request: NoteCreate,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """Create a therapist notebook note for a patient"""
+    from app.models.patient import PatientNote
+
+    service = PatientService(db)
+    patient = await service.get_patient(patient_id=patient_id, therapist_id=current_therapist.id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    note = PatientNote(
+        patient_id=patient_id,
+        therapist_id=current_therapist.id,
+        content=request.content,
+    )
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+    return NoteResponse.model_validate(note)
+
+
+@router.delete("/{patient_id}/notes/{note_id}", status_code=200)
+async def delete_patient_note(
+    patient_id: int,
+    note_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """Delete a therapist notebook note"""
+    from app.models.patient import PatientNote
+
+    note = (
+        db.query(PatientNote)
+        .filter(
+            PatientNote.id == note_id,
+            PatientNote.patient_id == patient_id,
+            PatientNote.therapist_id == current_therapist.id,
+        )
+        .first()
+    )
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    db.delete(note)
+    db.commit()
+    return {"message": "Note deleted"}
+
+
 class PatientInsightResponse(BaseModel):
     overview: str
     progress: str

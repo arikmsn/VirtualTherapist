@@ -25,8 +25,12 @@ import {
   ChatBubbleLeftRightIcon,
   XMarkIcon,
   PencilSquareIcon,
+  PhoneIcon,
+  EnvelopeIcon,
+  TrashIcon,
+  BookOpenIcon,
 } from '@heroicons/react/24/outline'
-import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI } from '@/lib/api'
+import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI, agentAPI } from '@/lib/api'
 
 const SESSION_TYPES = [
   { value: 'individual', label: 'פרטני' },
@@ -95,6 +99,12 @@ interface PatientInsight {
   suggestions_for_next_sessions: string[]
 }
 
+interface NoteItem {
+  id: number
+  content: string
+  created_at: string
+}
+
 type Tab = 'sessions' | 'summaries' | 'inbetween'
 
 // --- Component ---
@@ -107,6 +117,17 @@ export default function PatientProfilePage() {
 
   const initialTab = (location.state as { initialTab?: Tab } | null)?.initialTab ?? 'sessions'
   const [tab, setTab] = useState<Tab>(initialTab)
+
+  // Notebook state
+  const [notebookText, setNotebookText] = useState('')
+  const [notebookAiResponse, setNotebookAiResponse] = useState<string | null>(null)
+  const [notebookAiLoading, setNotebookAiLoading] = useState(false)
+  const [notebookSaving, setNotebookSaving] = useState(false)
+  const [notes, setNotes] = useState<NoteItem[]>([])
+  const [notesLoading, setNotesLoading] = useState(false)
+
+  // AI toggle saving state
+  const [toggleAiSaving, setToggleAiSaving] = useState(false)
 
   // Edit patient modal
   const [showEditPatient, setShowEditPatient] = useState(false)
@@ -224,6 +245,74 @@ export default function PatientProfilePage() {
     }
     loadEx()
   }, [pid])
+
+  // Load notebook notes on mount
+  useEffect(() => {
+    const loadNotes = async () => {
+      setNotesLoading(true)
+      try {
+        const data = await patientNotesAPI.list(pid)
+        setNotes(data)
+      } catch { /* not critical */ } finally {
+        setNotesLoading(false)
+      }
+    }
+    loadNotes()
+  }, [pid])
+
+  const handleToggleAiContact = async () => {
+    if (!patient) return
+    setToggleAiSaving(true)
+    try {
+      const updated = await patientsAPI.update(pid, { allow_ai_contact: !patient.allow_ai_contact })
+      setPatient((prev) => prev ? { ...prev, allow_ai_contact: updated.allow_ai_contact } : prev)
+    } catch (err) {
+      console.error('Toggle AI error:', err)
+    } finally {
+      setToggleAiSaving(false)
+    }
+  }
+
+  const handleAiAssist = async () => {
+    if (!notebookText.trim() || !patient) return
+    setNotebookAiLoading(true)
+    setNotebookAiResponse(null)
+    try {
+      const result = await agentAPI.chat(
+        `עזור לי לחשוב על הנושאים הבאים לגבי המטופל ${patient.full_name}:\n\n${notebookText}`,
+        { patient_name: patient.full_name, context_type: 'therapist_notebook' }
+      )
+      setNotebookAiResponse(result.response)
+    } catch (err) {
+      console.error('AI assist error:', err)
+    } finally {
+      setNotebookAiLoading(false)
+    }
+  }
+
+  const handleSaveNote = async () => {
+    if (!notebookText.trim()) return
+    setNotebookSaving(true)
+    try {
+      const newNote = await patientNotesAPI.create(pid, notebookText)
+      setNotes((prev) => [newNote, ...prev])
+      setNotebookText('')
+      setNotebookAiResponse(null)
+    } catch (err) {
+      console.error('Save note error:', err)
+    } finally {
+      setNotebookSaving(false)
+    }
+  }
+
+  const handleDeleteNote = async (noteId: number) => {
+    try {
+      await patientNotesAPI.delete(pid, noteId)
+      setNotes((prev) => prev.filter((n) => n.id !== noteId))
+    } catch (err) {
+      console.error('Delete note error:', err)
+    }
+  }
 
   const handleEditOpen = () => {
     if (!patient) return
@@ -429,9 +518,8 @@ export default function PatientProfilePage() {
                 {statusLabel(patient.status)}
               </span>
             </div>
-            {/* Action buttons on a separate row on mobile */}
+            {/* Action buttons — edit only (inactive action moved to Danger Zone) */}
             <div className="flex items-center gap-2 flex-wrap mt-2">
-              {/* Edit + status actions */}
               <button
                 onClick={handleEditOpen}
                 className="flex items-center gap-1 text-xs text-gray-500 hover:text-therapy-calm border border-gray-200 rounded-lg px-2 py-1.5 hover:border-therapy-calm transition-colors min-h-[32px] touch-manipulation"
@@ -439,14 +527,7 @@ export default function PatientProfilePage() {
                 <PencilSquareIcon className="h-3.5 w-3.5" />
                 ערוך פרטים
               </button>
-              {patient.status !== 'inactive' ? (
-                <button
-                  onClick={() => { setInactiveStep(1); setShowInactiveConfirm(true) }}
-                  className="text-xs text-amber-600 hover:text-amber-800 border border-amber-200 rounded-lg px-2 py-1.5 hover:border-amber-400 transition-colors min-h-[32px] touch-manipulation"
-                >
-                  סמן כלא פעיל
-                </button>
-              ) : (
+              {patient.status === 'inactive' && (
                 <button
                   onClick={handleReactivate}
                   className="text-xs text-green-600 hover:text-green-800 border border-green-200 rounded-lg px-2 py-1.5 hover:border-green-400 transition-colors min-h-[32px] touch-manipulation"
@@ -456,17 +537,18 @@ export default function PatientProfilePage() {
               )}
             </div>
 
-            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1 text-sm text-gray-600">
+            {/* Contact info — single column on mobile to prevent overlap */}
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-1.5 gap-x-6 text-sm text-gray-600">
               {patient.phone && (
-                <div className="flex gap-1">
-                  <span className="text-gray-400">טלפון:</span>
+                <div className="flex items-center gap-1.5">
+                  <PhoneIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
                   <span>{patient.phone}</span>
                 </div>
               )}
               {patient.email && (
-                <div className="flex gap-1">
-                  <span className="text-gray-400">אימייל:</span>
-                  <span>{patient.email}</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <EnvelopeIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  <span className="truncate">{patient.email}</span>
                 </div>
               )}
               {patient.start_date && (
@@ -479,9 +561,29 @@ export default function PatientProfilePage() {
                 <span className="text-gray-400">נוצר:</span>
                 <span>{new Date(patient.created_at).toLocaleDateString('he-IL')}</span>
               </div>
-              <div className="flex gap-1">
-                <span className="text-gray-400">אפשר AI:</span>
-                <span>{patient.allow_ai_contact ? 'כן' : 'לא'}</span>
+            </div>
+
+            {/* AI toggle */}
+            <div className="mt-3 flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+              <button
+                onClick={handleToggleAiContact}
+                disabled={toggleAiSaving}
+                aria-label={patient.allow_ai_contact ? 'כבה AI' : 'הפעל AI'}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out disabled:opacity-50 ${
+                  patient.allow_ai_contact ? 'bg-therapy-calm' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    patient.allow_ai_contact ? '-translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+              <div>
+                <div className="text-sm font-medium text-gray-900">AI פעיל למטופל זה</div>
+                <div className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                  כאשר AI פעיל, המערכת יכולה לעזור לך בסיכומים, רעיונות לפגישות ומשימות בין-מפגשים עבור מטופל זה.
+                </div>
               </div>
             </div>
 
@@ -494,6 +596,10 @@ export default function PatientProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* Main content area: tabs on the left, notebook sidebar on the right (desktop) */}
+      <div className="flex flex-col md:flex-row gap-6 items-start">
+      <div className="flex-1 min-w-0 space-y-0">
 
       {/* Tab navigation — horizontally scrollable on mobile */}
       <div className="border-b border-gray-200 -mx-4 sm:mx-0 px-4 sm:px-0">
@@ -777,6 +883,105 @@ export default function PatientProfilePage() {
           patientName={patient.full_name}
           patientPhone={patient.phone}
         />
+      )}
+
+      </div>{/* end tab content column */}
+
+      {/* ── Notebook sidebar (full-width on mobile, 288px on desktop) ── */}
+      <div className="w-full md:w-72 lg:w-80 flex-shrink-0 space-y-4">
+        <div className="card">
+          <div className="flex items-center gap-2 mb-3">
+            <BookOpenIcon className="h-5 w-5 text-gray-500" />
+            <h2 className="font-bold text-gray-800">מחברת</h2>
+            <span className="text-xs text-gray-400 mr-auto">גלוי למטפל בלבד</span>
+          </div>
+
+          <textarea
+            value={notebookText}
+            onChange={(e) => setNotebookText(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm resize-none"
+            rows={4}
+            placeholder="רשום מחשבות, השערות, רעיונות על המטופל..."
+          />
+
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={handleAiAssist}
+              disabled={!notebookText.trim() || notebookAiLoading}
+              className="btn-secondary text-sm flex items-center gap-1.5 flex-1 disabled:opacity-50"
+            >
+              {notebookAiLoading ? (
+                <><span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-therapy-calm inline-block"></span>מעבד...</>
+              ) : (
+                <><SparklesIcon className="h-4 w-4" />עזור לי</>
+              )}
+            </button>
+            <button
+              onClick={handleSaveNote}
+              disabled={!notebookText.trim() || notebookSaving}
+              className="btn-primary text-sm flex items-center gap-1.5 flex-1 disabled:opacity-50"
+            >
+              {notebookSaving ? 'שומר...' : 'שמור'}
+            </button>
+          </div>
+
+          {notebookAiResponse && (
+            <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <SparklesIcon className="h-4 w-4 text-purple-600" />
+                <span className="text-xs font-medium text-purple-700">AI הצעות</span>
+              </div>
+              <p className="text-sm text-gray-700 whitespace-pre-line">{notebookAiResponse}</p>
+            </div>
+          )}
+
+          {notesLoading ? (
+            <div className="flex items-center justify-center py-4 mt-2">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-therapy-calm"></div>
+            </div>
+          ) : notes.length > 0 ? (
+            <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
+              <h3 className="text-xs font-medium text-gray-500">פתקים שמורים</h3>
+              {notes.map((note) => (
+                <div key={note.id} className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-sm text-gray-700 whitespace-pre-line">{note.content}</p>
+                  <div className="flex items-center justify-between mt-1.5">
+                    <span className="text-xs text-gray-400">
+                      {new Date(note.created_at).toLocaleDateString('he-IL', {
+                        day: 'numeric', month: 'short', year: 'numeric',
+                      })}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteNote(note.id)}
+                      className="text-gray-300 hover:text-red-400 transition-colors touch-manipulation"
+                      title="מחק פתק"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      </div>{/* end main flex row */}
+
+      {/* ── Danger Zone (only when patient is active/paused) ── */}
+      {patient.status !== 'inactive' && (
+        <div className="border border-red-200 rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-red-700 mb-1">⚠️ אזור מסוכן</h3>
+          <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+            פעולה זו תסמן את המטופל כלא פעיל ותסתיר אותו מרשימת המטופלים הפעילים. כל ההיסטוריה תישמר וניתן לשחזר בכל עת.
+          </p>
+          <button
+            onClick={() => { setInactiveStep(1); setShowInactiveConfirm(true) }}
+            className="text-sm text-red-600 hover:text-red-800 border border-red-300 hover:border-red-500 rounded-lg px-3 py-2 transition-colors touch-manipulation"
+          >
+            סמן כלא פעיל
+          </button>
+        </div>
       )}
 
       {/* ── Edit Patient Modal ── */}

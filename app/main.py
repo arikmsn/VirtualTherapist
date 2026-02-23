@@ -81,7 +81,7 @@ async def startup_event():
         from app.models.base import Base
         from app.models import (  # noqa: F401
             Therapist, TherapistProfile, Patient, Session,
-            SessionSummary, Message, AuditLog, Exercise,
+            SessionSummary, Message, AuditLog, Exercise, PatientNote,
         )
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created/verified")

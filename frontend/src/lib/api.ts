@@ -219,6 +219,24 @@ export const patientsAPI = {
   },
 }
 
+// Patient Notes API
+export const patientNotesAPI = {
+  list: async (patientId: number) => {
+    const response = await api.get(`/patients/${patientId}/notes`)
+    return response.data
+  },
+
+  create: async (patientId: number, content: string) => {
+    const response = await api.post(`/patients/${patientId}/notes`, { content })
+    return response.data
+  },
+
+  delete: async (patientId: number, noteId: number) => {
+    const response = await api.delete(`/patients/${patientId}/notes/${noteId}`)
+    return response.data
+  },
+}
+
 // Sessions API
 export const sessionsAPI = {
   list: async (limit?: number) => {

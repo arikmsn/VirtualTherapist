@@ -56,3 +56,17 @@ class Patient(BaseModel):
     therapist = relationship("Therapist", back_populates="patients")
     sessions = relationship("Session", back_populates="patient", cascade="all, delete-orphan")
     messages = relationship("Message", back_populates="patient", cascade="all, delete-orphan")
+    notes = relationship("PatientNote", back_populates="patient", cascade="all, delete-orphan")
+
+
+class PatientNote(BaseModel):
+    """Therapist-private notebook notes for a patient"""
+
+    __tablename__ = "patient_notes"
+
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
+    therapist_id = Column(Integer, ForeignKey("therapists.id"), nullable=False)
+    content = Column(Text, nullable=False)
+
+    # Relationships
+    patient = relationship("Patient", back_populates="notes")
