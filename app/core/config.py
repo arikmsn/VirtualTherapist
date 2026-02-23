@@ -97,7 +97,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=True
+        case_sensitive=True,
+        extra="ignore",  # silently drop unknown env vars (e.g. renamed keys)
     )
 
     @model_validator(mode="after")

@@ -444,9 +444,12 @@ class MessageService:
         if recipient_phone:
             from app.utils.phone import normalize_phone
             message.recipient_phone = normalize_phone(recipient_phone)
-        message.approved_at = datetime.utcnow()
+        message.approved_at = datetime.now(timezone.utc)
 
-        now = datetime.utcnow()
+        # Normalize send_at: attach UTC tzinfo if it arrives naive from DB
+        if send_at is not None and send_at.tzinfo is None:
+            send_at = send_at.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
         if send_at is None or send_at <= now:
             # Send immediately
             self.db.commit()
