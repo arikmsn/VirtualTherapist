@@ -1,6 +1,6 @@
 """Database models"""
 
-from app.models.therapist import Therapist, TherapistProfile
+from app.models.therapist import Therapist, TherapistProfile, TherapistNote
 from app.models.patient import Patient, PatientStatus, PatientNote
 from app.models.session import Session, SessionSummary
 from app.models.message import Message, MessageStatus
@@ -10,6 +10,7 @@ from app.models.exercise import Exercise
 __all__ = [
     "Therapist",
     "TherapistProfile",
+    "TherapistNote",
     "Patient",
     "PatientStatus",
     "Session",

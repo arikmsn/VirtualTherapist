@@ -715,9 +715,12 @@ class SessionService:
         for s in patient_sessions:
             summary = s.summary
             if summary and summary.status == SummaryStatus.APPROVED:
+                # Meeting prep must use the therapist-edited summary (full_summary),
+                # not the original AI draft. full_summary is edited in-place.
                 approved.append({
                     "session_date": s.session_date,
                     "session_number": s.session_number,
+                    "full_summary": summary.full_summary,   # therapist-edited text
                     "topics_discussed": summary.topics_discussed,
                     "patient_progress": summary.patient_progress,
                     "homework_assigned": summary.homework_assigned,

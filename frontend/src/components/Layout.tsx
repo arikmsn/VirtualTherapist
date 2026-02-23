@@ -1,5 +1,5 @@
 /**
- * Layout — top navigation + mobile hamburger drawer.
+ * Layout — top navigation + mobile hamburger drawer + global side notebook.
  *
  * Responsive behaviour:
  *   - Desktop (sm+): horizontal nav links in top bar, user name + logout button visible
@@ -7,6 +7,7 @@
  *                    semi-transparent backdrop closes it on tap;
  *                    body scroll locked while drawer is open
  *   - Drawer closes automatically on route change
+ *   - Lightbulb icon in header opens the SideNotebook drawer (available on all screens)
  */
 
 import { useState, useEffect } from 'react'
@@ -21,24 +22,30 @@ import {
   SparklesIcon,
   Bars3Icon,
   XMarkIcon,
+  LightBulbIcon,
 } from '@heroicons/react/24/outline'
+import SideNotebook from '@/components/SideNotebook'
 
 export default function Layout() {
   const { user, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [notebookOpen, setNotebookOpen] = useState(false)
 
   // Close mobile drawer whenever the route changes
   useEffect(() => {
     setMobileMenuOpen(false)
   }, [location.pathname])
 
-  // Lock body scroll while drawer is open
+  // Lock body scroll while nav drawer is open
+  // (SideNotebook manages its own scroll lock)
   useEffect(() => {
-    document.body.style.overflow = mobileMenuOpen ? 'hidden' : ''
+    if (!notebookOpen) {
+      document.body.style.overflow = mobileMenuOpen ? 'hidden' : ''
+    }
     return () => { document.body.style.overflow = '' }
-  }, [mobileMenuOpen])
+  }, [mobileMenuOpen, notebookOpen])
 
   const handleLogout = () => {
     logout()
@@ -101,7 +108,7 @@ export default function Layout() {
             </div>
 
             {/* User menu */}
-            <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3">
               {/* Therapist identity — hidden on mobile */}
               {displayName && (
                 <div className="hidden sm:block text-sm text-gray-700">
@@ -111,6 +118,20 @@ export default function Layout() {
                   )}
                 </div>
               )}
+
+              {/* Side Notebook toggle — always visible */}
+              <button
+                onClick={() => setNotebookOpen((v) => !v)}
+                className={`p-2 rounded-lg touch-manipulation min-w-[40px] min-h-[40px] flex items-center justify-center transition-colors ${
+                  notebookOpen
+                    ? 'bg-amber-100 text-amber-600'
+                    : 'text-gray-500 hover:bg-gray-100'
+                }`}
+                aria-label="מחברת צד"
+                title="מחברת צד"
+              >
+                <LightBulbIcon className="h-5 w-5" />
+              </button>
 
               {/* Logout — icon-only on mobile, full label on desktop */}
               <button
@@ -193,6 +214,9 @@ export default function Layout() {
           </div>
         </div>
       )}
+
+      {/* Global Side Notebook drawer */}
+      <SideNotebook open={notebookOpen} onClose={() => setNotebookOpen(false)} />
 
       {/* Main content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8">

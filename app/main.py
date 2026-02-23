@@ -80,7 +80,7 @@ async def startup_event():
         from app.core.database import engine
         from app.models.base import Base
         from app.models import (  # noqa: F401
-            Therapist, TherapistProfile, Patient, Session,
+            Therapist, TherapistProfile, TherapistNote, Patient, Session,
             SessionSummary, Message, AuditLog, Exercise, PatientNote,
         )
         Base.metadata.create_all(bind=engine)

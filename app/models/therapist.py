@@ -42,6 +42,7 @@ class Therapist(BaseModel):
     patients = relationship("Patient", back_populates="therapist", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="therapist", cascade="all, delete-orphan")
     messages = relationship("Message", back_populates="therapist", cascade="all, delete-orphan")
+    side_notes = relationship("TherapistNote", back_populates="therapist", cascade="all, delete-orphan")
 
 
 class TherapistProfile(BaseModel):
@@ -104,3 +105,16 @@ class TherapistProfile(BaseModel):
 
     # Relationship
     therapist = relationship("Therapist", back_populates="profile")
+
+
+class TherapistNote(BaseModel):
+    """Global therapist side-notebook notes — not linked to any patient."""
+
+    __tablename__ = "therapist_notes"
+
+    therapist_id = Column(Integer, ForeignKey("therapists.id"), nullable=False, index=True)
+    title = Column(String(255))           # optional short title
+    content = Column(Text, nullable=False)
+    tags = Column(JSON)                   # optional list of tag strings
+
+    therapist = relationship("Therapist", back_populates="side_notes")

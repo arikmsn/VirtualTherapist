@@ -9,6 +9,7 @@ import {
   LightBulbIcon,
   XMarkIcon,
   MicrophoneIcon,
+  ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI, exercisesAPI } from '@/lib/api'
 import AudioRecorder from '@/components/AudioRecorder'
@@ -83,8 +84,10 @@ export default function SessionDetailPage() {
   const [prepError, setPrepError] = useState('')
   const [showPrepPanel, setShowPrepPanel] = useState(searchParams.get('prep') === '1')
 
-  // Exercise tracking
+  // Exercise tracking (this session's summary)
   const [exercises, setExercises] = useState<Exercise[]>([])
+  // Open tasks count across all patient tasks (for banner)
+  const [openTasksCount, setOpenTasksCount] = useState(0)
 
   // Editable fields
   const [editFullSummary, setEditFullSummary] = useState('')
@@ -110,22 +113,29 @@ export default function SessionDetailPage() {
           setPatientName(`מטופל #${sessionData.patient_id}`)
         }
 
-        // Load existing summary if present
-        if (sessionData.summary_id != null) {
-          try {
-            const summaryData = await sessionsAPI.getSummary(Number(sessionId))
-            setSummary(summaryData)
-            // Load exercises linked to this summary
+        // Load all patient exercises — used for open task count and summary-linked tasks
+        try {
+          const allExData = await exercisesAPI.list(sessionData.patient_id)
+          setOpenTasksCount(allExData.filter((e: Exercise) => !e.completed).length)
+          // Keep summary-linked exercises for the exercise panel (loaded after summary below)
+          if (sessionData.summary_id != null) {
             try {
-              const exData = await exercisesAPI.list(sessionData.patient_id)
-              setExercises(exData.filter((e: Exercise & { session_summary_id?: number }) =>
+              const summaryData = await sessionsAPI.getSummary(Number(sessionId))
+              setSummary(summaryData)
+              setExercises(allExData.filter((e: Exercise & { session_summary_id?: number }) =>
                 e.session_summary_id === summaryData.id
               ))
             } catch {
-              // exercises not critical
+              // No summary yet — that's fine
             }
-          } catch {
-            // No summary yet — that's fine
+          }
+        } catch {
+          // exercises not critical; still load summary if present
+          if (sessionData.summary_id != null) {
+            try {
+              const summaryData = await sessionsAPI.getSummary(Number(sessionId))
+              setSummary(summaryData)
+            } catch { /* no summary */ }
           }
         }
       } catch (err) {
@@ -314,6 +324,27 @@ export default function SessionDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Open Tasks Reminder — visible only when patient has uncompleted tasks */}
+      {openTasksCount > 0 && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          <ClipboardDocumentListIcon className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-900">
+              יש {openTasksCount} משימות פתוחות למטופל הזה
+            </p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              מומלץ לעבור יחד על המשימות או לבדוק סטטוס לפני/במהלך הפגישה.
+            </p>
+          </div>
+          <button
+            onClick={() => navigate(`/patients/${session.patient_id}`, { state: { initialTab: 'sessions' } })}
+            className="flex-shrink-0 text-xs font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 rounded-lg px-2.5 py-1.5 transition-colors whitespace-nowrap touch-manipulation"
+          >
+            צפה במשימות
+          </button>
+        </div>
+      )}
 
       {/* Prep Brief Panel */}
       {showPrepPanel && (

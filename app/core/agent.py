@@ -517,13 +517,18 @@ class TherapyAgent:
         for s in summaries_timeline:
             date_str = str(s.get("session_date", "?"))
             num = s.get("session_number", "?")
+            # Meeting prep must use the therapist-edited summary (full_summary),
+            # not structured fields alone — the therapist may have rewritten them.
+            full_summary = s.get("full_summary", "") or ""
             topics = ", ".join(s.get("topics_discussed", []) or [])
             progress = s.get("patient_progress", "")
             homework = ", ".join(s.get("homework_assigned", []) or [])
             risk = s.get("risk_assessment", "")
             next_plan = s.get("next_session_plan", "")
+            summary_block = f"סיכום מלא (ערוך ע\"י המטפל):\n{full_summary}\n" if full_summary else ""
             timeline_parts.append(
                 f"--- פגישה #{num} ({date_str}) ---\n"
+                f"{summary_block}"
                 f"נושאים: {topics}\n"
                 f"התקדמות: {progress}\n"
                 f"משימות בית: {homework}\n"

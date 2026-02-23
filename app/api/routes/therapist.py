@@ -2,10 +2,12 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
+from sqlalchemy import desc
 from pydantic import BaseModel, Field
 from typing import Optional, List
+from datetime import datetime
 from app.api.deps import get_db, get_current_therapist
-from app.models.therapist import Therapist
+from app.models.therapist import Therapist, TherapistNote
 from app.services.therapist_service import TherapistService
 from loguru import logger
 
@@ -164,3 +166,111 @@ async def reset_twin_controls(
     except Exception as e:
         logger.exception(f"reset_twin_controls therapist={current_therapist.id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Side Notebook ─────────────────────────────────────────────────────────────
+
+
+class SideNoteCreate(BaseModel):
+    title: Optional[str] = None
+    content: str
+    tags: Optional[List[str]] = None
+
+
+class SideNoteUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class SideNoteResponse(BaseModel):
+    id: int
+    title: Optional[str] = None
+    content: str
+    tags: Optional[List[str]] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/notes", response_model=List[SideNoteResponse])
+async def list_side_notes(
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """List all side-notebook notes for the current therapist (newest first)."""
+    notes = (
+        db.query(TherapistNote)
+        .filter(TherapistNote.therapist_id == current_therapist.id)
+        .order_by(desc(TherapistNote.created_at))
+        .all()
+    )
+    return [SideNoteResponse.model_validate(n) for n in notes]
+
+
+@router.post("/notes", response_model=SideNoteResponse, status_code=201)
+async def create_side_note(
+    request: SideNoteCreate,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Create a new side-notebook note."""
+    note = TherapistNote(
+        therapist_id=current_therapist.id,
+        title=request.title,
+        content=request.content,
+        tags=request.tags,
+    )
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+    return SideNoteResponse.model_validate(note)
+
+
+@router.patch("/notes/{note_id}", response_model=SideNoteResponse)
+async def update_side_note(
+    note_id: int,
+    request: SideNoteUpdate,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Update an existing side-notebook note."""
+    note = (
+        db.query(TherapistNote)
+        .filter(TherapistNote.id == note_id, TherapistNote.therapist_id == current_therapist.id)
+        .first()
+    )
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    if request.title is not None:
+        note.title = request.title
+    if request.content is not None:
+        note.content = request.content
+    if request.tags is not None:
+        note.tags = request.tags
+
+    db.commit()
+    db.refresh(note)
+    return SideNoteResponse.model_validate(note)
+
+
+@router.delete("/notes/{note_id}", status_code=200)
+async def delete_side_note(
+    note_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Delete a side-notebook note."""
+    note = (
+        db.query(TherapistNote)
+        .filter(TherapistNote.id == note_id, TherapistNote.therapist_id == current_therapist.id)
+        .first()
+    )
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    db.delete(note)
+    db.commit()
+    return {"message": "Note deleted"}

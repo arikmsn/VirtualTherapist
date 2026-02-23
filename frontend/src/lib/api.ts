@@ -361,6 +361,29 @@ export const exercisesAPI = {
   },
 }
 
+// Therapist Side Notebook API
+export const therapistNotesAPI = {
+  list: async () => {
+    const response = await api.get('/therapist/notes')
+    return response.data
+  },
+
+  create: async (data: { title?: string; content: string; tags?: string[] }) => {
+    const response = await api.post('/therapist/notes', data)
+    return response.data
+  },
+
+  update: async (noteId: number, data: { title?: string; content?: string; tags?: string[] }) => {
+    const response = await api.patch(`/therapist/notes/${noteId}`, data)
+    return response.data
+  },
+
+  delete: async (noteId: number) => {
+    const response = await api.delete(`/therapist/notes/${noteId}`)
+    return response.data
+  },
+}
+
 // Therapist Profile API (Twin v0.1)
 export const therapistAPI = {
   getProfile: async () => {
