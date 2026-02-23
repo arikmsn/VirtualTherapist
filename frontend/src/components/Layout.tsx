@@ -3,8 +3,9 @@
  *
  * Responsive behaviour:
  *   - Desktop (sm+): horizontal nav links in top bar, user name + logout button visible
- *   - Mobile (<sm): hamburger toggles a full-width drawer below the nav bar;
- *                    nav links hidden in top bar; user name hidden; logout icon-only
+ *   - Mobile (<sm): hamburger toggles a fixed modal drawer (right side, RTL);
+ *                    semi-transparent backdrop closes it on tap;
+ *                    body scroll locked while drawer is open
  *   - Drawer closes automatically on route change
  */
 
@@ -32,6 +33,12 @@ export default function Layout() {
   useEffect(() => {
     setMobileMenuOpen(false)
   }, [location.pathname])
+
+  // Lock body scroll while drawer is open
+  useEffect(() => {
+    document.body.style.overflow = mobileMenuOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [mobileMenuOpen])
 
   const handleLogout = () => {
     logout()
@@ -63,9 +70,7 @@ export default function Layout() {
                 className="sm:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 touch-manipulation min-w-[40px] min-h-[40px] flex items-center justify-center"
                 aria-label={mobileMenuOpen ? 'סגור תפריט' : 'פתח תפריט'}
               >
-                {mobileMenuOpen
-                  ? <XMarkIcon className="h-6 w-6" />
-                  : <Bars3Icon className="h-6 w-6" />}
+                <Bars3Icon className="h-6 w-6" />
               </button>
 
               <div className="text-lg sm:text-2xl font-bold text-therapy-calm">
@@ -120,45 +125,70 @@ export default function Layout() {
         </div>
       </nav>
 
-      {/* Mobile navigation drawer — slides in below nav bar */}
+      {/* Mobile navigation drawer — fixed overlay, slides in from the right (RTL start) */}
       {mobileMenuOpen && (
-        <div className="sm:hidden bg-white border-b border-gray-200 shadow-lg z-30" dir="rtl">
-          <div className="px-4 py-3 space-y-1">
-            {navigation.map((item) => {
-              const isActive = location.pathname === item.href
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={`flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium min-h-[44px] touch-manipulation ${
-                    isActive
-                      ? 'bg-therapy-calm/10 text-therapy-calm'
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  <item.icon className="h-6 w-6 flex-shrink-0" />
-                  {item.name}
-                </Link>
-              )
-            })}
+        <div className="sm:hidden">
+          {/* Backdrop — covers whole viewport, tap to close */}
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-hidden="true"
+          />
 
-            {/* Therapist identity + logout inside drawer */}
-            <div className="pt-3 mt-2 border-t border-gray-100">
-              {displayName && (
-                <div className="text-sm text-gray-700 px-3 mb-2">
-                  <div className="font-medium">{displayName}</div>
-                  {user?.fullName?.trim() && user?.email && (
-                    <div className="text-xs text-gray-500">{user.email}</div>
-                  )}
-                </div>
-              )}
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-red-600 hover:bg-red-50 w-full min-h-[44px] touch-manipulation"
-              >
-                <ArrowRightOnRectangleIcon className="h-6 w-6" />
-                התנתק
-              </button>
+          {/* Drawer panel */}
+          <div
+            className="fixed top-0 right-0 h-full w-72 max-w-[85vw] bg-white z-50 shadow-2xl overflow-y-auto"
+            dir="rtl"
+          >
+            <div className="px-4 py-4 space-y-1">
+              {/* Drawer header — app name + close button */}
+              <div className="flex items-center justify-between pb-3 mb-2 border-b border-gray-100">
+                <div className="text-lg font-bold text-therapy-calm">🧠 TC.AI</div>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 touch-manipulation min-w-[40px] min-h-[40px] flex items-center justify-center"
+                  aria-label="סגור תפריט"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
+
+              {navigation.map((item) => {
+                const isActive = location.pathname === item.href
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.href}
+                    className={`flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium min-h-[44px] touch-manipulation ${
+                      isActive
+                        ? 'bg-therapy-calm/10 text-therapy-calm'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <item.icon className="h-6 w-6 flex-shrink-0" />
+                    {item.name}
+                  </Link>
+                )
+              })}
+
+              {/* Therapist identity + logout inside drawer */}
+              <div className="pt-3 mt-2 border-t border-gray-100">
+                {displayName && (
+                  <div className="text-sm text-gray-700 px-3 mb-2">
+                    <div className="font-medium">{displayName}</div>
+                    {user?.fullName?.trim() && user?.email && (
+                      <div className="text-xs text-gray-500">{user.email}</div>
+                    )}
+                  </div>
+                )}
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-red-600 hover:bg-red-50 w-full min-h-[44px] touch-manipulation"
+                >
+                  <ArrowRightOnRectangleIcon className="h-6 w-6" />
+                  התנתק
+                </button>
+              </div>
             </div>
           </div>
         </div>

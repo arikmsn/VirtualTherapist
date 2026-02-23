@@ -10,7 +10,7 @@ import {
   DocumentTextIcon,
   ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline'
-import { patientsAPI, sessionsAPI } from '@/lib/api'
+import { patientsAPI, sessionsAPI, exercisesAPI } from '@/lib/api'
 import PhoneInput from '@/components/PhoneInput'
 
 interface Patient {
@@ -38,6 +38,7 @@ export default function PatientsPage() {
   const [patients, setPatients] = useState<Patient[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
+  const [pendingTasksCount, setPendingTasksCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState('')
   const [showInactive, setShowInactive] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -51,12 +52,14 @@ export default function PatientsPage() {
   })
   const [creating, setCreating] = useState(false)
 
-  const loadPatients = async () => {
+  const loadPatients = async (): Promise<Patient[]> => {
     try {
       const data = await patientsAPI.list()
       setPatients(data)
+      return data
     } catch (error) {
       console.error('Error loading patients:', error)
+      return []
     }
   }
 
@@ -71,8 +74,21 @@ export default function PatientsPage() {
 
   useEffect(() => {
     const init = async () => {
-      await Promise.all([loadPatients(), loadSessions()])
+      const [patientsData] = await Promise.all([loadPatients(), loadSessions()])
       setLoading(false)
+
+      // Fetch exercises for all active patients in parallel to get pending task count
+      const active = patientsData.filter((p) => p.status === 'active')
+      if (active.length > 0) {
+        try {
+          const lists = await Promise.all(
+            active.map((p) => exercisesAPI.list(p.id).catch(() => []))
+          )
+          setPendingTasksCount(
+            (lists as any[]).flat().filter((ex: any) => !ex.completed).length
+          )
+        } catch { /* not critical */ }
+      }
     }
     init()
   }, [])
@@ -111,7 +127,6 @@ export default function PatientsPage() {
   }).length
 
   const activeCount = patients.filter((p) => p.status === 'active').length
-  const completedExercisesCount = patients.reduce((sum, p) => sum + p.completed_exercises_count, 0)
 
   const filteredPatients = patients
     .filter((p) => showInactive || p.status !== 'inactive')
@@ -197,10 +212,10 @@ export default function PatientsPage() {
           </div>
         </div>
         <div className="bg-purple-50 border border-purple-200 rounded-xl flex flex-col items-center md:items-start py-2 px-2 md:py-5 md:px-6">
-          <div className="text-2xl md:text-3xl font-bold text-purple-900 leading-none">{completedExercisesCount}</div>
+          <div className="text-2xl md:text-3xl font-bold text-purple-900 leading-none">{pendingTasksCount}</div>
           <div className="text-[11px] md:text-sm text-purple-700 mt-1 text-center md:text-start leading-tight">
-            <span className="md:hidden">תרגילים</span>
-            <span className="hidden md:inline">תרגילים שהושלמו</span>
+            <span className="md:hidden">משימות</span>
+            <span className="hidden md:inline">משימות פתוחות</span>
           </div>
         </div>
       </div>
@@ -283,7 +298,7 @@ export default function PatientsPage() {
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span className="text-gray-600">תרגילים שהושלמו:</span>
+                  <span className="text-gray-600">משימות שהושלמו:</span>
                   <span className="font-medium">{patient.completed_exercises_count}</span>
                 </div>
                 <div className="flex justify-between">

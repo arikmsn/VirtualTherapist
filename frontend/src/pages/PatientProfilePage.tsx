@@ -597,9 +597,87 @@ export default function PatientProfilePage() {
         </div>
       </div>
 
-      {/* Main content area: tabs on the left, notebook sidebar on the right (desktop) */}
-      <div className="flex flex-col md:flex-row gap-6 items-start">
-      <div className="flex-1 min-w-0 space-y-0">
+      {/* ── Notebook — directly under patient details, above tabs ── */}
+      <div className="card">
+        <div className="flex items-center gap-2 mb-3">
+          <BookOpenIcon className="h-5 w-5 text-gray-500" />
+          <h2 className="font-bold text-gray-800">מחברת</h2>
+          <span className="text-xs text-gray-400 mr-auto">גלוי למטפל בלבד</span>
+        </div>
+
+        <textarea
+          value={notebookText}
+          onChange={(e) => setNotebookText(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm resize-none"
+          rows={3}
+          placeholder="רשום מחשבות, השערות, רעיונות על המטופל..."
+        />
+
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={handleAiAssist}
+            disabled={!notebookText.trim() || notebookAiLoading}
+            className="btn-secondary text-sm flex items-center gap-1.5 flex-1 disabled:opacity-50"
+          >
+            {notebookAiLoading ? (
+              <><span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-therapy-calm inline-block"></span>מעבד...</>
+            ) : (
+              <><SparklesIcon className="h-4 w-4" />עזור לי</>
+            )}
+          </button>
+          <button
+            onClick={handleSaveNote}
+            disabled={!notebookText.trim() || notebookSaving}
+            className="btn-primary text-sm flex items-center gap-1.5 flex-1 disabled:opacity-50"
+          >
+            {notebookSaving ? 'שומר...' : 'שמור'}
+          </button>
+        </div>
+
+        {notebookAiResponse && (
+          <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-3">
+            <div className="flex items-center gap-1.5 mb-2">
+              <SparklesIcon className="h-4 w-4 text-purple-600" />
+              <span className="text-xs font-medium text-purple-700">AI הצעות</span>
+            </div>
+            <p className="text-sm text-gray-700 whitespace-pre-line">{notebookAiResponse}</p>
+          </div>
+        )}
+
+        {notesLoading ? (
+          <div className="flex items-center justify-center py-4 mt-2">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-therapy-calm"></div>
+          </div>
+        ) : notes.length > 0 ? (
+          <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
+            <h3 className="text-xs font-medium text-gray-500">פתקים שמורים</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {notes.map((note) => (
+                <div key={note.id} className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-sm text-gray-700 whitespace-pre-line line-clamp-3">{note.content}</p>
+                  <div className="flex items-center justify-between mt-1.5">
+                    <span className="text-xs text-gray-400">
+                      {new Date(note.created_at).toLocaleDateString('he-IL', {
+                        day: 'numeric', month: 'short', year: 'numeric',
+                      })}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteNote(note.id)}
+                      className="text-gray-300 hover:text-red-400 transition-colors touch-manipulation"
+                      title="מחק פתק"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Tab navigation + content */}
+      <div className="space-y-0">
 
       {/* Tab navigation — horizontally scrollable on mobile */}
       <div className="border-b border-gray-200 -mx-4 sm:mx-0 px-4 sm:px-0">
@@ -886,87 +964,6 @@ export default function PatientProfilePage() {
       )}
 
       </div>{/* end tab content column */}
-
-      {/* ── Notebook sidebar (full-width on mobile, 288px on desktop) ── */}
-      <div className="w-full md:w-72 lg:w-80 flex-shrink-0 space-y-4">
-        <div className="card">
-          <div className="flex items-center gap-2 mb-3">
-            <BookOpenIcon className="h-5 w-5 text-gray-500" />
-            <h2 className="font-bold text-gray-800">מחברת</h2>
-            <span className="text-xs text-gray-400 mr-auto">גלוי למטפל בלבד</span>
-          </div>
-
-          <textarea
-            value={notebookText}
-            onChange={(e) => setNotebookText(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm resize-none"
-            rows={4}
-            placeholder="רשום מחשבות, השערות, רעיונות על המטופל..."
-          />
-
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={handleAiAssist}
-              disabled={!notebookText.trim() || notebookAiLoading}
-              className="btn-secondary text-sm flex items-center gap-1.5 flex-1 disabled:opacity-50"
-            >
-              {notebookAiLoading ? (
-                <><span className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-therapy-calm inline-block"></span>מעבד...</>
-              ) : (
-                <><SparklesIcon className="h-4 w-4" />עזור לי</>
-              )}
-            </button>
-            <button
-              onClick={handleSaveNote}
-              disabled={!notebookText.trim() || notebookSaving}
-              className="btn-primary text-sm flex items-center gap-1.5 flex-1 disabled:opacity-50"
-            >
-              {notebookSaving ? 'שומר...' : 'שמור'}
-            </button>
-          </div>
-
-          {notebookAiResponse && (
-            <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-3">
-              <div className="flex items-center gap-1.5 mb-2">
-                <SparklesIcon className="h-4 w-4 text-purple-600" />
-                <span className="text-xs font-medium text-purple-700">AI הצעות</span>
-              </div>
-              <p className="text-sm text-gray-700 whitespace-pre-line">{notebookAiResponse}</p>
-            </div>
-          )}
-
-          {notesLoading ? (
-            <div className="flex items-center justify-center py-4 mt-2">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-therapy-calm"></div>
-            </div>
-          ) : notes.length > 0 ? (
-            <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
-              <h3 className="text-xs font-medium text-gray-500">פתקים שמורים</h3>
-              {notes.map((note) => (
-                <div key={note.id} className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-sm text-gray-700 whitespace-pre-line">{note.content}</p>
-                  <div className="flex items-center justify-between mt-1.5">
-                    <span className="text-xs text-gray-400">
-                      {new Date(note.created_at).toLocaleDateString('he-IL', {
-                        day: 'numeric', month: 'short', year: 'numeric',
-                      })}
-                    </span>
-                    <button
-                      onClick={() => handleDeleteNote(note.id)}
-                      className="text-gray-300 hover:text-red-400 transition-colors touch-manipulation"
-                      title="מחק פתק"
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      </div>{/* end main flex row */}
 
       {/* ── Danger Zone (only when patient is active/paused) ── */}
       {patient.status !== 'inactive' && (
