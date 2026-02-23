@@ -29,6 +29,7 @@ import {
   EnvelopeIcon,
   TrashIcon,
   BookOpenIcon,
+  InformationCircleIcon,
 } from '@heroicons/react/24/outline'
 import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI } from '@/lib/api'
 
@@ -105,7 +106,7 @@ interface NoteItem {
   created_at: string
 }
 
-type Tab = 'sessions' | 'summaries' | 'inbetween'
+type Tab = 'sessions' | 'summaries' | 'inbetween' | 'notes'
 
 // --- Component ---
 
@@ -125,8 +126,9 @@ export default function PatientProfilePage() {
   const [notesLoading, setNotesLoading] = useState(false)
   const [viewingNote, setViewingNote] = useState<NoteItem | null>(null)
 
-  // AI toggle saving state
+  // AI toggle saving state + mobile info popover
   const [toggleAiSaving, setToggleAiSaving] = useState(false)
+  const [showAiInfo, setShowAiInfo] = useState(false)
 
   // Edit patient modal
   const [showEditPatient, setShowEditPatient] = useState(false)
@@ -228,7 +230,11 @@ export default function PatientProfilePage() {
       setSummariesLoading(true)
       try {
         const data = await patientSummariesAPI.list(pid)
-        setSummaries(data)
+        setSummaries([...data].sort((a, b) => {
+          if (b.session_date > a.session_date) return 1
+          if (b.session_date < a.session_date) return -1
+          return b.session_id - a.session_id
+        }))
       } catch (err) {
         console.error('Error loading summaries:', err)
       } finally {
@@ -249,8 +255,9 @@ export default function PatientProfilePage() {
     loadEx()
   }, [pid])
 
-  // Load notebook notes on mount
+  // Load notebook notes when notes tab is active
   useEffect(() => {
+    if (tab !== 'notes') return
     const loadNotes = async () => {
       setNotesLoading(true)
       try {
@@ -261,7 +268,7 @@ export default function PatientProfilePage() {
       }
     }
     loadNotes()
-  }, [pid])
+  }, [pid, tab])
 
   const handleToggleAiContact = async () => {
     if (!patient) return
@@ -564,9 +571,20 @@ export default function PatientProfilePage() {
                   }`}
                 />
               </button>
-              <div>
-                <div className="text-sm font-medium text-gray-900">AI פעיל למטופל זה</div>
-                <div className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+              <div className="flex-1">
+                <div className="flex items-center gap-1">
+                  <span className="text-sm font-medium text-gray-900">ניתוח AI</span>
+                  {/* Info icon — mobile only; tapping reveals description */}
+                  <button
+                    type="button"
+                    className="sm:hidden text-gray-400 hover:text-gray-600 touch-manipulation"
+                    onClick={() => setShowAiInfo((v) => !v)}
+                    aria-label="מידע על ניתוח AI"
+                  >
+                    <InformationCircleIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className={`text-xs text-gray-500 mt-0.5 leading-relaxed ${showAiInfo ? 'block' : 'hidden sm:block'}`}>
                   כאשר AI פעיל, המערכת יכולה לעזור לך בסיכומים, רעיונות לפגישות ומשימות בין-מפגשים עבור מטופל זה.
                 </div>
               </div>
@@ -582,70 +600,6 @@ export default function PatientProfilePage() {
         </div>
       </div>
 
-      {/* ── Notebook — directly under patient details, above tabs ── */}
-      <div className="card">
-        <div className="flex items-center gap-2 mb-3">
-          <BookOpenIcon className="h-5 w-5 text-gray-500" />
-          <h2 className="font-bold text-gray-800">מחברת</h2>
-          <span className="text-xs text-gray-400 mr-auto">גלוי למטפל בלבד</span>
-        </div>
-
-        <textarea
-          value={notebookText}
-          onChange={(e) => setNotebookText(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm resize-none"
-          rows={3}
-          maxLength={1000}
-          placeholder="רשום מחשבות, השערות, רעיונות על המטופל..."
-        />
-        <p className="text-right text-xs text-gray-400 -mt-1">{notebookText.length}/1000</p>
-
-        <div className="flex gap-2 mt-2 justify-end">
-          <button
-            onClick={handleSaveNote}
-            disabled={!notebookText.trim() || notebookSaving}
-            className="btn-primary text-sm disabled:opacity-50"
-          >
-            {notebookSaving ? 'שומר...' : 'שמור'}
-          </button>
-        </div>
-
-        {notesLoading ? (
-          <div className="flex items-center justify-center py-4 mt-2">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-therapy-calm"></div>
-          </div>
-        ) : notes.length > 0 ? (
-          <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
-            <h3 className="text-xs font-medium text-gray-500">פתקים שמורים</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {notes.map((note) => (
-                <div
-                  key={note.id}
-                  className="bg-gray-50 rounded-lg p-3 cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => setViewingNote(note)}
-                >
-                  <p className="text-sm text-gray-700 whitespace-pre-line line-clamp-3">{note.content}</p>
-                  <div className="flex items-center justify-between mt-1.5">
-                    <span className="text-xs text-gray-400">
-                      {new Date(note.created_at).toLocaleDateString('he-IL', {
-                        day: 'numeric', month: 'short', year: 'numeric',
-                      })}
-                    </span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDeleteNote(note.id) }}
-                      className="text-gray-300 hover:text-red-400 transition-colors touch-manipulation"
-                      title="מחק פתק"
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </div>
-
       {/* Tab navigation + content */}
       <div className="space-y-0">
 
@@ -656,6 +610,7 @@ export default function PatientProfilePage() {
             { key: 'sessions', label: 'פגישות', icon: CalendarIcon },
             { key: 'summaries', label: 'סיכומים ותובנות', icon: SparklesIcon },
             { key: 'inbetween', label: 'הודעות ותזכורות', icon: ChatBubbleLeftRightIcon },
+            { key: 'notes', label: 'הערות', icon: BookOpenIcon },
           ] as const).map(({ key, label, icon: Icon }) => (
             <button
               key={key}
@@ -931,6 +886,80 @@ export default function PatientProfilePage() {
           patientName={patient.full_name}
           patientPhone={patient.phone}
         />
+      )}
+
+      {/* ── Notes Tab ── */}
+      {tab === 'notes' && (
+        <div className="card space-y-4">
+          <div className="flex items-center gap-2">
+            <BookOpenIcon className="h-5 w-5 text-gray-500" />
+            <h2 className="font-bold text-gray-800">הערות</h2>
+            <span className="text-xs text-gray-400 mr-auto">גלוי למטפל בלבד</span>
+          </div>
+
+          <div>
+            <textarea
+              value={notebookText}
+              onChange={(e) => setNotebookText(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm resize-none"
+              rows={3}
+              maxLength={1000}
+              placeholder="רשום מחשבות, השערות, רעיונות על המטופל..."
+            />
+            <p className="text-right text-xs text-gray-400 -mt-1">{notebookText.length}/1000</p>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              onClick={handleSaveNote}
+              disabled={!notebookText.trim() || notebookSaving}
+              className="btn-primary text-sm disabled:opacity-50"
+            >
+              {notebookSaving ? 'שומר...' : 'שמור'}
+            </button>
+          </div>
+
+          {notesLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-therapy-calm"></div>
+            </div>
+          ) : notes.length > 0 ? (
+            <div className="space-y-2 border-t border-gray-100 pt-3">
+              <h3 className="text-xs font-medium text-gray-500">הערות שמורות</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {notes.map((note) => (
+                  <div
+                    key={note.id}
+                    className="bg-gray-50 rounded-lg p-3 cursor-pointer hover:bg-gray-100 transition-colors"
+                    onClick={() => setViewingNote(note)}
+                  >
+                    <p className="text-sm text-gray-700 whitespace-pre-line line-clamp-3">{note.content}</p>
+                    <div className="flex items-center justify-between mt-1.5">
+                      <span className="text-xs text-gray-400">
+                        {new Date(note.created_at).toLocaleDateString('he-IL', {
+                          day: 'numeric', month: 'short', year: 'numeric',
+                        })}
+                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteNote(note.id) }}
+                        className="text-gray-300 hover:text-red-400 transition-colors touch-manipulation"
+                        title="מחק הערה"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400">
+              <BookOpenIcon className="h-10 w-10 mx-auto mb-2 text-gray-300" />
+              <p className="text-sm">אין הערות עדיין</p>
+              <p className="text-xs mt-1">הוסף הערות, השערות ורעיונות על המטופל</p>
+            </div>
+          )}
+        </div>
       )}
 
       </div>{/* end tab content column */}

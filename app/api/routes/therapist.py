@@ -60,6 +60,16 @@ class UpdateTwinControlsRequest(BaseModel):
 
 # --- Helpers ---
 
+def _to_list(v):
+    """Return v if it's already a list, else None.
+
+    Guards against empty-string values that SQLite/JSON columns may
+    occasionally store when submitted via a form — Pydantic List[str]
+    validation rejects '' with a list_type error.
+    """
+    return v if isinstance(v, list) else None
+
+
 def _profile_response(profile) -> TherapistProfileResponse:
     """Build a TherapistProfileResponse from an ORM TherapistProfile instance."""
     return TherapistProfileResponse(
@@ -70,14 +80,14 @@ def _profile_response(profile) -> TherapistProfileResponse:
         approach_description=profile.approach_description,
         tone=profile.tone,
         message_length_preference=profile.message_length_preference,
-        common_terminology=profile.common_terminology,
+        common_terminology=_to_list(profile.common_terminology),
         follow_up_frequency=profile.follow_up_frequency,
-        preferred_exercises=profile.preferred_exercises,
+        preferred_exercises=_to_list(profile.preferred_exercises),
         onboarding_completed=profile.onboarding_completed,
         onboarding_step=profile.onboarding_step,
         tone_warmth=profile.tone_warmth or 3,
         directiveness=profile.directiveness or 3,
-        prohibitions=profile.prohibitions or [],
+        prohibitions=_to_list(profile.prohibitions) or [],
         custom_rules=profile.custom_rules,
         style_version=profile.style_version or 1,
         education=profile.education,

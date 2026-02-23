@@ -127,8 +127,8 @@ export default function Layout() {
                     ? 'bg-amber-100 text-amber-600'
                     : 'text-gray-500 hover:bg-gray-100'
                 }`}
-                aria-label="מחברת צד"
-                title="מחברת צד"
+                aria-label="הערות"
+                title="הערות"
               >
                 <LightBulbIcon className="h-5 w-5" />
               </button>

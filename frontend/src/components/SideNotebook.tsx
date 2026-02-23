@@ -138,7 +138,7 @@ export default function SideNotebook({ open, onClose }: Props) {
         {/* Header */}
         <div className="flex items-start justify-between px-4 py-4 border-b border-gray-100 flex-shrink-0">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">מחברת צד</h2>
+            <h2 className="text-lg font-bold text-gray-900">הערות</h2>
             <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
               מקום לשמור רעיונות, תובנות ולינקים שאינם קשורים למטופל ספציפי.
             </p>
