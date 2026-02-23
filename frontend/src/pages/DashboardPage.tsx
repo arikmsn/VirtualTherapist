@@ -99,6 +99,13 @@ export default function DashboardPage() {
   const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Lock body scroll whenever a modal is open
+  useEffect(() => {
+    const locked = showSummaryModal || showMessagePickerModal
+    document.body.style.overflow = locked ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [showSummaryModal, showMessagePickerModal])
+
   // Daily view state
   const [selectedDate, setSelectedDate] = useState<string>(todayISO())
   const [dailySessions, setDailySessions] = useState<DailySession[]>([])
@@ -460,6 +467,9 @@ export default function DashboardPage() {
 }
 
 // Summary Picker Modal — select patient then session
+// SummaryPickerModal — pick patient + session to open the summary editor.
+// Mobile: top-aligned with pt-8 clearance; sticky title; scrollable session list; sticky cancel.
+// Desktop: centered, max 85vh.
 function SummaryPickerModal({
   patients,
   sessions,
@@ -480,72 +490,84 @@ function SummaryPickerModal({
     : []
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir="rtl">
-      <div className="bg-white rounded-xl p-8 max-w-lg w-full mx-4 animate-fade-in">
-        <h2 className="text-2xl font-bold mb-6">בחר פגישה לסיכום</h2>
+    <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] animate-fade-in">
 
-        {/* Patient select */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">מטופל/ת</label>
-          <select
-            className="input-field"
-            value={selectedPatientId}
-            onChange={(e) => setSelectedPatientId(e.target.value)}
-          >
-            <option value="">-- בחר מטופל --</option>
-            {[...patients]
-              .sort((a, b) => a.full_name.localeCompare(b.full_name, 'he'))
-              .map((p) => (
-                <option key={p.id} value={p.id}>{p.full_name}</option>
-              ))}
-          </select>
+        {/* Sticky header */}
+        <div className="px-4 sm:px-8 py-4 sm:py-6 border-b border-gray-100 flex-shrink-0">
+          <h2 className="text-xl sm:text-2xl font-bold">בחר פגישה לסיכום</h2>
         </div>
 
-        {/* Session list for selected patient */}
-        {selectedPatientId && (
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">פגישה</label>
-            {patientSessions.length === 0 ? (
-              <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
-                אין פגישות למטופל זה. צור פגישה חדשה דרך עמוד הפגישות.
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {patientSessions.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => onSelect(s.id)}
-                    className="w-full text-right p-3 rounded-lg border border-gray-200 hover:border-therapy-calm hover:bg-therapy-calm/5 transition-colors flex items-center justify-between"
-                  >
-                    <div>
-                      <div className="font-medium">
-                        {new Date(s.session_date + 'T12:00:00').toLocaleDateString('he-IL')}
-                        {s.session_number ? ` · פגישה #${s.session_number}` : ''}
-                      </div>
-                    </div>
-                    {s.summary_id != null ? (
-                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                        יש סיכום
-                      </span>
-                    ) : (
-                      <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-                        ללא סיכום
-                      </span>
-                    )}
-                  </button>
+        {/* Scrollable content */}
+        <div className="overflow-y-auto flex-1 px-4 sm:px-8 py-4 sm:py-5 space-y-4">
+          {/* Patient select */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">מטופל/ת</label>
+            <select
+              className="input-field"
+              value={selectedPatientId}
+              onChange={(e) => setSelectedPatientId(e.target.value)}
+            >
+              <option value="">-- בחר מטופל --</option>
+              {[...patients]
+                .sort((a, b) => a.full_name.localeCompare(b.full_name, 'he'))
+                .map((p) => (
+                  <option key={p.id} value={p.id}>{p.full_name}</option>
                 ))}
-              </div>
-            )}
+            </select>
           </div>
-        )}
 
-        <button onClick={onClose} className="btn-secondary w-full">ביטול</button>
+          {/* Session list for selected patient */}
+          {selectedPatientId && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">פגישה</label>
+              {patientSessions.length === 0 ? (
+                <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
+                  אין פגישות למטופל זה. צור פגישה חדשה דרך עמוד הפגישות.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {patientSessions.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => onSelect(s.id)}
+                      className="w-full text-right p-3 rounded-lg border border-gray-200 hover:border-therapy-calm hover:bg-therapy-calm/5 transition-colors flex items-center justify-between min-h-[44px] touch-manipulation"
+                    >
+                      <div>
+                        <div className="font-medium">
+                          {new Date(s.session_date + 'T12:00:00').toLocaleDateString('he-IL')}
+                          {s.session_number ? ` · פגישה #${s.session_number}` : ''}
+                        </div>
+                      </div>
+                      {s.summary_id != null ? (
+                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex-shrink-0">
+                          יש סיכום
+                        </span>
+                      ) : (
+                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full flex-shrink-0">
+                          ללא סיכום
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Sticky footer */}
+        <div className="px-4 sm:px-8 py-4 border-t border-gray-100 flex-shrink-0">
+          <button onClick={onClose} className="btn-secondary w-full min-h-[44px] touch-manipulation">ביטול</button>
+        </div>
       </div>
     </div>
   )
 }
 
-// Patient picker for messaging — selects patient, then navigates to their Messages tab
+// MessagePatientPickerModal — selects patient, then navigates to their Messages tab.
+// Mobile: top-aligned with pt-8 clearance; sticky header+footer; scrollable patient select.
+// Desktop: centered, max 85vh.
 function MessagePatientPickerModal({
   patients,
   onClose,
@@ -558,14 +580,19 @@ function MessagePatientPickerModal({
   const [selectedId, setSelectedId] = useState('')
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir="rtl">
-      <div className="bg-white rounded-xl p-8 max-w-md w-full mx-4 animate-fade-in">
-        <h2 className="text-2xl font-bold mb-2">שליחת הודעה למטופל</h2>
-        <p className="text-sm text-gray-500 mb-6">
-          בחר מטופל כדי לפתוח את מרכז ההודעות שלו ולשלוח תזכורת
-        </p>
+    <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] animate-fade-in">
 
-        <div className="mb-6">
+        {/* Sticky header */}
+        <div className="px-4 sm:px-8 py-4 sm:py-6 border-b border-gray-100 flex-shrink-0">
+          <h2 className="text-xl sm:text-2xl font-bold">שליחת הודעה למטופל</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            בחר מטופל כדי לפתוח את מרכז ההודעות שלו ולשלוח תזכורת
+          </p>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="overflow-y-auto flex-1 px-4 sm:px-8 py-4 sm:py-5">
           <label className="block text-sm font-medium text-gray-700 mb-2">מטופל/ת</label>
           <select
             className="input-field"
@@ -581,15 +608,16 @@ function MessagePatientPickerModal({
           </select>
         </div>
 
-        <div className="flex gap-3">
+        {/* Sticky footer */}
+        <div className="flex gap-3 px-4 sm:px-8 py-4 border-t border-gray-100 flex-shrink-0">
           <button
             onClick={() => selectedId && onSelect(Number(selectedId))}
             disabled={!selectedId}
-            className="btn-primary flex-1 disabled:opacity-50"
+            className="btn-primary flex-1 disabled:opacity-50 min-h-[44px] touch-manipulation"
           >
             עבור למרכז הודעות →
           </button>
-          <button onClick={onClose} className="btn-secondary">ביטול</button>
+          <button onClick={onClose} className="btn-secondary min-h-[44px] touch-manipulation">ביטול</button>
         </div>
       </div>
     </div>
