@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.routes import auth, agent, messages, patients, sessions, therapist, debug, exercises
 from app.core.scheduler import scheduler
+from app.services.message_service import deliver_due_scheduled_messages
 from loguru import logger
 
 
@@ -61,8 +62,15 @@ if settings.ENVIRONMENT != "production":
 async def startup_event():
     """Startup event handler"""
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    scheduler.add_job(
+        deliver_due_scheduled_messages,
+        trigger="interval",
+        seconds=30,
+        id="poll_scheduled_messages",
+        replace_existing=True,
+    )
     scheduler.start()
-    logger.info("APScheduler started (scheduled message delivery active)")
+    logger.info("APScheduler started — polling for scheduled messages every 30s")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"AI Provider: {settings.AI_PROVIDER}")
 

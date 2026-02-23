@@ -145,7 +145,8 @@ async def test_send_at_past_tz_aware_triggers_immediate_delivery(db, draft_messa
 async def test_send_at_future_tz_aware_schedules(db, draft_message):
     """
     When send_at is tz-aware and in the future, the message should be
-    marked SCHEDULED and APScheduler.add_job called — not deliver_message.
+    marked SCHEDULED — not delivered immediately.
+    (New design: no per-message APScheduler jobs; the DB polling job delivers it.)
     """
     msg = draft_message["message"]
     therapist = draft_message["therapist"]
@@ -155,11 +156,7 @@ async def test_send_at_future_tz_aware_schedules(db, draft_message):
 
     svc = _make_service(db)
 
-    with patch.object(svc, "deliver_message", new_callable=AsyncMock) as mock_deliver, \
-         patch("app.core.scheduler.scheduler") as mock_scheduler:
-
-        mock_scheduler.add_job = MagicMock()
-
+    with patch.object(svc, "deliver_message", new_callable=AsyncMock) as mock_deliver:
         await svc.send_or_schedule_message(
             message_id=msg.id,
             therapist_id=therapist.id,
@@ -171,18 +168,10 @@ async def test_send_at_future_tz_aware_schedules(db, draft_message):
     # deliver_message should NOT have been called
     mock_deliver.assert_not_awaited()
 
-    # APScheduler job should have been registered
-    mock_scheduler.add_job.assert_called_once()
-    call_kwargs = mock_scheduler.add_job.call_args
-    assert call_kwargs.kwargs.get("run_date") == send_at or \
-           call_kwargs.args[2] == send_at or \
-           call_kwargs.kwargs.get("run_date") is not None
-
-    # Message status in DB should be SCHEDULED
+    # Message status in DB should be SCHEDULED with the correct time
     db.refresh(msg)
     assert msg.status == MessageStatus.SCHEDULED
     # SQLite DateTime columns strip tzinfo on retrieval (returns naive UTC).
-    # Compare against the naive equivalent of the tz-aware send_at.
     assert msg.scheduled_send_at == send_at.replace(tzinfo=None)
 
 
@@ -223,11 +212,7 @@ async def test_send_at_naive_is_normalized_to_utc(db, draft_message):
 
     svc = _make_service(db)
 
-    with patch.object(svc, "deliver_message", new_callable=AsyncMock), \
-         patch("app.core.scheduler.scheduler") as mock_scheduler:
-
-        mock_scheduler.add_job = MagicMock()
-
+    with patch.object(svc, "deliver_message", new_callable=AsyncMock) as mock_deliver:
         # Must NOT raise TypeError
         await svc.send_or_schedule_message(
             message_id=msg.id,
@@ -237,7 +222,10 @@ async def test_send_at_naive_is_normalized_to_utc(db, draft_message):
             send_at=send_at_naive,
         )
 
-    mock_scheduler.add_job.assert_called_once()
+    # Naive future send_at should be treated as UTC future → SCHEDULED, not delivered
+    mock_deliver.assert_not_awaited()
+    db.refresh(msg)
+    assert msg.status == MessageStatus.SCHEDULED
 
 
 @pytest.mark.asyncio
@@ -259,11 +247,7 @@ async def test_future_send_at_never_delivers_immediately(db, draft_message):
 
     svc = _make_service(db)
 
-    with patch.object(svc, "deliver_message", new_callable=AsyncMock) as mock_deliver, \
-         patch("app.core.scheduler.scheduler") as mock_scheduler:
-
-        mock_scheduler.add_job = MagicMock()
-
+    with patch.object(svc, "deliver_message", new_callable=AsyncMock) as mock_deliver:
         await svc.send_or_schedule_message(
             message_id=msg.id,
             therapist_id=therapist.id,
@@ -275,11 +259,169 @@ async def test_future_send_at_never_delivers_immediately(db, draft_message):
     # CRITICAL: must NOT deliver immediately
     mock_deliver.assert_not_awaited()
 
-    # Must register an APScheduler job
-    mock_scheduler.add_job.assert_called_once()
-
     # Message must be SCHEDULED, not SENT
     db.refresh(msg)
     assert msg.status == MessageStatus.SCHEDULED
     # scheduled_send_at stored as naive UTC (SQLite strips tzinfo)
+    assert msg.scheduled_send_at == send_at.replace(tzinfo=None)
+
+
+# --------------------------------------------------------------------------- #
+# Scheduler simulation tests
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_scheduler_delivers_due_messages(db, draft_message):
+    """
+    Simulated scheduler run: a message with status=SCHEDULED and
+    scheduled_send_at in the past must be picked up by deliver_due_messages()
+    and have deliver_message called for it.
+    """
+    msg = draft_message["message"]
+
+    # Manually put message into SCHEDULED state with a past scheduled_send_at
+    msg.status = MessageStatus.SCHEDULED
+    msg.scheduled_send_at = datetime.utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    svc = _make_service(db)
+
+    with patch.object(svc, "deliver_message", new_callable=AsyncMock) as mock_deliver:
+        mock_deliver.return_value = msg
+        count = await svc.deliver_due_messages()
+
+    assert count == 1
+    mock_deliver.assert_awaited_once_with(msg.id)
+
+
+@pytest.mark.asyncio
+async def test_scheduler_skips_future_messages(db, draft_message):
+    """
+    Scheduler must NOT deliver messages whose scheduled_send_at is still
+    in the future.
+    """
+    msg = draft_message["message"]
+
+    msg.status = MessageStatus.SCHEDULED
+    msg.scheduled_send_at = datetime.utcnow() + timedelta(minutes=5)
+    db.commit()
+
+    svc = _make_service(db)
+
+    with patch.object(svc, "deliver_message", new_callable=AsyncMock) as mock_deliver:
+        count = await svc.deliver_due_messages()
+
+    assert count == 0
+    mock_deliver.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_skips_cancelled_messages(db, draft_message):
+    """
+    Scheduler must NOT deliver messages that have been cancelled, even if
+    their scheduled_send_at is in the past.
+    """
+    msg = draft_message["message"]
+
+    msg.status = MessageStatus.CANCELLED
+    msg.scheduled_send_at = datetime.utcnow() - timedelta(minutes=1)
+    db.commit()
+
+    svc = _make_service(db)
+
+    with patch.object(svc, "deliver_message", new_callable=AsyncMock) as mock_deliver:
+        count = await svc.deliver_due_messages()
+
+    assert count == 0
+    mock_deliver.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_send_at_none_results_in_immediate_delivery_and_sent_status(db, draft_message):
+    """
+    send_at=None: deliver_message must be called immediately.
+    The contract: no APScheduler job, no SCHEDULED status.
+    """
+    msg = draft_message["message"]
+    therapist = draft_message["therapist"]
+
+    svc = _make_service(db)
+
+    with patch.object(svc, "deliver_message", new_callable=AsyncMock) as mock_deliver:
+        mock_deliver.return_value = msg
+        await svc.send_or_schedule_message(
+            message_id=msg.id,
+            therapist_id=therapist.id,
+            final_content=msg.content,
+            recipient_phone=msg.recipient_phone,
+            send_at=None,
+        )
+
+    mock_deliver.assert_awaited_once_with(msg.id)
+    # scheduled_send_at must remain None (never set for immediate sends)
+    db.refresh(msg)
+    assert msg.scheduled_send_at is None
+
+
+@pytest.mark.asyncio
+async def test_send_at_past_results_in_immediate_delivery(db, draft_message):
+    """
+    send_at in the past: deliver_message must be called immediately,
+    message must NOT be left as SCHEDULED in the DB.
+    """
+    msg = draft_message["message"]
+    therapist = draft_message["therapist"]
+
+    send_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+
+    svc = _make_service(db)
+
+    with patch.object(svc, "deliver_message", new_callable=AsyncMock) as mock_deliver:
+        mock_deliver.return_value = msg
+        await svc.send_or_schedule_message(
+            message_id=msg.id,
+            therapist_id=therapist.id,
+            final_content=msg.content,
+            recipient_phone=msg.recipient_phone,
+            send_at=send_at,
+        )
+
+    mock_deliver.assert_awaited_once_with(msg.id)
+    # Must NOT be in SCHEDULED state
+    db.refresh(msg)
+    assert msg.status != MessageStatus.SCHEDULED
+
+
+@pytest.mark.asyncio
+async def test_send_at_future_results_in_scheduled_status_no_delivery(db, draft_message):
+    """
+    send_at 5 minutes in the future:
+    - deliver_message must NOT be called
+    - status must be SCHEDULED
+    - scheduled_send_at must be stored
+    """
+    msg = draft_message["message"]
+    therapist = draft_message["therapist"]
+
+    send_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+
+    svc = _make_service(db)
+
+    with patch.object(svc, "deliver_message", new_callable=AsyncMock) as mock_deliver:
+        await svc.send_or_schedule_message(
+            message_id=msg.id,
+            therapist_id=therapist.id,
+            final_content=msg.content,
+            recipient_phone=msg.recipient_phone,
+            send_at=send_at,
+        )
+
+    # Must NOT deliver immediately
+    mock_deliver.assert_not_awaited()
+
+    # Must be SCHEDULED in DB with correct time
+    db.refresh(msg)
+    assert msg.status == MessageStatus.SCHEDULED
+    assert msg.scheduled_send_at is not None
+    # SQLite strips tzinfo; compare naive equivalents
     assert msg.scheduled_send_at == send_at.replace(tzinfo=None)

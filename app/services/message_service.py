@@ -467,18 +467,7 @@ class MessageService:
             message.scheduled_send_at = send_at
             self.db.commit()
             self.db.refresh(message)
-
-            # Register APScheduler one-shot job
-            from app.core.scheduler import scheduler
-            scheduler.add_job(
-                _deliver_message_job,
-                trigger="date",
-                run_date=send_at,
-                args=[message_id],
-                id=f"msg_{message_id}",
-                replace_existing=True,
-            )
-            logger.info(f"Message {message_id} scheduled for {send_at}")
+            logger.info(f"Message {message_id} scheduled for {send_at.isoformat()} — polling job will deliver it")
 
         await self.audit_service.log_action(
             user_id=therapist_id,
@@ -505,12 +494,7 @@ class MessageService:
         self.db.commit()
         self.db.refresh(message)
 
-        # Remove the APScheduler job
-        from app.core.scheduler import scheduler
-        try:
-            scheduler.remove_job(f"msg_{message_id}")
-        except Exception:
-            pass  # Job may have already fired or doesn't exist
+        # No APScheduler job to remove — the polling job skips non-SCHEDULED messages.
 
         await self.audit_service.log_action(
             user_id=therapist_id,
@@ -551,13 +535,43 @@ class MessageService:
                 message.recipient_phone = recipient_phone
         if send_at is not None:
             message.scheduled_send_at = send_at
-            # Reschedule APScheduler job
-            from app.core.scheduler import scheduler
-            scheduler.reschedule_job(f"msg_{message_id}", trigger="date", run_date=send_at)
+            # No APScheduler job to reschedule — the polling job reads scheduled_send_at from DB.
 
         self.db.commit()
         self.db.refresh(message)
         return message
+
+    async def deliver_due_messages(self) -> int:
+        """
+        Deliver all SCHEDULED messages whose scheduled_send_at has arrived.
+
+        Called by the APScheduler polling job every 30 seconds.
+        Returns the count of messages delivered (or attempted).
+
+        SQLite stores DateTime columns as naive UTC strings, so we compare
+        against datetime.utcnow() (naive) rather than datetime.now(timezone.utc).
+        """
+        now_naive = datetime.utcnow()
+        due = self.db.query(Message).filter(
+            Message.status == MessageStatus.SCHEDULED,
+            Message.scheduled_send_at <= now_naive,
+        ).all()
+
+        if not due:
+            return 0
+
+        logger.info(f"Scheduler poll: {len(due)} message(s) due for delivery")
+        count = 0
+        for message in due:
+            try:
+                await self.deliver_message(message.id)
+                count += 1
+            except Exception as exc:
+                logger.error(f"Scheduler: failed to deliver message {message.id}: {exc!r}")
+                message.status = MessageStatus.FAILED
+                self.db.commit()
+
+        return count
 
     async def deliver_message(self, message_id: int) -> Message:
         """
@@ -674,17 +688,16 @@ class MessageService:
         return message
 
 
-def _deliver_message_job(message_id: int) -> None:
+async def deliver_due_scheduled_messages() -> None:
     """
-    Synchronous APScheduler job entry point.
-    Runs in the scheduler thread — creates its own DB session and event loop slice.
+    APScheduler polling job — runs every 30 seconds.
+    Creates its own DB session so it stays independent of request sessions.
     """
-    import asyncio
     from app.core.database import SessionLocal
 
     db = SessionLocal()
     try:
-        service = MessageService(db)
-        asyncio.run(service.deliver_message(message_id))
+        svc = MessageService(db)
+        await svc.deliver_due_messages()
     finally:
         db.close()

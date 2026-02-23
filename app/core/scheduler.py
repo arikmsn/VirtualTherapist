@@ -1,36 +1,27 @@
 """
-APScheduler instance for scheduled message delivery.
+APScheduler instance for periodic scheduled-message delivery.
 
-Uses the AsyncIOScheduler (integrates with FastAPI's async loop) backed by a
-SQLAlchemy jobstore so scheduled jobs persist across server restarts.
+Architecture
+------------
+A single interval job (poll_scheduled_messages) runs every 30 seconds and
+calls deliver_due_scheduled_messages(), which queries the DB for every
+Message whose status='scheduled' AND scheduled_send_at <= now_utc and
+delivers them via the normal deliver_message() path.
 
-Usage:
-    from app.core.scheduler import scheduler
+This keeps the DB as the **single source of truth** — no per-message
+APScheduler jobs are registered, no SQLAlchemy jobstore is required, and
+no asyncio.run() hacks are needed.  Cancelling a scheduled message is just
+setting status='cancelled' in the DB; the poller will skip it.
 
-    # Start/stop are wired in app/main.py startup/shutdown events.
-    # To schedule a one-shot job:
-    scheduler.add_job(
-        deliver_scheduled_message,
-        trigger="date",
-        run_date=send_at,
-        args=[message_id],
-        id=f"msg_{message_id}",
-        replace_existing=True,
-    )
+The polling job is registered in app/main.py startup_event().
 """
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from app.core.config import settings
-
-_jobstore = SQLAlchemyJobStore(url=settings.DATABASE_URL)
 
 scheduler = AsyncIOScheduler(
-    jobstores={"default": _jobstore},
     job_defaults={
-        "coalesce": True,       # Merge missed executions into one
-        "max_instances": 1,     # Never run the same job concurrently
-        "misfire_grace_time": 3600,  # Still send if up to 1 hr late (server was down)
+        "coalesce": True,      # merge missed executions into one
+        "max_instances": 1,    # never run the same job concurrently
     },
-    timezone="Asia/Jerusalem",
+    timezone="UTC",
 )
