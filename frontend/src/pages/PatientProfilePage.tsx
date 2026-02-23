@@ -205,9 +205,13 @@ export default function PatientProfilePage() {
       try {
         const data = await sessionsAPI.getPatientSessions(pid)
         // Sort newest first
-        setSessions([...data].sort((a: Session, b: Session) =>
-          new Date(b.session_date).getTime() - new Date(a.session_date).getTime()
-        ))
+        setSessions([...data].sort((a: Session, b: Session) => {
+          // Compare YYYY-MM-DD strings directly — timezone-safe and correct
+          if (b.session_date > a.session_date) return 1
+          if (b.session_date < a.session_date) return -1
+          // Same date: newer session (higher id) first
+          return b.id - a.id
+        }))
       } catch (err) {
         console.error('Error loading sessions:', err)
       } finally {

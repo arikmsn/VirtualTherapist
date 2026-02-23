@@ -1002,7 +1002,7 @@ function AutoExpandTextarea({
   disabled: boolean
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const MAX = 200
+  const MAX = 500
 
   useEffect(() => {
     const el = textareaRef.current
