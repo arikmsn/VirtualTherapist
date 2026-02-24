@@ -10,6 +10,8 @@ import {
   ChevronLeftIcon,
   CalendarDaysIcon,
   SparklesIcon,
+  LightBulbIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { patientsAPI, sessionsAPI, exercisesAPI, therapistAPI } from '@/lib/api'
 import { useAuth } from '@/auth/useAuth'
@@ -30,6 +32,14 @@ interface DailySession {
   session_type: string
   session_number: number
   has_summary: boolean
+}
+
+interface PrepBrief {
+  history_summary: string[]
+  last_session: string[]
+  tasks_to_check: string[]
+  focus_for_today: string[]
+  watch_out_for: string[]
 }
 
 const SESSION_TYPE_LABELS: Record<string, string> = {
@@ -111,17 +121,23 @@ export default function DashboardPage() {
   const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Lock body scroll whenever a modal is open
-  useEffect(() => {
-    const locked = showSummaryModal || showMessagePickerModal
-    document.body.style.overflow = locked ? 'hidden' : ''
-    return () => { document.body.style.overflow = '' }
-  }, [showSummaryModal, showMessagePickerModal])
-
   // Daily view state
   const [selectedDate, setSelectedDate] = useState<string>(todayISO())
   const [dailySessions, setDailySessions] = useState<DailySession[]>([])
   const [dailyLoading, setDailyLoading] = useState(true)
+
+  // Prep brief modal state
+  const [prepSession, setPrepSession] = useState<DailySession | null>(null)
+  const [prepBrief, setPrepBrief] = useState<PrepBrief | null>(null)
+  const [prepLoading, setPrepLoading] = useState(false)
+  const [prepError, setPrepError] = useState('')
+
+  // Lock body scroll whenever a modal is open
+  useEffect(() => {
+    const locked = showSummaryModal || showMessagePickerModal || !!prepSession
+    document.body.style.overflow = locked ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [showSummaryModal, showMessagePickerModal, prepSession])
 
   // Smart reminders state (today only, non-blocking)
   const [todayInsights, setTodayInsights] = useState<Array<{ patient_id: number; title: string; body: string }>>([])
@@ -206,6 +222,33 @@ export default function DashboardPage() {
     loadInsights()
     return () => { cancelled = true }
   }, [selectedDate])
+
+  const openPrepModal = async (session: DailySession) => {
+    setPrepSession(session)
+    setPrepBrief(null)
+    setPrepError('')
+    setPrepLoading(true)
+    try {
+      const data = await sessionsAPI.getPrepBrief(session.id)
+      setPrepBrief(data)
+    } catch (err: any) {
+      const detail = err.response?.data?.detail || ''
+      // Onboarding warning — still show modal with a friendly message
+      if (detail.toLowerCase().includes('onboarding')) {
+        setPrepError('הפרופיל הטיפולי עדיין לא הושלם. ייתכן שהתדריך יהיה פחות מותאם אישית.')
+      } else {
+        setPrepError(detail || 'שגיאה ביצירת תדריך ההכנה')
+      }
+    } finally {
+      setPrepLoading(false)
+    }
+  }
+
+  const closePrepModal = () => {
+    setPrepSession(null)
+    setPrepBrief(null)
+    setPrepError('')
+  }
 
   const isToday = selectedDate === todayISO()
 
@@ -356,9 +399,10 @@ export default function DashboardPage() {
                     פתח סשן
                   </button>
                   <button
-                    onClick={() => navigate(`/sessions/${session.id}?prep=1`)}
-                    className="flex-1 sm:flex-none text-sm px-3 py-2 sm:py-1 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
+                    onClick={() => openPrepModal(session)}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-sm px-3 py-2 sm:py-1 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
                   >
+                    <SparklesIcon className="h-4 w-4 flex-shrink-0" />
                     הכנה לפגישה
                   </button>
                 </div>
@@ -517,6 +561,67 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Prep Brief Modal — opens in place, no navigation */}
+      {prepSession && (
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] animate-fade-in">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-amber-100 flex-shrink-0 bg-amber-50 rounded-t-2xl">
+              <div>
+                <h2 className="text-lg font-bold text-amber-900 flex items-center gap-2">
+                  <LightBulbIcon className="h-5 w-5" />
+                  הכנה לפגישה
+                </h2>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  {prepSession.patient_name}
+                  {prepSession.session_number ? ` · פגישה #${prepSession.session_number}` : ''}
+                  {' · '}
+                  {new Date(prepSession.session_date + 'T12:00:00').toLocaleDateString('he-IL')}
+                  {prepSession.session_type && ` · ${SESSION_TYPE_LABELS[prepSession.session_type] || prepSession.session_type}`}
+                </p>
+              </div>
+              <button onClick={closePrepModal} className="text-amber-600 hover:text-amber-900 p-1 touch-manipulation">
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto flex-1 px-5 py-4">
+              {prepLoading ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-3">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+                  <p className="text-sm text-amber-700">מכין תדריך...</p>
+                </div>
+              ) : prepError && !prepBrief ? (
+                <div className="text-amber-800 text-sm space-y-2">
+                  <p>{prepError}</p>
+                  <button
+                    onClick={() => openPrepModal(prepSession)}
+                    className="text-sm px-3 py-1 bg-amber-200 rounded-lg hover:bg-amber-300 transition-colors"
+                  >
+                    נסה שוב
+                  </button>
+                </div>
+              ) : prepBrief ? (
+                <>
+                  {prepError && (
+                    <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 mb-3">{prepError}</p>
+                  )}
+                  <DashboardPrepBriefContent brief={prepBrief} />
+                </>
+              ) : null}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
+              <button onClick={closePrepModal} className="btn-secondary w-full min-h-[44px] touch-manipulation">
+                סגור
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Summary Modal — pick patient + session, then navigate */}
       {showSummaryModal && (
@@ -700,6 +805,53 @@ function MessagePatientPickerModal({
           <button onClick={onClose} className="btn-secondary min-h-[44px] touch-manipulation">ביטול</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function DashboardPrepBriefContent({ brief }: { brief: PrepBrief }) {
+  return (
+    <div className="space-y-4 text-sm">
+      {(brief.history_summary || []).length > 0 && (
+        <div>
+          <h3 className="font-semibold text-amber-900 mb-1.5">📖 מה היה עד עכשיו</h3>
+          <ul className="list-disc list-inside text-gray-700 space-y-1 leading-relaxed">
+            {(brief.history_summary || []).map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+      {(brief.last_session || []).length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <h3 className="font-semibold text-blue-900 mb-1.5">🕐 מה היה בפגישה האחרונה</h3>
+          <ul className="list-disc list-inside text-blue-800 space-y-1 leading-relaxed">
+            {(brief.last_session || []).map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+      {(brief.tasks_to_check || []).length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+          <h3 className="font-semibold text-orange-900 mb-1.5">✅ משימות לבדיקה היום</h3>
+          <ul className="list-disc list-inside text-orange-800 space-y-1 leading-relaxed">
+            {(brief.tasks_to_check || []).map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+      {(brief.focus_for_today || []).length > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+          <h3 className="font-semibold text-green-900 mb-1.5">🎯 על מה כדאי להתמקד היום</h3>
+          <ul className="list-disc list-inside text-green-800 space-y-1 leading-relaxed">
+            {(brief.focus_for_today || []).map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+      {(brief.watch_out_for || []).length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+          <h3 className="font-semibold text-red-800 mb-1.5">⚠️ שים לב</h3>
+          <ul className="list-disc list-inside text-red-700 space-y-1 leading-relaxed">
+            {(brief.watch_out_for || []).map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
