@@ -132,11 +132,30 @@ export const messagesAPI = {
   },
 
   // Messages Center v1 (Phase C)
+  // Returns { content: string, message_type: string } — no DB record created
   generateDraft: async (patientId: number, messageType: string, context?: Record<string, string>) => {
     const response = await api.post('/messages/generate', {
       patient_id: patientId,
       message_type: messageType,
       context,
+    })
+    return response.data as { content: string; message_type: string }
+  },
+
+  // Create + send/schedule atomically (replaces draft two-step flow)
+  compose: async (data: {
+    patient_id: number
+    message_type: string
+    content: string
+    recipient_phone?: string
+    send_at?: string | null
+  }) => {
+    const response = await api.post('/messages/compose', {
+      patient_id: data.patient_id,
+      message_type: data.message_type,
+      content: data.content,
+      recipient_phone: data.recipient_phone || null,
+      send_at: data.send_at || null,
     })
     return response.data
   },
@@ -363,6 +382,11 @@ export const exercisesAPI = {
 
   delete: async (exerciseId: number) => {
     await api.delete(`/exercises/${exerciseId}`)
+  },
+
+  getOpenCount: async (): Promise<number> => {
+    const response = await api.get('/exercises/open-count')
+    return response.data.open_count as number
   },
 }
 

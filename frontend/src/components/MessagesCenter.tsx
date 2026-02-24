@@ -4,11 +4,11 @@
  * Therapist flow:
  *   1. Pick message type (task reminder / session reminder)
  *   2. Set recipient (patient default phone or custom number)
- *   3. API generates AI draft → therapist edits freely
+ *   3. API generates AI content → therapist edits freely
  *   4. Pick send time (now / later today / specific date+time)
- *   5. Confirm → sent immediately or stored as SCHEDULED
+ *   5. Confirm → message created + sent or scheduled atomically (no draft state)
  *
- * History shows all messages (DRAFT, SENT, SCHEDULED, CANCELLED, FAILED).
+ * History shows SENT, SCHEDULED, CANCELLED, FAILED messages only.
  * SCHEDULED messages can be edited or cancelled.
  *
  * PRD reference: Feature 4 — In-Between Flow v1 (one-way MVP)
@@ -24,7 +24,6 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   PlusIcon,
-  TrashIcon,
 } from '@heroicons/react/24/outline'
 import { messagesAPI } from '@/lib/api'
 import PhoneInput from '@/components/PhoneInput'
@@ -55,7 +54,6 @@ type SendWhen = 'now' | 'today' | 'custom'
 // --- Helpers ---
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  draft: { label: 'טיוטה', className: 'badge-draft' },
   scheduled: { label: 'מתוזמן', className: 'bg-blue-100 text-blue-800' },
   sent: { label: 'נשלח', className: 'badge-approved' },
   delivered: { label: 'נמסר', className: 'badge-approved' },
@@ -122,7 +120,7 @@ export default function MessagesCenter({
   // Async state
   const [generating, setGenerating] = useState(false)
   const [generatorError, setGeneratorError] = useState('')
-  const [draftId, setDraftId] = useState<number | null>(null)
+  const [generated, setGenerated] = useState(false)  // true after successful generate
   const [confirming, setConfirming] = useState(false)
   const [confirmError, setConfirmError] = useState('')
 
@@ -135,11 +133,6 @@ export default function MessagesCenter({
   const [editContent, setEditContent] = useState('')
   const [editSaving, setEditSaving] = useState(false)
 
-  // Draft saved notice (shown when closing composer with an unsent draft)
-  const [draftSavedNotice, setDraftSavedNotice] = useState(false)
-
-  // Deleting a draft
-  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
@@ -161,7 +154,7 @@ export default function MessagesCenter({
     setGenerating(true)
     setGeneratorError('')
     setContent('')
-    setDraftId(null)
+    setGenerated(false)
 
     const context: Record<string, string> = {}
     if (messageType === 'task_reminder' && taskText) context.task = taskText
@@ -171,11 +164,11 @@ export default function MessagesCenter({
     }
 
     try {
-      const draft = await messagesAPI.generateDraft(patientId, messageType, context)
-      setContent(draft.content)
-      setDraftId(draft.id)
+      const result = await messagesAPI.generateDraft(patientId, messageType, context)
+      setContent(result.content)
+      setGenerated(true)
     } catch (err: any) {
-      setGeneratorError(err.response?.data?.detail || 'שגיאה בייצור הטיוטה')
+      setGeneratorError(err.response?.data?.detail || 'שגיאה בייצור ההודעה')
     } finally {
       setGenerating(false)
     }
@@ -198,7 +191,7 @@ export default function MessagesCenter({
   const resetComposer = () => {
     setComposerOpen(false)
     setContent('')
-    setDraftId(null)
+    setGenerated(false)
     setTaskText('')
     setSessionDate('')
     setSessionTime('')
@@ -211,15 +204,16 @@ export default function MessagesCenter({
   }
 
   const handleConfirm = async (sendAt: string | null) => {
-    if (!draftId) return
-    // task_reminder requires content; session_reminder uses template (no content needed)
+    if (!generated) return
     if (messageType === 'task_reminder' && !content.trim()) return
     setConfirming(true)
     setConfirmError('')
     const recipientPhone = useCustomPhone ? customPhone : (patientPhone || undefined)
     try {
-      await messagesAPI.sendOrSchedule(draftId, {
-        content: messageType === 'session_reminder' ? undefined : content,
+      await messagesAPI.compose({
+        patient_id: patientId,
+        message_type: messageType,
+        content,
         recipient_phone: recipientPhone,
         send_at: sendAt,
       })
@@ -255,40 +249,7 @@ export default function MessagesCenter({
   }
 
   const handleCloseComposer = () => {
-    if (draftId) {
-      // Draft was already saved in DB by generateDraft — notify user before closing
-      setDraftSavedNotice(true)
-      setTimeout(() => {
-        setDraftSavedNotice(false)
-        resetComposer()
-        loadHistory()
-      }, 1800)
-    } else {
-      resetComposer()
-    }
-  }
-
-  const handleDeleteDraft = async (messageId: number) => {
-    if (!confirm('למחוק את הטיוטה?')) return
-    setDeletingId(messageId)
-    try {
-      await messagesAPI.deleteMessage(messageId)
-      await loadHistory()
-    } catch (err) {
-      console.error('Delete draft failed:', err)
-    } finally {
-      setDeletingId(null)
-    }
-  }
-
-  const handleEditDraft = (msg: Message) => {
-    // Reopen composer pre-loaded with this draft
-    setComposerOpen(true)
-    setDraftId(msg.id)
-    setContent(msg.content || '')
-    if (msg.message_type === 'task_reminder' || msg.message_type === 'session_reminder') {
-      setMessageType(msg.message_type)
-    }
+    resetComposer()
   }
 
   const todayInputMin = (() => {
@@ -312,7 +273,9 @@ export default function MessagesCenter({
       {/* Header row: message count (right in RTL) + new message button (left in RTL) */}
       <div className="flex items-center justify-between">
         <span className="text-sm text-gray-500">
-          {messages.length > 0 ? `סה"כ הודעות: ${messages.length}` : ''}
+          {messages.filter((m) => m.status !== 'draft').length > 0
+            ? `סה"כ הודעות: ${messages.filter((m) => m.status !== 'draft').length}`
+            : ''}
         </span>
         {!composerOpen && (
           <button
@@ -330,19 +293,12 @@ export default function MessagesCenter({
         <div className="card border-blue-200 bg-blue-50 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-blue-900">יצירת הודעה חדשה</h3>
-            <div className="flex items-center gap-2">
-              {draftSavedNotice && (
-                <span className="text-xs text-green-700 bg-green-50 px-2 py-1 rounded-lg">
-                  הטיוטה נשמרה
-                </span>
-              )}
-              <button
-                onClick={handleCloseComposer}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <XMarkIcon className="h-5 w-5" />
-              </button>
-            </div>
+            <button
+              onClick={handleCloseComposer}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
           </div>
 
           {/* Message type selector */}
@@ -420,14 +376,14 @@ export default function MessagesCenter({
             {generating ? (
               <>
                 <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-therapy-calm"></span>
-                {messageType === 'session_reminder' ? 'יוצר תזכורת...' : 'מייצר טיוטה...'}
+                {messageType === 'session_reminder' ? 'יוצר תזכורת...' : 'מייצר הודעה...'}
               </>
             ) : (
               <>
                 <ArrowPathIcon className="h-4 w-4" />
                 {messageType === 'session_reminder'
-                  ? (draftId ? 'עדכן תצוגה מקדימה' : 'צור תזכורת')
-                  : (draftId ? 'ייצר מחדש' : 'ייצר טיוטה')}
+                  ? (generated ? 'עדכן תצוגה מקדימה' : 'צור תזכורת')
+                  : (generated ? 'ייצר מחדש' : 'ייצר הודעה')}
               </>
             )}
           </button>
@@ -437,7 +393,7 @@ export default function MessagesCenter({
           )}
 
           {/* Content area — locked preview for session_reminder, editable for task_reminder */}
-          {draftId && messageType === 'session_reminder' ? (
+          {generated && messageType === 'session_reminder' ? (
             <div className="rounded-xl border border-blue-200 bg-white p-4 space-y-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-blue-700 uppercase tracking-wide">
                 <span>📋</span>
@@ -452,7 +408,7 @@ export default function MessagesCenter({
                 </p>
               </div>
             </div>
-          ) : (content || draftId) && messageType === 'task_reminder' ? (
+          ) : generated && messageType === 'task_reminder' ? (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 תוכן ההודעה <span className="text-gray-400 font-normal">(ניתן לערוך)</span>
@@ -468,7 +424,7 @@ export default function MessagesCenter({
           ) : null}
 
           {/* Recipient */}
-          {draftId && (
+          {generated && (
             <div>
               <p className="text-sm font-medium text-gray-700 mb-2">נמען</p>
               <div className="space-y-2">
@@ -511,7 +467,7 @@ export default function MessagesCenter({
           )}
 
           {/* Primary actions: Send now | Schedule */}
-          {draftId && (
+          {generated && (
             <div className="space-y-3">
               {/* First-class action buttons — stack on mobile, row on sm+ */}
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
@@ -644,8 +600,8 @@ export default function MessagesCenter({
           </div>
         ) : (
           <div className="space-y-3">
-            {messages.map((msg) => {
-              const statusMeta = STATUS_LABELS[msg.status] || { label: msg.status, className: 'badge-draft' }
+            {messages.filter((m) => m.status !== 'draft').map((msg) => {
+              const statusMeta = STATUS_LABELS[msg.status] || { label: msg.status, className: 'bg-gray-100 text-gray-600' }
               const isScheduled = msg.status === 'scheduled'
               const isEditing = editingId === msg.id
 
@@ -709,27 +665,6 @@ export default function MessagesCenter({
                     <p className="text-sm text-gray-700 whitespace-pre-line">
                       {msg.content || (msg.message_type === 'session_reminder' ? '📋 תזכורת פגישה — תבנית WhatsApp' : '')}
                     </p>
-                  )}
-
-                  {/* DRAFT actions — edit (reopen composer) + delete */}
-                  {msg.status === 'draft' && !isEditing && (
-                    <div className="flex items-center gap-3 pt-1 border-t border-gray-100">
-                      <button
-                        onClick={() => handleEditDraft(msg)}
-                        className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
-                      >
-                        <PencilSquareIcon className="h-4 w-4" />
-                        ערוך
-                      </button>
-                      <button
-                        onClick={() => handleDeleteDraft(msg.id)}
-                        disabled={deletingId === msg.id}
-                        className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 disabled:opacity-50"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                        {deletingId === msg.id ? 'מוחק...' : 'מחק'}
-                      </button>
-                    </div>
                   )}
 
                   {/* Scheduled actions — edit hidden for session_reminder (template content is locked) */}

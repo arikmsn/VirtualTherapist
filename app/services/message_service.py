@@ -288,11 +288,12 @@ class MessageService:
         patient_id: int,
         limit: int = 50
     ) -> List[Message]:
-        """Get message history for a specific patient"""
+        """Get message history for a specific patient (drafts excluded)."""
 
         messages = self.db.query(Message).filter(
             Message.therapist_id == therapist_id,
-            Message.patient_id == patient_id
+            Message.patient_id == patient_id,
+            Message.status != MessageStatus.DRAFT,
         ).order_by(Message.created_at.desc()).limit(limit).all()
 
         return messages
@@ -306,17 +307,13 @@ class MessageService:
         message_type: str,  # "task_reminder" | "session_reminder"
         agent: TherapyAgent,
         context: Optional[dict] = None,
-    ) -> Message:
+    ) -> dict:
         """
-        Generate a Twin-aligned draft message for the Messages Center.
+        Generate message content WITHOUT saving to DB.
 
-        - "session_reminder": template-based (no AI call), uses patient name +
-          session date/time from context.
-        - "task_reminder": AI-generated using therapist Twin controls
-          (tone_warmth, directiveness, prohibitions, custom_rules).
-
-        The draft is always in status=DRAFT. The therapist sees and edits it
-        before confirming via send_or_schedule_message().
+        Returns {"content": str, "message_type": str}.
+        The therapist reviews/edits the text and then calls compose_message()
+        to create + send/schedule atomically.
         """
         from app.security.encryption import decrypt_data
 
@@ -391,36 +388,8 @@ class MessageService:
         else:
             raise ValueError(f"Unknown message_type: '{message_type}'. Use 'task_reminder' or 'session_reminder'.")
 
-        message = Message(
-            therapist_id=therapist_id,
-            patient_id=patient_id,
-            direction=MessageDirection.TO_PATIENT,
-            content=content,
-            status=MessageStatus.DRAFT,
-            requires_approval=True,
-            message_type=message_type,
-            generated_by_ai=(message_type == "task_reminder"),
-            ai_model=settings.AI_MODEL if message_type == "task_reminder" else None,
-            ai_prompt_used=ai_prompt,
-            channel="whatsapp",
-            related_session_id=(context or {}).get("session_id") if message_type == "session_reminder" else None,
-        )
-
-        self.db.add(message)
-        self.db.commit()
-        self.db.refresh(message)
-
-        await self.audit_service.log_action(
-            user_id=therapist_id,
-            user_type="therapist",
-            action="generate_draft",
-            resource_type="message",
-            resource_id=message.id,
-            action_details={"patient_id": patient_id, "message_type": message_type},
-        )
-
-        logger.info(f"Generated draft message {message.id} (type={message_type}) for patient {patient_id}")
-        return message
+        logger.info(f"Generated content (type={message_type}) for patient {patient_id} — not saved to DB")
+        return {"content": content, "message_type": message_type}
 
     async def send_or_schedule_message(
         self,
@@ -487,6 +456,51 @@ class MessageService:
             action_details={"send_at": str(send_at), "recipient_phone": recipient_phone},
         )
         return message
+
+    async def compose_message(
+        self,
+        therapist_id: int,
+        patient_id: int,
+        message_type: str,
+        content: str,
+        recipient_phone: Optional[str] = None,
+        send_at: Optional[datetime] = None,
+    ) -> Message:
+        """
+        Create a message and immediately send or schedule it (no draft state).
+
+        Replaces the old generate-then-confirm two-step flow.
+        """
+        patient = self.db.query(Patient).filter(
+            Patient.id == patient_id,
+            Patient.therapist_id == therapist_id,
+        ).first()
+        if not patient:
+            raise ValueError("Patient not found or does not belong to this therapist")
+
+        message = Message(
+            therapist_id=therapist_id,
+            patient_id=patient_id,
+            direction=MessageDirection.TO_PATIENT,
+            content=content,
+            status=MessageStatus.DRAFT,
+            requires_approval=True,
+            message_type=message_type,
+            generated_by_ai=(message_type == "task_reminder"),
+            ai_model=settings.AI_MODEL if message_type == "task_reminder" else None,
+            channel="whatsapp",
+        )
+        self.db.add(message)
+        self.db.commit()
+        self.db.refresh(message)
+
+        return await self.send_or_schedule_message(
+            message_id=message.id,
+            therapist_id=therapist_id,
+            final_content=content,
+            recipient_phone=recipient_phone,
+            send_at=send_at,
+        )
 
     async def cancel_message(self, message_id: int, therapist_id: int) -> Message:
         """Cancel a SCHEDULED message. Removes the APScheduler job."""

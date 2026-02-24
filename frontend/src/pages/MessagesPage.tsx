@@ -18,7 +18,6 @@ import {
   PlusIcon,
 } from '@heroicons/react/24/outline'
 import { messagesAPI, patientsAPI } from '@/lib/api'
-import { TrashIcon } from '@heroicons/react/24/outline'
 
 // --- Types ---
 
@@ -44,7 +43,6 @@ interface Patient {
 // --- Helpers ---
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
-  draft: { label: 'טיוטה', className: 'bg-gray-100 text-gray-600' },
   pending_approval: { label: 'ממתין לאישור', className: 'bg-amber-100 text-amber-800' },
   approved: { label: 'מאושר', className: 'bg-blue-100 text-blue-800' },
   scheduled: { label: 'מתוזמן', className: 'bg-indigo-100 text-indigo-800' },
@@ -152,21 +150,11 @@ export default function MessagesPage() {
     }
   }
 
-  const handleDelete = async (messageId: number) => {
-    if (!confirm('למחוק את הטיוטה?')) return
-    try {
-      await messagesAPI.deleteMessage(messageId)
-      await load()
-    } catch (err) {
-      console.error('Delete failed:', err)
-    }
-  }
-
   const sortedPatients = [...patients].sort((a, b) =>
     a.full_name.localeCompare(b.full_name, 'he')
   )
 
-  const FILTER_STATUSES = ['draft', 'scheduled', 'sent', 'failed']
+  const FILTER_STATUSES = ['scheduled', 'sent', 'failed', 'cancelled']
 
   return (
     <div className="space-y-6 animate-fade-in" dir="rtl">
@@ -247,7 +235,7 @@ export default function MessagesPage() {
       </div>
 
       <div className="text-sm text-gray-500">
-        {loading ? 'טוען...' : `${messages.length} הודעות`}
+        {loading ? 'טוען...' : `${messages.filter((m) => m.status !== 'draft').length} הודעות`}
       </div>
 
       {/* List */}
@@ -255,14 +243,14 @@ export default function MessagesPage() {
         <div className="flex justify-center py-12">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-therapy-calm"></div>
         </div>
-      ) : messages.length === 0 ? (
+      ) : messages.filter((m) => m.status !== 'draft').length === 0 ? (
         <div className="card text-center py-12 text-gray-400">
           <p className="text-lg">אין הודעות תואמות</p>
           <p className="text-sm mt-1">שנה את הסינון או צור הודעות חדשות דרך פרופיל המטופל</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {messages.map((msg) => {
+          {messages.filter((m) => m.status !== 'draft').map((msg) => {
             const sm = STATUS_META[msg.status] || { label: msg.status, className: 'bg-gray-100 text-gray-600' }
             const isScheduled = msg.status === 'scheduled'
             const isEditing = editingId === msg.id
@@ -345,26 +333,6 @@ export default function MessagesPage() {
                     >
                       <XMarkIcon className="h-4 w-4" />
                       בטל תזמון
-                    </button>
-                  </div>
-                )}
-
-                {/* DRAFT controls */}
-                {msg.status === 'draft' && !isEditing && (
-                  <div className="flex items-center gap-4 pt-1 border-t border-gray-100">
-                    <button
-                      onClick={() => navigate(`/patients/${msg.patient_id}`, { state: { initialTab: 'inbetween' } })}
-                      className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
-                    >
-                      <PencilSquareIcon className="h-4 w-4" />
-                      ערוך
-                    </button>
-                    <button
-                      onClick={() => handleDelete(msg.id)}
-                      className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700"
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                      מחק טיוטה
                     </button>
                   </div>
                 )}

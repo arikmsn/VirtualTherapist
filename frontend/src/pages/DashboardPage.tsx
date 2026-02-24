@@ -10,7 +10,7 @@ import {
   ChevronLeftIcon,
   CalendarDaysIcon,
 } from '@heroicons/react/24/outline'
-import { patientsAPI, sessionsAPI, messagesAPI } from '@/lib/api'
+import { patientsAPI, sessionsAPI, exercisesAPI } from '@/lib/api'
 import { useAuth } from '@/auth/useAuth'
 
 interface Patient {
@@ -102,7 +102,7 @@ export default function DashboardPage() {
   const [allSessions, setAllSessions] = useState<SimpleSession[]>([])
 
   const [stats, setStats] = useState({
-    pendingMessages: 0,
+    openTasks: 0,
     todaySessions: 0,
     activePatients: 0,
     completedSummaries: 0,
@@ -126,16 +126,16 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadStats = async () => {
       try {
-        const [patientsData, sessionsData, messagesData] = await Promise.all([
+        const [patientsData, sessionsData, openTaskCount] = await Promise.all([
           patientsAPI.list(),
           sessionsAPI.list(),
-          messagesAPI.getPending().catch(() => []),
+          exercisesAPI.getOpenCount().catch(() => 0),
         ])
         setPatients(patientsData)
         setAllSessions(sessionsData)
         const today = todayISO()
         setStats({
-          pendingMessages: messagesData.length,
+          openTasks: openTaskCount,
           todaySessions: sessionsData.filter(
             (s: any) => s.session_date === today
           ).length,
@@ -335,11 +335,6 @@ export default function DashboardPage() {
               </p>
             </div>
             <div className="mt-auto w-full">
-              {stats.pendingMessages > 0 && (
-                <div className="mb-2 badge badge-pending">
-                  {stats.pendingMessages} הודעות ממתינות לאישור
-                </div>
-              )}
               <div className="text-sm text-therapy-support font-medium">לחץ ליצירת הודעה →</div>
             </div>
           </div>
@@ -373,8 +368,8 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <ClockIcon className="h-8 w-8 text-blue-600" />
             <div>
-              <div className="text-2xl font-bold text-blue-900">{stats.pendingMessages}</div>
-              <div className="text-sm text-blue-700">הודעות ממתינות</div>
+              <div className="text-2xl font-bold text-blue-900">{stats.openTasks}</div>
+              <div className="text-sm text-blue-700">משימות פתוחות</div>
             </div>
           </div>
         </div>
@@ -430,20 +425,20 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-            {stats.pendingMessages > 0 && (
+            {stats.openTasks > 0 && (
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                   <div>
-                    <div className="font-medium">{stats.pendingMessages} הודעות ממתינות לאישורך</div>
-                    <div className="text-sm text-gray-500">דורש פעולה</div>
+                    <div className="font-medium">{stats.openTasks} משימות פתוחות ממתינות</div>
+                    <div className="text-sm text-gray-500">בין-פגישות</div>
                   </div>
                 </div>
                 <button
-                  onClick={() => navigate('/messages')}
+                  onClick={() => navigate('/patients')}
                   className="text-therapy-calm text-sm font-medium hover:underline"
                 >
-                  אשר עכשיו →
+                  עבור למטופלים →
                 </button>
               </div>
             )}

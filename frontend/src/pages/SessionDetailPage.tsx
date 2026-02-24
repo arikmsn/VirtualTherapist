@@ -603,7 +603,7 @@ export default function SessionDetailPage() {
                           summary.created_at.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(summary.created_at)
                             ? summary.created_at
                             : summary.created_at + 'Z'
-                        ).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        ).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}
                       </span>
                     </h3>
                     <p className="text-blue-700 whitespace-pre-line text-sm leading-relaxed">

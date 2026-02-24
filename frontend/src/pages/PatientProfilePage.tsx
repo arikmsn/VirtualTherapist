@@ -106,6 +106,20 @@ interface NoteItem {
   created_at: string
 }
 
+interface PrepBrief {
+  quick_overview: string
+  recent_progress: string
+  key_points_to_revisit: string[]
+  watch_out_for: string[]
+  ideas_for_this_session: string[]
+}
+
+interface PrepModalSession {
+  id: number
+  session_date: string
+  session_number?: number
+}
+
 type Tab = 'sessions' | 'summaries' | 'inbetween' | 'notes'
 
 // --- Component ---
@@ -173,16 +187,22 @@ export default function PatientProfilePage() {
   const [insightLoading, setInsightLoading] = useState(false)
   const [insightError, setInsightError] = useState('')
 
+  // Prep brief modal
+  const [prepModalSession, setPrepModalSession] = useState<PrepModalSession | null>(null)
+  const [prepBrief, setPrepBrief] = useState<PrepBrief | null>(null)
+  const [prepLoading, setPrepLoading] = useState(false)
+  const [prepError, setPrepError] = useState('')
+
   const approvedCount = summaries.filter(
     (s) => s.summary.status === 'approved' || s.summary.approved_by_therapist
   ).length
 
   // Lock body scroll when any modal is open
   useEffect(() => {
-    const locked = showEditPatient || showInactiveConfirm || showNewSession
+    const locked = showEditPatient || showInactiveConfirm || showNewSession || prepModalSession !== null
     document.body.style.overflow = locked ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
-  }, [showEditPatient, showInactiveConfirm, showNewSession])
+  }, [showEditPatient, showInactiveConfirm, showNewSession, prepModalSession])
 
   // Load patient + sessions on mount
   useEffect(() => {
@@ -269,6 +289,27 @@ export default function PatientProfilePage() {
     }
     loadNotes()
   }, [pid, tab])
+
+  const openPrepModal = async (session: PrepModalSession) => {
+    setPrepModalSession(session)
+    setPrepBrief(null)
+    setPrepError('')
+    setPrepLoading(true)
+    try {
+      const data = await sessionsAPI.getPrepBrief(session.id)
+      setPrepBrief(data)
+    } catch (err: any) {
+      setPrepError(err.response?.data?.detail || 'שגיאה ביצירת תדריך ההכנה')
+    } finally {
+      setPrepLoading(false)
+    }
+  }
+
+  const closePrepModal = () => {
+    setPrepModalSession(null)
+    setPrepBrief(null)
+    setPrepError('')
+  }
 
   const handleToggleAiContact = async () => {
     if (!patient) return
@@ -695,6 +736,13 @@ export default function PatientProfilePage() {
                         </div>
                       )}
                     </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openPrepModal(session) }}
+                      className="flex items-center gap-1 text-xs text-therapy-warm font-medium hover:text-amber-700 px-2 py-1 rounded hover:bg-amber-50 transition-colors whitespace-nowrap touch-manipulation flex-shrink-0"
+                    >
+                      <SparklesIcon className="h-3.5 w-3.5" />
+                      הכנה
+                    </button>
                     <ArrowRightIcon className="h-4 w-4 text-gray-400 flex-shrink-0 rotate-180" />
                   </div>
                 </div>
@@ -977,6 +1025,82 @@ export default function PatientProfilePage() {
           >
             סמן כלא פעיל
           </button>
+        </div>
+      )}
+
+      {/* ── Prep Brief Modal ── */}
+      {prepModalSession && (
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] animate-fade-in">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-amber-100 flex-shrink-0 bg-amber-50 rounded-t-2xl">
+              <div>
+                <h2 className="text-lg font-bold text-amber-900">הכנה לפגישה</h2>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  {prepModalSession.session_number ? `פגישה #${prepModalSession.session_number} · ` : ''}
+                  {new Date(prepModalSession.session_date + 'T12:00:00').toLocaleDateString('he-IL')}
+                </p>
+              </div>
+              <button onClick={closePrepModal} className="text-amber-600 hover:text-amber-800 p-1 touch-manipulation">
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-4 sm:p-5">
+              {prepLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
+                  <span className="mr-3 text-amber-700 text-sm">מכין תדריך...</span>
+                </div>
+              ) : prepError ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
+                  <p className="text-sm">{prepError}</p>
+                  <button
+                    onClick={() => openPrepModal(prepModalSession)}
+                    className="mt-2 text-sm px-3 py-1 bg-amber-200 rounded-lg hover:bg-amber-300 transition-colors"
+                  >
+                    נסה שוב
+                  </button>
+                </div>
+              ) : prepBrief ? (
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <h3 className="font-semibold text-amber-900 mb-1">סקירה מהירה</h3>
+                    <p className="text-amber-800">{prepBrief.quick_overview}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-amber-900 mb-1">התקדמות אחרונה</h3>
+                    <p className="text-amber-800">{prepBrief.recent_progress}</p>
+                  </div>
+                  {prepBrief.key_points_to_revisit.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-amber-900 mb-1">נקודות לחזור אליהן</h3>
+                      <ul className="list-disc list-inside text-amber-800 space-y-0.5">
+                        {prepBrief.key_points_to_revisit.map((p, i) => <li key={i}>{p}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {prepBrief.watch_out_for.length > 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                      <h3 className="font-semibold text-red-800 mb-1">שים לב</h3>
+                      <ul className="list-disc list-inside text-red-700 space-y-0.5">
+                        {prepBrief.watch_out_for.map((w, i) => <li key={i}>{w}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {prepBrief.ideas_for_this_session.length > 0 && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <h3 className="font-semibold text-green-800 mb-1">רעיונות לפגישה זו</h3>
+                      <ul className="list-disc list-inside text-green-700 space-y-0.5">
+                        {prepBrief.ideas_for_this_session.map((idea, i) => <li key={i}>{idea}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
+              <button onClick={closePrepModal} className="btn-secondary w-full min-h-[44px] touch-manipulation">סגור</button>
+            </div>
+          </div>
         </div>
       )}
 

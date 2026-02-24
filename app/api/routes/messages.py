@@ -216,7 +216,10 @@ async def get_all_messages(
     Used by the Message Control Center screen.
     """
     try:
-        q = db.query(Message).filter(Message.therapist_id == current_therapist.id)
+        q = db.query(Message).filter(
+            Message.therapist_id == current_therapist.id,
+            Message.status != MessageStatus.DRAFT,  # Drafts are never persisted in new flow
+        )
         if patient_id is not None:
             q = q.filter(Message.patient_id == patient_id)
         if status is not None:
@@ -283,6 +286,21 @@ class GenerateDraftRequest(BaseModel):
     context: Optional[Dict[str, Any]] = None  # e.g. task text, session date/time
 
 
+class GeneratedContentResponse(BaseModel):
+    """Response from POST /generate — text only, no DB record created."""
+    content: str
+    message_type: str
+
+
+class ComposeRequest(BaseModel):
+    """Create + send/schedule a message atomically (replaces draft two-step flow)."""
+    patient_id: int
+    message_type: str
+    content: str
+    recipient_phone: Optional[str] = None
+    send_at: Optional[datetime] = None
+
+
 class SendOrScheduleRequest(BaseModel):
     """Therapist confirms and sends/schedules a DRAFT message."""
     content: Optional[str] = None      # Final message text; omitted for session_reminder (template-only)
@@ -297,34 +315,65 @@ class EditScheduledRequest(BaseModel):
     send_at: Optional[datetime] = None
 
 
-@router.post("/generate", response_model=MessageResponse, status_code=201)
+@router.post("/generate", response_model=GeneratedContentResponse, status_code=200)
 async def generate_draft_message(
     request: GenerateDraftRequest,
     current_therapist: Therapist = Depends(get_current_therapist),
     db: Session = Depends(get_db),
 ):
     """
-    Generate a Twin-aligned draft message (task reminder or session reminder).
-    The therapist sees and can edit the text before sending or scheduling.
+    Generate Twin-aligned message content (task reminder or session reminder).
+    Returns generated text only — no DB record created.
+    The therapist reviews/edits the text and calls POST /compose to send/schedule.
     """
     message_service = MessageService(db)
     therapist_service = TherapistService(db)
 
     try:
         agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
-        message = await message_service.generate_draft_message(
+        result = await message_service.generate_draft_message(
             therapist_id=current_therapist.id,
             patient_id=request.patient_id,
             message_type=request.message_type,
             agent=agent,
             context=request.context,
         )
-        return MessageResponse.model_validate(message)
+        return GeneratedContentResponse(**result)
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception(f"generate_draft_message therapist={current_therapist.id} patient={request.patient_id} failed: {e!r}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/compose", response_model=MessageResponse, status_code=201)
+async def compose_message(
+    request: ComposeRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """
+    Create + immediately send or schedule a message in one atomic step.
+    Replaces the old two-step draft → confirm flow.
+    """
+    message_service = MessageService(db)
+
+    try:
+        message = await message_service.compose_message(
+            therapist_id=current_therapist.id,
+            patient_id=request.patient_id,
+            message_type=request.message_type,
+            content=request.content,
+            recipient_phone=request.recipient_phone,
+            send_at=request.send_at,
+        )
+        return MessageResponse.model_validate(message)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"compose_message therapist={current_therapist.id} patient={request.patient_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

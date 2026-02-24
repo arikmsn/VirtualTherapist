@@ -144,6 +144,19 @@ async def patch_exercise(
     return ExerciseResponse.model_validate(ex)
 
 
+@router.get("/open-count")
+async def get_open_tasks_count(
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Return the count of incomplete exercises across all patients for this therapist."""
+    count = db.query(Exercise).filter(
+        Exercise.therapist_id == current_therapist.id,
+        Exercise.completed == False,  # noqa: E712
+    ).count()
+    return {"open_count": count}
+
+
 @router.delete("/{exercise_id}", status_code=204)
 async def delete_exercise(
     exercise_id: int,
