@@ -118,6 +118,22 @@ class TreatmentPlanResult:
         self.suggested_interventions = suggested_interventions
 
 
+class TodayInsightItem:
+    """A single per-patient smart reminder for today's sessions."""
+
+    def __init__(self, patient_id: int, title: str, body: str):
+        self.patient_id = patient_id
+        self.title = title
+        self.body = body
+
+
+class TodayInsightsResult:
+    """Result from AI today-insights generation — one item per patient."""
+
+    def __init__(self, insights: List[TodayInsightItem]):
+        self.insights = insights
+
+
 class TherapyAgent:
     """
     The core AI agent that mimics the therapist's personality and style
@@ -969,6 +985,135 @@ Rules:
             focus_areas=data.get("focus_areas", []),
             suggested_interventions=data.get("suggested_interventions", []),
         )
+
+    async def generate_today_insights(
+        self,
+        patients_context: List[Dict[str, Any]],
+        therapist_locale: str = "he",
+    ) -> TodayInsightsResult:
+        """
+        Generate smart per-patient reminders for today's sessions.
+
+        patients_context: list of dicts with keys:
+            patient_id, patient_name, session_number, approved_summaries, open_tasks
+        therapist_locale: ISO language code ("he" or "en").
+
+        Makes ONE AI call for all patients combined.
+        Returns TodayInsightsResult with one item per patient.
+        """
+        if self.client is None:
+            raise RuntimeError(
+                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
+            )
+
+        if not patients_context:
+            return TodayInsightsResult(insights=[])
+
+        locale_names: Dict[str, str] = {"he": "Hebrew", "en": "English"}
+        output_language = locale_names.get(therapist_locale, therapist_locale)
+
+        # Build compact per-patient context block
+        patient_blocks = []
+        for p in patients_context:
+            pid = p.get("patient_id", "?")
+            name = p.get("patient_name", "?")
+            session_num = p.get("session_number")
+            session_label = f"Session #{session_num}" if session_num else "Session"
+            summaries = p.get("approved_summaries", [])
+            tasks = p.get("open_tasks", [])
+
+            block_lines = [f"[patient_id={pid}] {name} — {session_label} today"]
+
+            if summaries:
+                for s in summaries:
+                    date_str = str(s.get("session_date", "?"))
+                    num = s.get("session_number", "?")
+                    full = (s.get("full_summary", "") or "")[:300]
+                    topics = ", ".join(s.get("topics_discussed", []) or [])
+                    progress = s.get("patient_progress", "") or ""
+                    line = f"  Session #{num} ({date_str}): {full}"
+                    if topics:
+                        line += f" | Topics: {topics}"
+                    if progress:
+                        line += f" | Progress: {progress}"
+                    block_lines.append(line)
+            else:
+                block_lines.append("  (no approved summaries yet)")
+
+            if tasks:
+                task_list = "; ".join(t.get("description", "") for t in tasks[:5])
+                block_lines.append(f"  Open tasks: {task_list}")
+            else:
+                block_lines.append("  Open tasks: none")
+
+            patient_blocks.append("\n".join(block_lines))
+
+        context_str = "\n\n".join(patient_blocks)
+
+        prompt = f"""\
+You are a clinical preparation assistant. The therapist has sessions scheduled today. \
+For each patient listed, write one concise smart reminder (title + body) to help the \
+therapist enter the session prepared.
+
+LANGUAGE REQUIREMENT: All text values MUST be written in {output_language}. \
+JSON keys must remain exactly in English as shown.
+
+Return ONLY valid JSON (no markdown fences, no text outside JSON):
+{{
+  "insights": [
+    {{"patient_id": <integer>, "title": "concise title — max 8 words", "body": "1-2 practical sentences based only on the data below"}}
+  ]
+}}
+
+Rules:
+- Include EVERY patient listed below (one item per patient).
+- title: max 8 words — the single most important thing to remember.
+- body: 1-2 short sentences. Practical and specific. Based ONLY on the session data provided.
+- If there is no prior data for a patient: title = "First session" (in {output_language}), body = encourage an open intake approach.
+- No clinical diagnoses. No medication suggestions.
+- All text values in {output_language}. JSON keys must stay in English.
+
+Today's patients:
+{context_str}
+"""
+
+        try:
+            raw = await self._generate_openai(prompt)
+            return self._parse_today_insights_json(raw)
+        except Exception as e:
+            logger.error(f"Error generating today insights: {e}")
+            raise
+
+    def _parse_today_insights_json(self, raw: str) -> TodayInsightsResult:
+        """Parse AI response into TodayInsightsResult, with fallback."""
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[: cleaned.rfind("```")]
+        cleaned = cleaned.strip()
+
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            logger.warning("AI returned non-JSON today insights, returning empty")
+            return TodayInsightsResult(insights=[])
+
+        items = []
+        for item in data.get("insights", []):
+            if isinstance(item, dict) and "patient_id" in item:
+                try:
+                    items.append(
+                        TodayInsightItem(
+                            patient_id=int(item["patient_id"]),
+                            title=item.get("title", ""),
+                            body=item.get("body", ""),
+                        )
+                    )
+                except (ValueError, TypeError):
+                    pass
+
+        return TodayInsightsResult(insights=items)
 
     async def _generate_openai(self, prompt: str) -> str:
         """Generate response using OpenAI"""

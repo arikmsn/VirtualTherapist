@@ -462,6 +462,13 @@ export const therapistAPI = {
     const response = await api.post('/therapist/profile/reset')
     return response.data
   },
+
+  getTodayInsights: async () => {
+    const response = await api.get('/therapist/today-insights')
+    return response.data as {
+      insights: Array<{ patient_id: number; title: string; body: string }>
+    }
+  },
 }
 
 export default api

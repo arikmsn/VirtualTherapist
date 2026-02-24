@@ -269,6 +269,167 @@ async def update_side_note(
     return SideNoteResponse.model_validate(note)
 
 
+# ── Today Insights ────────────────────────────────────────────────────────────
+
+
+class TodayInsightItemResponse(BaseModel):
+    patient_id: int
+    title: str
+    body: str
+
+
+class TodayInsightsResponse(BaseModel):
+    insights: List[TodayInsightItemResponse]
+
+
+@router.get("/today-insights", response_model=TodayInsightsResponse)
+async def get_today_insights(
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Generate AI smart reminders for today's sessions.
+    Returns {"insights": [{patient_id, title, body}]}.
+    On any error (including AI failure) returns {"insights": []} — never blocks the caller.
+    """
+    from datetime import date as date_cls
+    from sqlalchemy import asc
+    from app.models.session import Session as TherapySession, SessionSummary, SummaryStatus
+    from app.models.patient import Patient
+    from app.models.exercise import Exercise
+    from app.security.encryption import decrypt_data
+
+    today = date_cls.today()
+
+    try:
+        # 1. Today's sessions for this therapist
+        today_sessions = (
+            db.query(TherapySession)
+            .filter(
+                TherapySession.therapist_id == current_therapist.id,
+                TherapySession.session_date == today,
+            )
+            .all()
+        )
+
+        if not today_sessions:
+            return TodayInsightsResponse(insights=[])
+
+        # 2. Resolve patients (deduplicated)
+        patient_ids = list({s.patient_id for s in today_sessions})
+        patients_map: dict = {
+            p.id: p
+            for p in db.query(Patient).filter(Patient.id.in_(patient_ids)).all()
+        }
+
+        # 3. Build per-patient context
+        patients_context = []
+        for session in today_sessions:
+            pid = session.patient_id
+            patient = patients_map.get(pid)
+            if not patient:
+                continue
+
+            # Decrypt patient name
+            patient_name = (
+                decrypt_data(patient.full_name_encrypted)
+                if patient.full_name_encrypted
+                else "מטופל"
+            )
+
+            # Last 2 approved summaries for this patient (newest first)
+            patient_session_ids_q = (
+                db.query(TherapySession.id, TherapySession.session_date, TherapySession.session_number)
+                .filter(
+                    TherapySession.patient_id == pid,
+                    TherapySession.therapist_id == current_therapist.id,
+                )
+                .order_by(TherapySession.session_date.desc())
+                .limit(10)
+                .all()
+            )
+            session_id_list = [r[0] for r in patient_session_ids_q]
+            session_info_map = {r[0]: {"session_date": r[1], "session_number": r[2]} for r in patient_session_ids_q}
+
+            approved_summaries = []
+            if session_id_list:
+                summaries_raw = (
+                    db.query(SessionSummary)
+                    .filter(
+                        SessionSummary.session_id.in_(session_id_list),
+                        SessionSummary.status == SummaryStatus.APPROVED,
+                    )
+                    .all()
+                )
+                # Sort newest first via session_info_map
+                summaries_sorted = sorted(
+                    summaries_raw,
+                    key=lambda ss: session_info_map.get(ss.session_id, {}).get("session_date", today),
+                    reverse=True,
+                )
+                for ss in summaries_sorted[:2]:
+                    info = session_info_map.get(ss.session_id, {})
+                    approved_summaries.append({
+                        "session_date": str(info.get("session_date", "?")),
+                        "session_number": info.get("session_number"),
+                        "full_summary": ss.full_summary or "",
+                        "topics_discussed": ss.topics_discussed or [],
+                        "patient_progress": ss.patient_progress or "",
+                    })
+
+            # Open tasks for this patient
+            open_tasks_raw = (
+                db.query(Exercise)
+                .filter(
+                    Exercise.patient_id == pid,
+                    Exercise.therapist_id == current_therapist.id,
+                    Exercise.completed == False,  # noqa: E712
+                )
+                .all()
+            )
+            open_tasks = [{"description": t.description} for t in open_tasks_raw]
+
+            patients_context.append({
+                "patient_id": pid,
+                "patient_name": patient_name,
+                "session_number": session.session_number,
+                "approved_summaries": approved_summaries,
+                "open_tasks": open_tasks,
+            })
+
+        if not patients_context:
+            return TodayInsightsResponse(insights=[])
+
+        # 4. One AI call for all patients
+        therapist_service = TherapistService(db)
+        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+
+        therapist_locale = (
+            (agent.profile.language if agent.profile else None) or "he"
+        )
+
+        result = await agent.generate_today_insights(
+            patients_context=patients_context,
+            therapist_locale=therapist_locale,
+        )
+
+        return TodayInsightsResponse(
+            insights=[
+                TodayInsightItemResponse(
+                    patient_id=item.patient_id,
+                    title=item.title,
+                    body=item.body,
+                )
+                for item in result.insights
+            ]
+        )
+
+    except Exception as e:
+        logger.exception(f"get_today_insights therapist={current_therapist.id} failed: {e!r}")
+        # Non-blocking: return empty rather than surfacing an error
+        return TodayInsightsResponse(insights=[])
+
+
 @router.delete("/notes/{note_id}", status_code=200)
 async def delete_side_note(
     note_id: int,

@@ -9,8 +9,9 @@ import {
   ChevronRightIcon,
   ChevronLeftIcon,
   CalendarDaysIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline'
-import { patientsAPI, sessionsAPI, exercisesAPI } from '@/lib/api'
+import { patientsAPI, sessionsAPI, exercisesAPI, therapistAPI } from '@/lib/api'
 import { useAuth } from '@/auth/useAuth'
 
 interface Patient {
@@ -122,6 +123,11 @@ export default function DashboardPage() {
   const [dailySessions, setDailySessions] = useState<DailySession[]>([])
   const [dailyLoading, setDailyLoading] = useState(true)
 
+  // Smart reminders state (today only, non-blocking)
+  const [todayInsights, setTodayInsights] = useState<Array<{ patient_id: number; title: string; body: string }>>([])
+  const [insightsLoading, setInsightsLoading] = useState(false)
+  const [insightsFetched, setInsightsFetched] = useState(false)
+
   // Load global stats
   useEffect(() => {
     const loadStats = async () => {
@@ -172,6 +178,34 @@ export default function DashboardPage() {
   useEffect(() => {
     loadDailySessions(selectedDate)
   }, [selectedDate, loadDailySessions])
+
+  // Load smart reminders — only for today, never blocks the session list
+  useEffect(() => {
+    if (selectedDate !== todayISO()) {
+      setTodayInsights([])
+      setInsightsFetched(false)
+      return
+    }
+
+    let cancelled = false
+    const loadInsights = async () => {
+      setInsightsLoading(true)
+      setInsightsFetched(false)
+      try {
+        const data = await therapistAPI.getTodayInsights()
+        if (!cancelled) setTodayInsights(data.insights)
+      } catch {
+        if (!cancelled) setTodayInsights([])
+      } finally {
+        if (!cancelled) {
+          setInsightsLoading(false)
+          setInsightsFetched(true)
+        }
+      }
+    }
+    loadInsights()
+    return () => { cancelled = true }
+  }, [selectedDate])
 
   const isToday = selectedDate === todayISO()
 
@@ -230,6 +264,44 @@ export default function DashboardPage() {
             className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-therapy-calm/30 focus:border-therapy-calm"
           />
         </div>
+
+        {/* Smart Reminders — today only, non-blocking */}
+        {isToday && (
+          <div className="mb-4">
+            {insightsLoading ? (
+              <div className="flex items-center gap-2 text-xs text-gray-400 py-1">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-amber-400" />
+                <span>מכין תזכורות חכמות...</span>
+              </div>
+            ) : insightsFetched && todayInsights.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 mb-1">
+                  <SparklesIcon className="h-3.5 w-3.5" />
+                  תזכורות חכמות להיום
+                </div>
+                {todayInsights.map((insight) => {
+                  const patient = patients.find((p) => p.id === insight.patient_id)
+                  return (
+                    <div
+                      key={insight.patient_id}
+                      className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2"
+                    >
+                      <div className="font-medium text-amber-900 text-sm">{insight.title}</div>
+                      {patient && (
+                        <div className="text-xs text-amber-600 mb-0.5">{patient.full_name}</div>
+                      )}
+                      <div className="text-xs text-amber-800 leading-relaxed">{insight.body}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : insightsFetched && todayInsights.length === 0 ? (
+              <p className="text-xs text-gray-400 pb-2">
+                אין תזכורות מיוחדות להיום, אפשר להמשיך כרגיל.
+              </p>
+            ) : null}
+          </div>
+        )}
 
         {/* Session List */}
         {dailyLoading ? (
