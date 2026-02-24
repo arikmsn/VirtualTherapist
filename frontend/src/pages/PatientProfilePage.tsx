@@ -30,8 +30,10 @@ import {
   TrashIcon,
   BookOpenIcon,
   InformationCircleIcon,
+  ClipboardDocumentListIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline'
-import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI } from '@/lib/api'
+import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI, treatmentPlanAPI } from '@/lib/api'
 
 const SESSION_TYPES = [
   { value: 'individual', label: 'פרטני' },
@@ -92,12 +94,31 @@ interface SummaryItem {
   }
 }
 
-interface PatientInsight {
-  overview: string
-  progress: string
-  patterns: string[]
-  risks: string[]
-  suggestions_for_next_sessions: string[]
+/** Structured deep summary — English keys, locale-appropriate text values. */
+interface DeepSummary {
+  overall_treatment_picture: string
+  timeline_highlights: string[]
+  goals_and_tasks: string
+  measurable_progress: string
+  directions_for_next_phase: string
+  // backward-compat fields from old insight-summary endpoint (may still appear)
+  overview?: string
+  progress?: string
+  patterns?: string[]
+  risks?: string[]
+  suggestions_for_next_sessions?: string[]
+}
+
+interface TreatmentPlanGoal {
+  id: string
+  title: string
+  description: string
+}
+
+interface TreatmentPlan {
+  goals: TreatmentPlanGoal[]
+  focus_areas: string[]
+  suggested_interventions: string[]
 }
 
 interface NoteItem {
@@ -120,7 +141,7 @@ interface PrepModalSession {
   session_number?: number
 }
 
-type Tab = 'sessions' | 'summaries' | 'inbetween' | 'notes'
+type Tab = 'sessions' | 'summaries' | 'inbetween' | 'notes' | 'plan'
 
 // --- Component ---
 
@@ -182,10 +203,15 @@ export default function PatientProfilePage() {
   const [summaries, setSummaries] = useState<SummaryItem[]>([])
   const [summariesLoading, setSummariesLoading] = useState(false)
 
-  // Insight
-  const [insight, setInsight] = useState<PatientInsight | null>(null)
+  // Deep summary (replaces old insight)
+  const [insight, setInsight] = useState<DeepSummary | null>(null)
   const [insightLoading, setInsightLoading] = useState(false)
   const [insightError, setInsightError] = useState('')
+
+  // Treatment plan
+  const [treatmentPlan, setTreatmentPlan] = useState<TreatmentPlan | null>(null)
+  const [planLoading, setPlanLoading] = useState(false)
+  const [planError, setPlanError] = useState('')
 
   // Prep brief modal
   const [prepModalSession, setPrepModalSession] = useState<PrepModalSession | null>(null)
@@ -430,12 +456,26 @@ export default function PatientProfilePage() {
     setInsightError('')
     setInsight(null)
     try {
-      const result = await patientSummariesAPI.generateInsight(pid)
+      const result = await patientSummariesAPI.generateDeepSummary(pid)
       setInsight(result)
     } catch (err: any) {
       setInsightError(err.response?.data?.detail || 'שגיאה ביצירת סיכום העומק')
     } finally {
       setInsightLoading(false)
+    }
+  }
+
+  const handleGeneratePlan = async () => {
+    setPlanLoading(true)
+    setPlanError('')
+    setTreatmentPlan(null)
+    try {
+      const result = await treatmentPlanAPI.preview(pid)
+      setTreatmentPlan(result)
+    } catch (err: any) {
+      setPlanError(err.response?.data?.detail || 'שגיאה ביצירת התוכנית הטיפולית')
+    } finally {
+      setPlanLoading(false)
     }
   }
 
@@ -650,6 +690,7 @@ export default function PatientProfilePage() {
           {([
             { key: 'sessions', label: 'פגישות', icon: CalendarIcon },
             { key: 'summaries', label: 'סיכומים ותובנות', icon: SparklesIcon },
+            { key: 'plan', label: 'תוכנית טיפולית', icon: ClipboardDocumentListIcon },
             { key: 'inbetween', label: 'הודעות ותזכורות', icon: ChatBubbleLeftRightIcon },
             { key: 'notes', label: 'הערות', icon: BookOpenIcon },
           ] as const).map(({ key, label, icon: Icon }) => (
@@ -794,37 +835,80 @@ export default function PatientProfilePage() {
 
             {insight && (
               <div className="space-y-3 mt-4">
-                <div className="bg-white rounded-lg p-4">
-                  <h3 className="font-bold text-gray-800 mb-2">סקירה כללית</h3>
-                  <p className="text-gray-700 whitespace-pre-line">{insight.overview}</p>
-                </div>
-                <div className="bg-white rounded-lg p-4">
-                  <h3 className="font-bold text-gray-800 mb-2">התקדמות לאורך זמן</h3>
-                  <p className="text-gray-700 whitespace-pre-line">{insight.progress}</p>
-                </div>
-                {insight.patterns.length > 0 && (
-                  <div className="bg-white rounded-lg p-4">
-                    <h3 className="font-bold text-gray-800 mb-2">דפוסים מרכזיים</h3>
-                    <ul className="list-disc list-inside space-y-1 text-gray-700">
-                      {insight.patterns.map((p, i) => <li key={i}>{p}</li>)}
-                    </ul>
-                  </div>
-                )}
-                {insight.risks.length > 0 && (
-                  <div className="bg-white rounded-lg p-4 border border-amber-200">
-                    <h3 className="font-bold text-amber-800 mb-2">נקודות סיכון למעקב</h3>
-                    <ul className="list-disc list-inside space-y-1 text-amber-700">
-                      {insight.risks.map((r, i) => <li key={i}>{r}</li>)}
-                    </ul>
-                  </div>
-                )}
-                {insight.suggestions_for_next_sessions.length > 0 && (
-                  <div className="bg-white rounded-lg p-4 border border-green-200">
-                    <h3 className="font-bold text-green-800 mb-2">רעיונות לפגישות הבאות</h3>
-                    <ul className="list-disc list-inside space-y-1 text-green-700">
-                      {insight.suggestions_for_next_sessions.map((s, i) => <li key={i}>{s}</li>)}
-                    </ul>
-                  </div>
+                {/* Structured deep summary (new format) */}
+                {insight.overall_treatment_picture ? (
+                  <>
+                    <div className="bg-white rounded-lg p-4">
+                      <h3 className="font-bold text-gray-800 mb-2">תמונת מצב כללית של הטיפול</h3>
+                      <p className="text-gray-700 whitespace-pre-line leading-relaxed">{insight.overall_treatment_picture}</p>
+                    </div>
+                    {insight.timeline_highlights.length > 0 && (
+                      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+                        <h3 className="font-bold text-blue-900 mb-2">אבני דרך לאורך הדרך</h3>
+                        <ul className="list-disc list-inside space-y-1.5 text-blue-800">
+                          {insight.timeline_highlights.map((item, i) => <li key={i}>{item}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {insight.goals_and_tasks && (
+                      <div className="bg-white rounded-lg p-4 border border-orange-100">
+                        <h3 className="font-bold text-gray-800 mb-2">מטרות ומשימות</h3>
+                        <p className="text-gray-700 whitespace-pre-line leading-relaxed">{insight.goals_and_tasks}</p>
+                      </div>
+                    )}
+                    {insight.measurable_progress && (
+                      <div className="bg-green-50 border border-green-100 rounded-lg p-4">
+                        <h3 className="font-bold text-green-800 mb-2">סימני התקדמות</h3>
+                        <p className="text-green-800 whitespace-pre-line leading-relaxed">{insight.measurable_progress}</p>
+                      </div>
+                    )}
+                    {insight.directions_for_next_phase && (
+                      <div className="bg-purple-50 border border-purple-100 rounded-lg p-4">
+                        <h3 className="font-bold text-purple-900 mb-2">כיוונים להמשך</h3>
+                        <p className="text-purple-800 whitespace-pre-line leading-relaxed">{insight.directions_for_next_phase}</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* Fallback: old plain-text insight format */
+                  <>
+                    {insight.overview && (
+                      <div className="bg-white rounded-lg p-4">
+                        <h3 className="font-bold text-gray-800 mb-2">סקירה כללית</h3>
+                        <p className="text-gray-700 whitespace-pre-line">{insight.overview}</p>
+                      </div>
+                    )}
+                    {insight.progress && (
+                      <div className="bg-white rounded-lg p-4">
+                        <h3 className="font-bold text-gray-800 mb-2">התקדמות לאורך זמן</h3>
+                        <p className="text-gray-700 whitespace-pre-line">{insight.progress}</p>
+                      </div>
+                    )}
+                    {(insight.patterns ?? []).length > 0 && (
+                      <div className="bg-white rounded-lg p-4">
+                        <h3 className="font-bold text-gray-800 mb-2">דפוסים מרכזיים</h3>
+                        <ul className="list-disc list-inside space-y-1 text-gray-700">
+                          {(insight.patterns ?? []).map((p, i) => <li key={i}>{p}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {(insight.risks ?? []).length > 0 && (
+                      <div className="bg-white rounded-lg p-4 border border-amber-200">
+                        <h3 className="font-bold text-amber-800 mb-2">נקודות סיכון למעקב</h3>
+                        <ul className="list-disc list-inside space-y-1 text-amber-700">
+                          {(insight.risks ?? []).map((r, i) => <li key={i}>{r}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {(insight.suggestions_for_next_sessions ?? []).length > 0 && (
+                      <div className="bg-white rounded-lg p-4 border border-green-200">
+                        <h3 className="font-bold text-green-800 mb-2">רעיונות לפגישות הבאות</h3>
+                        <ul className="list-disc list-inside space-y-1 text-green-700">
+                          {(insight.suggestions_for_next_sessions ?? []).map((s, i) => <li key={i}>{s}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -924,6 +1008,139 @@ export default function PatientProfilePage() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* ── Treatment Planner Tab ── */}
+      {tab === 'plan' && (
+        <div className="space-y-5">
+          <div className="card border-indigo-200 bg-indigo-50">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <ClipboardDocumentListIcon className="h-5 w-5 text-indigo-600" />
+                <h2 className="text-lg font-bold text-indigo-900">תוכנית טיפולית</h2>
+                <span className="text-xs text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">הצעת AI</span>
+              </div>
+              <div className="flex gap-2 flex-wrap self-start">
+                {treatmentPlan && (
+                  <button
+                    onClick={handleGeneratePlan}
+                    disabled={planLoading}
+                    className="flex items-center gap-1.5 text-sm text-indigo-700 hover:text-indigo-900 border border-indigo-300 hover:border-indigo-500 bg-white rounded-lg px-3 py-2 transition-colors disabled:opacity-50 min-h-[40px] touch-manipulation"
+                  >
+                    <ArrowPathIcon className={`h-4 w-4 ${planLoading ? 'animate-spin' : ''}`} />
+                    רענן לפי ההיסטוריה העדכנית
+                  </button>
+                )}
+                {treatmentPlan && (
+                  <button
+                    onClick={() => { /* TODO: persist plan */ }}
+                    className="flex items-center gap-1.5 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-2 transition-colors min-h-[40px] touch-manipulation"
+                  >
+                    שמור תוכנית
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {!treatmentPlan && !planLoading && !planError && (
+              <div className="text-center py-8">
+                <ClipboardDocumentListIcon className="h-12 w-12 text-indigo-300 mx-auto mb-3" />
+                <p className="text-indigo-700 text-sm mb-4">
+                  עדיין אין תוכנית טיפולית. לחץ על הכפתור ליצירת הצעת תוכנית המבוססת על ההיסטוריה הקלינית.
+                </p>
+                <button
+                  onClick={handleGeneratePlan}
+                  disabled={planLoading}
+                  className="btn-primary flex items-center gap-2 mx-auto disabled:opacity-50 min-h-[44px] touch-manipulation"
+                >
+                  <SparklesIcon className="h-4 w-4" />
+                  הצג הצעת תוכנית טיפולית מה‑AI
+                </button>
+              </div>
+            )}
+
+            {planLoading && (
+              <div className="flex items-center justify-center py-12 gap-3">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+                <span className="text-indigo-700 text-sm">מייצר תוכנית טיפולית...</span>
+              </div>
+            )}
+
+            {planError && (
+              <div className="flex items-center gap-2 text-red-700 bg-red-50 rounded-lg p-3 mt-2">
+                <ExclamationTriangleIcon className="h-5 w-5 flex-shrink-0" />
+                <span className="text-sm">{planError}</span>
+                <button
+                  onClick={handleGeneratePlan}
+                  className="mr-auto text-sm underline hover:no-underline"
+                >
+                  נסה שוב
+                </button>
+              </div>
+            )}
+
+            {treatmentPlan && !planLoading && (
+              <div className="space-y-4 mt-2">
+                {/* Goals */}
+                {treatmentPlan.goals.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
+                      <span className="text-base">🎯</span> מטרות טיפול
+                    </h3>
+                    <div className="space-y-2">
+                      {treatmentPlan.goals.map((goal) => (
+                        <div key={goal.id} className="bg-white rounded-lg p-3 border border-indigo-100">
+                          <p className="font-medium text-gray-900 text-sm">{goal.title}</p>
+                          <p className="text-gray-600 text-sm mt-0.5 leading-relaxed">{goal.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Focus areas */}
+                {treatmentPlan.focus_areas.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
+                      <span className="text-base">🔍</span> נושאים מרכזיים לעבודה
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {treatmentPlan.focus_areas.map((area, i) => (
+                        <span
+                          key={i}
+                          className="px-3 py-1.5 bg-white border border-indigo-200 text-indigo-800 rounded-full text-sm"
+                        >
+                          {area}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Suggested interventions */}
+                {treatmentPlan.suggested_interventions.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
+                      <span className="text-base">🛠️</span> סוגי התערבויות מוצעות
+                    </h3>
+                    <ul className="space-y-1.5">
+                      {treatmentPlan.suggested_interventions.map((item, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                          <CheckCircleIcon className="h-4 w-4 text-indigo-400 flex-shrink-0 mt-0.5" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <p className="text-xs text-indigo-500 pt-2 border-t border-indigo-100">
+                  * הצעת AI בלבד — מבוססת על סיכומים מאושרים ומשימות. כל החלטה טיפולית נתונה לשיקול דעת המטפל.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

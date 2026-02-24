@@ -7,7 +7,14 @@ from sqlalchemy.orm import Session
 from app.models.session import Session as TherapySession, SessionSummary, SessionType, SummaryStatus
 from app.models.patient import Patient
 from app.models.exercise import Exercise
-from app.core.agent import TherapyAgent, PatientInsightResult, SessionPrepBriefResult
+from app.core.agent import (
+    TherapyAgent,
+    PatientInsightResult,
+    SessionPrepBriefResult,
+    DeepSummaryResult,
+    TreatmentPlanResult,
+    TreatmentGoal,
+)
 from app.services.audit_service import AuditService
 from app.security.encryption import decrypt_data
 from loguru import logger
@@ -760,4 +767,154 @@ class SessionService:
         )
 
         logger.info(f"Generated prep brief for session {session_id} ({len(recent)} summaries)")
+        return result
+
+    def _build_patient_summary_context(
+        self,
+        patient_id: int,
+        therapist_id: int,
+    ):
+        """
+        Shared helper: return (patient, approved_summaries, all_tasks, metrics).
+        Used by both generate_deep_summary and generate_treatment_plan_preview.
+        """
+        patient = self.db.query(Patient).filter(
+            Patient.id == patient_id,
+            Patient.therapist_id == therapist_id,
+        ).first()
+        if not patient:
+            raise ValueError("Patient not found")
+
+        all_sessions = (
+            self.db.query(TherapySession)
+            .filter(TherapySession.patient_id == patient_id)
+            .order_by(TherapySession.session_date.asc())
+            .all()
+        )
+
+        approved_summaries = []
+        for s in all_sessions:
+            summary = s.summary
+            if summary and summary.status == SummaryStatus.APPROVED:
+                approved_summaries.append({
+                    "session_date": s.session_date,
+                    "session_number": s.session_number,
+                    "full_summary": summary.full_summary,
+                    "topics_discussed": summary.topics_discussed,
+                    "patient_progress": summary.patient_progress,
+                    "homework_assigned": summary.homework_assigned,
+                    "risk_assessment": summary.risk_assessment,
+                })
+
+        exercises = (
+            self.db.query(Exercise)
+            .filter(
+                Exercise.patient_id == patient_id,
+                Exercise.therapist_id == therapist_id,
+            )
+            .order_by(Exercise.created_at.asc())
+            .all()
+        )
+        all_tasks = [
+            {
+                "description": ex.description,
+                "completed": ex.completed,
+                "created_at": str(ex.created_at)[:10] if ex.created_at else None,
+                "completed_at": str(ex.completed_at)[:10] if ex.completed_at else None,
+                "session_summary_id": ex.session_summary_id,
+            }
+            for ex in exercises
+        ]
+
+        # Basic session metrics
+        session_dates = [s.session_date for s in all_sessions if s.session_date]
+        long_gaps = []
+        for i in range(1, len(session_dates)):
+            gap = (session_dates[i] - session_dates[i - 1]).days
+            if gap > 30:
+                long_gaps.append({
+                    "from": str(session_dates[i - 1]),
+                    "to": str(session_dates[i]),
+                    "days": gap,
+                })
+        metrics = {
+            "total_sessions": len(all_sessions),
+            "first_session_date": str(session_dates[0]) if session_dates else None,
+            "last_session_date": str(session_dates[-1]) if session_dates else None,
+            "long_gaps": long_gaps,
+        }
+
+        return patient, approved_summaries, all_tasks, metrics
+
+    async def generate_deep_summary(
+        self,
+        patient_id: int,
+        therapist_id: int,
+        agent: TherapyAgent,
+    ) -> DeepSummaryResult:
+        """Generate a comprehensive deep treatment summary from all approved data."""
+
+        patient, approved_summaries, all_tasks, metrics = self._build_patient_summary_context(
+            patient_id, therapist_id
+        )
+
+        therapist_locale = (agent.profile.language if agent.profile else None) or "he"
+
+        result = await agent.generate_deep_summary(
+            patient_name=patient.full_name_encrypted,
+            approved_summaries=approved_summaries,
+            all_tasks=all_tasks,
+            metrics=metrics,
+            therapist_locale=therapist_locale,
+        )
+
+        await self.audit_service.log_action(
+            user_id=therapist_id,
+            user_type="therapist",
+            action="generate",
+            resource_type="patient_deep_summary",
+            resource_id=patient_id,
+            action_details={
+                "approved_summaries_count": len(approved_summaries),
+                "total_sessions": metrics["total_sessions"],
+            },
+        )
+
+        logger.info(
+            f"Generated deep summary for patient {patient_id} "
+            f"({len(approved_summaries)} approved summaries)"
+        )
+        return result
+
+    async def generate_treatment_plan_preview(
+        self,
+        patient_id: int,
+        therapist_id: int,
+        agent: TherapyAgent,
+    ) -> TreatmentPlanResult:
+        """Generate a treatment plan preview (goals, focus areas, interventions) from approved data."""
+
+        patient, approved_summaries, all_tasks, _ = self._build_patient_summary_context(
+            patient_id, therapist_id
+        )
+
+        therapist_locale = (agent.profile.language if agent.profile else None) or "he"
+
+        result = await agent.generate_treatment_plan_preview(
+            patient_name=patient.full_name_encrypted,
+            approved_summaries=approved_summaries,
+            all_tasks=all_tasks,
+            therapist_locale=therapist_locale,
+        )
+
+        await self.audit_service.log_action(
+            user_id=therapist_id,
+            user_type="therapist",
+            action="generate",
+            resource_type="patient_treatment_plan_preview",
+            resource_id=patient_id,
+            action_details={"approved_summaries_count": len(approved_summaries)},
+        )
+
+        logger.info(f"Generated treatment plan preview for patient {patient_id}")
         return result

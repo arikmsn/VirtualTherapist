@@ -322,6 +322,28 @@ class PatientInsightResponse(BaseModel):
     suggestions_for_next_sessions: List[str]
 
 
+class DeepSummaryResponse(BaseModel):
+    """Structured deep summary — English keys, locale-appropriate text values."""
+    overall_treatment_picture: str
+    timeline_highlights: List[str]
+    goals_and_tasks: str
+    measurable_progress: str
+    directions_for_next_phase: str
+
+
+class TreatmentPlanGoal(BaseModel):
+    id: str
+    title: str
+    description: str
+
+
+class TreatmentPlanResponse(BaseModel):
+    """Structured treatment plan preview — English keys, locale-appropriate text values."""
+    goals: List[TreatmentPlanGoal]
+    focus_areas: List[str]
+    suggested_interventions: List[str]
+
+
 @router.post("/{patient_id}/insight-summary", response_model=PatientInsightResponse)
 async def generate_patient_insight_summary(
     patient_id: int,
@@ -360,4 +382,82 @@ async def generate_patient_insight_summary(
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.exception(f"generate_patient_insight patient={patient_id} failed: {e!r}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{patient_id}/deep-summary", response_model=DeepSummaryResponse)
+async def generate_deep_summary(
+    patient_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate a comprehensive deep treatment summary from all approved session summaries and tasks.
+    Returns structured JSON with English keys and locale-appropriate text values.
+    """
+    session_service = SessionService(db)
+    therapist_service = TherapistService(db)
+
+    try:
+        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+        result = await session_service.generate_deep_summary(
+            patient_id=patient_id,
+            therapist_id=current_therapist.id,
+            agent=agent,
+        )
+        return DeepSummaryResponse(
+            overall_treatment_picture=result.overall_treatment_picture,
+            timeline_highlights=result.timeline_highlights,
+            goals_and_tasks=result.goals_and_tasks,
+            measurable_progress=result.measurable_progress,
+            directions_for_next_phase=result.directions_for_next_phase,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        logger.exception(f"generate_deep_summary patient={patient_id} RuntimeError: {e!r}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception(f"generate_deep_summary patient={patient_id} failed: {e!r}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{patient_id}/treatment-plan/preview", response_model=TreatmentPlanResponse)
+async def preview_treatment_plan(
+    patient_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate a treatment plan preview (goals, focus areas, suggested interventions)
+    inferred from approved session summaries and tasks.
+    Returns structured JSON with English keys and locale-appropriate text values.
+    """
+    session_service = SessionService(db)
+    therapist_service = TherapistService(db)
+
+    try:
+        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+        result = await session_service.generate_treatment_plan_preview(
+            patient_id=patient_id,
+            therapist_id=current_therapist.id,
+            agent=agent,
+        )
+        return TreatmentPlanResponse(
+            goals=[
+                TreatmentPlanGoal(id=g.id, title=g.title, description=g.description)
+                for g in result.goals
+            ],
+            focus_areas=result.focus_areas,
+            suggested_interventions=result.suggested_interventions,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        logger.exception(f"preview_treatment_plan patient={patient_id} RuntimeError: {e!r}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception(f"preview_treatment_plan patient={patient_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))

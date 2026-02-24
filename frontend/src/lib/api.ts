@@ -361,6 +361,29 @@ export const patientSummariesAPI = {
     const response = await api.post(`/patients/${patientId}/insight-summary`)
     return response.data
   },
+
+  generateDeepSummary: async (patientId: number) => {
+    const response = await api.post(`/patients/${patientId}/deep-summary`)
+    return response.data as {
+      overall_treatment_picture: string
+      timeline_highlights: string[]
+      goals_and_tasks: string
+      measurable_progress: string
+      directions_for_next_phase: string
+    }
+  },
+}
+
+// Treatment Plan API
+export const treatmentPlanAPI = {
+  preview: async (patientId: number) => {
+    const response = await api.post(`/patients/${patientId}/treatment-plan/preview`)
+    return response.data as {
+      goals: Array<{ id: string; title: string; description: string }>
+      focus_areas: string[]
+      suggested_interventions: string[]
+    }
+  },
 }
 
 // Exercises API

@@ -71,6 +71,53 @@ class SessionPrepBriefResult:
         self.watch_out_for = watch_out_for            # שים לב / סיכון
 
 
+class DeepSummaryResult:
+    """
+    Structured result from AI deep treatment summary.
+    JSON keys are always English; text values are in therapist_locale language.
+    """
+
+    def __init__(
+        self,
+        overall_treatment_picture: str,
+        timeline_highlights: List[str],
+        goals_and_tasks: str,
+        measurable_progress: str,
+        directions_for_next_phase: str,
+    ):
+        self.overall_treatment_picture = overall_treatment_picture
+        self.timeline_highlights = timeline_highlights
+        self.goals_and_tasks = goals_and_tasks
+        self.measurable_progress = measurable_progress
+        self.directions_for_next_phase = directions_for_next_phase
+
+
+class TreatmentGoal:
+    """A single inferred treatment goal with stable English id."""
+
+    def __init__(self, id: str, title: str, description: str):
+        self.id = id
+        self.title = title
+        self.description = description
+
+
+class TreatmentPlanResult:
+    """
+    Structured result from AI treatment plan preview.
+    JSON keys are always English; text values are in therapist_locale language.
+    """
+
+    def __init__(
+        self,
+        goals: List[TreatmentGoal],
+        focus_areas: List[str],
+        suggested_interventions: List[str],
+    ):
+        self.goals = goals
+        self.focus_areas = focus_areas
+        self.suggested_interventions = suggested_interventions
+
+
 class TherapyAgent:
     """
     The core AI agent that mimics the therapist's personality and style
@@ -629,6 +676,298 @@ class TherapyAgent:
             tasks_to_check=data.get("tasks_to_check", []),
             focus_for_today=data.get("focus_for_today", []),
             watch_out_for=data.get("watch_out_for", []),
+        )
+
+    async def generate_deep_summary(
+        self,
+        patient_name: str,
+        approved_summaries: List[Dict[str, Any]],
+        all_tasks: List[Dict[str, Any]],
+        metrics: Dict[str, Any],
+        therapist_locale: str = "he",
+    ) -> DeepSummaryResult:
+        """
+        Generate a comprehensive deep treatment summary.
+
+        JSON keys are always English; text values are written in therapist_locale.
+        approved_summaries: all approved summaries ordered oldest → newest.
+        all_tasks: open + completed tasks with status/dates.
+        metrics: {total_sessions, first_session_date, last_session_date, long_gaps}.
+        therapist_locale: ISO language code, e.g. "he" or "en".
+        """
+        if self.client is None:
+            raise RuntimeError(
+                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
+            )
+
+        locale_names: Dict[str, str] = {"he": "Hebrew", "en": "English"}
+        output_language = locale_names.get(therapist_locale, therapist_locale)
+
+        # ── Summaries context ─────────────────────────────────────────────────
+        if approved_summaries:
+            summary_parts = []
+            for s in approved_summaries:
+                date_str = str(s.get("session_date", "?"))
+                num = s.get("session_number", "?")
+                full_summary = s.get("full_summary", "") or ""
+                topics = ", ".join(s.get("topics_discussed", []) or [])
+                progress = s.get("patient_progress", "") or ""
+                homework = ", ".join(s.get("homework_assigned", []) or [])
+                risk = s.get("risk_assessment", "") or ""
+                summary_parts.append(
+                    f"--- Session #{num} ({date_str}) ---\n"
+                    f"Summary: {full_summary}\n"
+                    f"Topics: {topics}\n"
+                    f"Progress: {progress}\n"
+                    f"Homework: {homework}\n"
+                    f"Risk: {risk}"
+                )
+            summaries_context = (
+                "Approved session summaries (oldest to newest):\n\n"
+                + "\n\n".join(summary_parts)
+            )
+        else:
+            summaries_context = "(No approved session summaries yet)"
+
+        # ── Tasks context ─────────────────────────────────────────────────────
+        open_tasks = [t for t in all_tasks if not t.get("completed", False)]
+        done_tasks = [t for t in all_tasks if t.get("completed", False)]
+        tasks_lines = []
+        for t in open_tasks:
+            tasks_lines.append(
+                f"  [OPEN] {t.get('description', '?')} "
+                f"(assigned: {str(t.get('created_at', '?'))[:10]})"
+            )
+        for t in done_tasks:
+            done_date = str(t.get("completed_at", "?"))[:10] if t.get("completed_at") else "?"
+            tasks_lines.append(
+                f"  [DONE] {t.get('description', '?')} (completed: {done_date})"
+            )
+        tasks_context = "Tasks:\n" + (
+            "\n".join(tasks_lines) if tasks_lines else "  (no tasks recorded)"
+        )
+
+        # ── Metrics context ───────────────────────────────────────────────────
+        total = metrics.get("total_sessions", "?")
+        first_date = str(metrics.get("first_session_date", "?"))
+        last_date = str(metrics.get("last_session_date", "?"))
+        gaps = metrics.get("long_gaps", [])
+        gaps_note = ""
+        if gaps:
+            gaps_note = "\nLong breaks (>30 days): " + "; ".join(
+                f"{g['from']} to {g['to']} ({g['days']} days)" for g in gaps
+            )
+        metrics_context = (
+            f"Total sessions: {total}\n"
+            f"First session: {first_date}\n"
+            f"Last session: {last_date}" + gaps_note
+        )
+
+        limited_data_note = ""
+        if len(approved_summaries) < 2:
+            limited_data_note = (
+                "\nNOTE: Very few or no approved summaries exist. "
+                "Every section MUST explicitly state this limitation and remain conservative.\n"
+            )
+
+        prompt = f"""\
+You are a clinical reflection assistant for the therapist. You synthesize and reflect — you do not diagnose, prescribe, or invent information.
+{limited_data_note}
+Patient: "{patient_name}"
+
+{summaries_context}
+
+{tasks_context}
+
+{metrics_context}
+
+LANGUAGE REQUIREMENT: All text values MUST be written in {output_language}. \
+JSON field names must remain exactly in English as shown below.
+
+Return ONLY valid JSON (no markdown fences, no text outside JSON):
+{{
+  "overall_treatment_picture": "2-3 paragraphs: main themes across sessions and how treatment has evolved.",
+  "timeline_highlights": ["key milestone or shift 1", "key milestone or shift 2", "..."],
+  "goals_and_tasks": "Describe: what goals/focus areas emerge from the history, how consistently they were addressed, which open tasks are important now.",
+  "measurable_progress": "Concrete examples of change in thoughts, behaviors, or relationships visible in the summaries and task completion.",
+  "directions_for_next_phase": "2-3 suggested directions for the next phase of treatment."
+}}
+
+Rules:
+- Base everything ONLY on the data provided. Do not invent.
+- timeline_highlights: 3-6 bullet items.
+- If limited data: say so clearly in every relevant section and stay conservative.
+- No clinical diagnoses, no medication suggestions.
+- All text values in {output_language}. JSON keys must be English.
+"""
+
+        try:
+            raw = await self._generate_openai(prompt)
+            return self._parse_deep_summary_json(raw)
+        except Exception as e:
+            logger.error(f"Error generating deep summary: {e}")
+            raise
+
+    def _parse_deep_summary_json(self, raw: str) -> DeepSummaryResult:
+        """Parse AI response into DeepSummaryResult, with fallback."""
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[: cleaned.rfind("```")]
+        cleaned = cleaned.strip()
+
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            logger.warning("AI returned non-JSON deep summary, wrapping as fallback")
+            return DeepSummaryResult(
+                overall_treatment_picture=raw,
+                timeline_highlights=[],
+                goals_and_tasks="",
+                measurable_progress="",
+                directions_for_next_phase="",
+            )
+
+        return DeepSummaryResult(
+            overall_treatment_picture=data.get("overall_treatment_picture", ""),
+            timeline_highlights=data.get("timeline_highlights", []),
+            goals_and_tasks=data.get("goals_and_tasks", ""),
+            measurable_progress=data.get("measurable_progress", ""),
+            directions_for_next_phase=data.get("directions_for_next_phase", ""),
+        )
+
+    async def generate_treatment_plan_preview(
+        self,
+        patient_name: str,
+        approved_summaries: List[Dict[str, Any]],
+        all_tasks: List[Dict[str, Any]],
+        therapist_locale: str = "he",
+    ) -> TreatmentPlanResult:
+        """
+        Generate a treatment plan preview (goals, focus areas, interventions) from history.
+
+        JSON keys are always English; text values are written in therapist_locale.
+        """
+        if self.client is None:
+            raise RuntimeError(
+                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
+            )
+
+        locale_names: Dict[str, str] = {"he": "Hebrew", "en": "English"}
+        output_language = locale_names.get(therapist_locale, therapist_locale)
+
+        # ── Summaries context ─────────────────────────────────────────────────
+        if approved_summaries:
+            summary_parts = []
+            for s in approved_summaries:
+                date_str = str(s.get("session_date", "?"))
+                num = s.get("session_number", "?")
+                full_summary = s.get("full_summary", "") or ""
+                topics = ", ".join(s.get("topics_discussed", []) or [])
+                progress = s.get("patient_progress", "") or ""
+                homework = ", ".join(s.get("homework_assigned", []) or [])
+                summary_parts.append(
+                    f"--- Session #{num} ({date_str}) ---\n"
+                    f"Summary: {full_summary}\n"
+                    f"Topics: {topics}\n"
+                    f"Progress: {progress}\n"
+                    f"Homework: {homework}"
+                )
+            summaries_context = (
+                "Approved session summaries (chronological):\n\n"
+                + "\n\n".join(summary_parts)
+            )
+        else:
+            summaries_context = "(No approved session summaries yet)"
+
+        # ── Tasks context ─────────────────────────────────────────────────────
+        open_tasks = [t for t in all_tasks if not t.get("completed", False)]
+        done_tasks = [t for t in all_tasks if t.get("completed", False)]
+        tasks_lines = []
+        for t in open_tasks:
+            tasks_lines.append(f"  [OPEN] {t.get('description', '?')}")
+        for t in done_tasks:
+            tasks_lines.append(f"  [DONE] {t.get('description', '?')}")
+        tasks_context = "Tasks:\n" + (
+            "\n".join(tasks_lines) if tasks_lines else "  (none)"
+        )
+
+        limited_data_note = ""
+        if len(approved_summaries) < 2:
+            limited_data_note = (
+                "\nNOTE: Very few approved summaries — infer conservatively "
+                "and note the limitation in goal descriptions.\n"
+            )
+
+        prompt = f"""\
+You are a clinical planning assistant for the therapist. You draft a treatment plan \
+from the session history — you do not diagnose or invent information not present in the data.
+{limited_data_note}
+Patient: "{patient_name}"
+
+{summaries_context}
+
+{tasks_context}
+
+LANGUAGE REQUIREMENT: All text values MUST be written in {output_language}. \
+JSON keys must remain exactly in English as shown.
+
+Return ONLY valid JSON (no markdown, no text outside JSON):
+{{
+  "goals": [
+    {{"id": "g1", "title": "Short goal title", "description": "1-2 sentences about this goal, why it matters, how it appears in the session data."}},
+    {{"id": "g2", "title": "...", "description": "..."}}
+  ],
+  "focus_areas": ["main theme/domain 1", "main theme/domain 2", "..."],
+  "suggested_interventions": ["intervention type or homework idea 1 (must be grounded in existing data)", "..."]
+}}
+
+Rules:
+- goals: 3-5 items. IDs must be "g1", "g2", etc. Infer only from the history.
+- focus_areas: 3-6 thematic domains to work on.
+- suggested_interventions: based ONLY on interventions/tasks already in the data, not generic ideas.
+- No clinical diagnoses, no medication suggestions.
+- All text values in {output_language}. JSON keys must be English.
+"""
+
+        try:
+            raw = await self._generate_openai(prompt)
+            return self._parse_treatment_plan_json(raw)
+        except Exception as e:
+            logger.error(f"Error generating treatment plan preview: {e}")
+            raise
+
+    def _parse_treatment_plan_json(self, raw: str) -> TreatmentPlanResult:
+        """Parse AI response into TreatmentPlanResult, with fallback."""
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[: cleaned.rfind("```")]
+        cleaned = cleaned.strip()
+
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            logger.warning("AI returned non-JSON treatment plan, using empty fallback")
+            return TreatmentPlanResult(goals=[], focus_areas=[], suggested_interventions=[])
+
+        goals_raw = data.get("goals", [])
+        goals = [
+            TreatmentGoal(
+                id=str(g.get("id", f"g{i + 1}")),
+                title=g.get("title", ""),
+                description=g.get("description", ""),
+            )
+            for i, g in enumerate(goals_raw)
+            if isinstance(g, dict)
+        ]
+
+        return TreatmentPlanResult(
+            goals=goals,
+            focus_areas=data.get("focus_areas", []),
+            suggested_interventions=data.get("suggested_interventions", []),
         )
 
     async def _generate_openai(self, prompt: str) -> str:
