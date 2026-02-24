@@ -842,11 +842,11 @@ export default function PatientProfilePage() {
                       <h3 className="font-bold text-gray-800 mb-2">תמונת מצב כללית של הטיפול</h3>
                       <p className="text-gray-700 whitespace-pre-line leading-relaxed">{insight.overall_treatment_picture}</p>
                     </div>
-                    {insight.timeline_highlights.length > 0 && (
+                    {(insight.timeline_highlights || []).length > 0 && (
                       <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
                         <h3 className="font-bold text-blue-900 mb-2">אבני דרך לאורך הדרך</h3>
                         <ul className="list-disc list-inside space-y-1.5 text-blue-800">
-                          {insight.timeline_highlights.map((item, i) => <li key={i}>{item}</li>)}
+                          {(insight.timeline_highlights || []).map((item, i) => <li key={i}>{item}</li>)}
                         </ul>
                       </div>
                     )}
@@ -1083,13 +1083,13 @@ export default function PatientProfilePage() {
             {treatmentPlan && !planLoading && (
               <div className="space-y-4 mt-2">
                 {/* Goals */}
-                {treatmentPlan.goals.length > 0 && (
+                {(treatmentPlan.goals || []).length > 0 && (
                   <div>
                     <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
                       <span className="text-base">🎯</span> מטרות טיפול
                     </h3>
                     <div className="space-y-2">
-                      {treatmentPlan.goals.map((goal) => (
+                      {(treatmentPlan.goals || []).map((goal) => (
                         <div key={goal.id} className="bg-white rounded-lg p-3 border border-indigo-100">
                           <p className="font-medium text-gray-900 text-sm">{goal.title}</p>
                           <p className="text-gray-600 text-sm mt-0.5 leading-relaxed">{goal.description}</p>
@@ -1100,13 +1100,13 @@ export default function PatientProfilePage() {
                 )}
 
                 {/* Focus areas */}
-                {treatmentPlan.focus_areas.length > 0 && (
+                {(treatmentPlan.focus_areas || []).length > 0 && (
                   <div>
                     <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
                       <span className="text-base">🔍</span> נושאים מרכזיים לעבודה
                     </h3>
                     <div className="flex flex-wrap gap-2">
-                      {treatmentPlan.focus_areas.map((area, i) => (
+                      {(treatmentPlan.focus_areas || []).map((area, i) => (
                         <span
                           key={i}
                           className="px-3 py-1.5 bg-white border border-indigo-200 text-indigo-800 rounded-full text-sm"
@@ -1119,13 +1119,13 @@ export default function PatientProfilePage() {
                 )}
 
                 {/* Suggested interventions */}
-                {treatmentPlan.suggested_interventions.length > 0 && (
+                {(treatmentPlan.suggested_interventions || []).length > 0 && (
                   <div>
                     <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
                       <span className="text-base">🛠️</span> סוגי התערבויות מוצעות
                     </h3>
                     <ul className="space-y-1.5">
-                      {treatmentPlan.suggested_interventions.map((item, i) => (
+                      {(treatmentPlan.suggested_interventions || []).map((item, i) => (
                         <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
                           <CheckCircleIcon className="h-4 w-4 text-indigo-400 flex-shrink-0 mt-0.5" />
                           {item}
@@ -1279,43 +1279,43 @@ export default function PatientProfilePage() {
                 </div>
               ) : prepBrief ? (
                 <div className="space-y-4 text-sm">
-                  {prepBrief.history_summary.length > 0 && (
+                  {(prepBrief.history_summary || []).length > 0 && (
                     <div>
                       <h3 className="font-semibold text-amber-900 mb-1.5">📖 מה היה עד עכשיו</h3>
                       <ul className="list-disc list-inside text-gray-700 space-y-1 leading-relaxed">
-                        {prepBrief.history_summary.map((item, i) => <li key={i}>{item}</li>)}
+                        {(prepBrief.history_summary || []).map((item, i) => <li key={i}>{item}</li>)}
                       </ul>
                     </div>
                   )}
-                  {prepBrief.last_session.length > 0 && (
+                  {(prepBrief.last_session || []).length > 0 && (
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                       <h3 className="font-semibold text-blue-900 mb-1.5">🕐 מה היה בפגישה האחרונה</h3>
                       <ul className="list-disc list-inside text-blue-800 space-y-1 leading-relaxed">
-                        {prepBrief.last_session.map((item, i) => <li key={i}>{item}</li>)}
+                        {(prepBrief.last_session || []).map((item, i) => <li key={i}>{item}</li>)}
                       </ul>
                     </div>
                   )}
-                  {prepBrief.tasks_to_check.length > 0 && (
+                  {(prepBrief.tasks_to_check || []).length > 0 && (
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                       <h3 className="font-semibold text-orange-900 mb-1.5">✅ משימות לבדיקה היום</h3>
                       <ul className="list-disc list-inside text-orange-800 space-y-1 leading-relaxed">
-                        {prepBrief.tasks_to_check.map((item, i) => <li key={i}>{item}</li>)}
+                        {(prepBrief.tasks_to_check || []).map((item, i) => <li key={i}>{item}</li>)}
                       </ul>
                     </div>
                   )}
-                  {prepBrief.focus_for_today.length > 0 && (
+                  {(prepBrief.focus_for_today || []).length > 0 && (
                     <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                       <h3 className="font-semibold text-green-900 mb-1.5">🎯 על מה כדאי להתמקד היום</h3>
                       <ul className="list-disc list-inside text-green-800 space-y-1 leading-relaxed">
-                        {prepBrief.focus_for_today.map((item, i) => <li key={i}>{item}</li>)}
+                        {(prepBrief.focus_for_today || []).map((item, i) => <li key={i}>{item}</li>)}
                       </ul>
                     </div>
                   )}
-                  {prepBrief.watch_out_for.length > 0 && (
+                  {(prepBrief.watch_out_for || []).length > 0 && (
                     <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                       <h3 className="font-semibold text-red-800 mb-1.5">⚠️ שים לב</h3>
                       <ul className="list-disc list-inside text-red-700 space-y-1 leading-relaxed">
-                        {prepBrief.watch_out_for.map((item, i) => <li key={i}>{item}</li>)}
+                        {(prepBrief.watch_out_for || []).map((item, i) => <li key={i}>{item}</li>)}
                       </ul>
                     </div>
                   )}

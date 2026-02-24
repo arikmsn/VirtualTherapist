@@ -33,11 +33,11 @@ interface SessionSummary {
 }
 
 interface PrepBrief {
-  quick_overview: string
-  recent_progress: string
-  key_points_to_revisit: string[]
+  history_summary: string[]
+  last_session: string[]
+  tasks_to_check: string[]
+  focus_for_today: string[]
   watch_out_for: string[]
-  ideas_for_this_session: string[]
 }
 
 interface Session {
@@ -381,35 +381,43 @@ export default function SessionDetailPage() {
             </div>
           ) : prepBrief ? (
             <div className="space-y-3 text-sm">
-              <div>
-                <h3 className="font-semibold text-amber-900 mb-1">סקירה מהירה</h3>
-                <p className="text-amber-800">{prepBrief.quick_overview}</p>
-              </div>
-              <div>
-                <h3 className="font-semibold text-amber-900 mb-1">התקדמות אחרונה</h3>
-                <p className="text-amber-800">{prepBrief.recent_progress}</p>
-              </div>
-              {prepBrief.key_points_to_revisit.length > 0 && (
+              {(prepBrief.history_summary || []).length > 0 && (
                 <div>
-                  <h3 className="font-semibold text-amber-900 mb-1">נקודות לחזור אליהן</h3>
+                  <h3 className="font-semibold text-amber-900 mb-1">רקע היסטורי</h3>
                   <ul className="list-disc list-inside text-amber-800 space-y-0.5">
-                    {prepBrief.key_points_to_revisit.map((p, i) => <li key={i}>{p}</li>)}
+                    {(prepBrief.history_summary || []).map((p, i) => <li key={i}>{p}</li>)}
                   </ul>
                 </div>
               )}
-              {prepBrief.watch_out_for.length > 0 && (
+              {(prepBrief.last_session || []).length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-amber-900 mb-1">הפגישה האחרונה</h3>
+                  <ul className="list-disc list-inside text-amber-800 space-y-0.5">
+                    {(prepBrief.last_session || []).map((p, i) => <li key={i}>{p}</li>)}
+                  </ul>
+                </div>
+              )}
+              {(prepBrief.tasks_to_check || []).length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-amber-900 mb-1">משימות לבדיקה</h3>
+                  <ul className="list-disc list-inside text-amber-800 space-y-0.5">
+                    {(prepBrief.tasks_to_check || []).map((p, i) => <li key={i}>{p}</li>)}
+                  </ul>
+                </div>
+              )}
+              {(prepBrief.focus_for_today || []).length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-2">
+                  <h3 className="font-semibold text-green-800 mb-1">מיקוד לפגישה זו</h3>
+                  <ul className="list-disc list-inside text-green-700 space-y-0.5">
+                    {(prepBrief.focus_for_today || []).map((p, i) => <li key={i}>{p}</li>)}
+                  </ul>
+                </div>
+              )}
+              {(prepBrief.watch_out_for || []).length > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-2">
                   <h3 className="font-semibold text-red-800 mb-1">שים לב</h3>
                   <ul className="list-disc list-inside text-red-700 space-y-0.5">
-                    {prepBrief.watch_out_for.map((w, i) => <li key={i}>{w}</li>)}
-                  </ul>
-                </div>
-              )}
-              {prepBrief.ideas_for_this_session.length > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-2">
-                  <h3 className="font-semibold text-green-800 mb-1">רעיונות לפגישה זו</h3>
-                  <ul className="list-disc list-inside text-green-700 space-y-0.5">
-                    {prepBrief.ideas_for_this_session.map((idea, i) => <li key={i}>{idea}</li>)}
+                    {(prepBrief.watch_out_for || []).map((w, i) => <li key={i}>{w}</li>)}
                   </ul>
                 </div>
               )}
