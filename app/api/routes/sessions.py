@@ -517,11 +517,11 @@ async def edit_summary(
 
 
 class SessionPrepBriefResponse(BaseModel):
-    quick_overview: str
-    recent_progress: str
-    key_points_to_revisit: List[str]
-    watch_out_for: List[str]
-    ideas_for_this_session: List[str]
+    history_summary: List[str]    # מה היה עד עכשיו
+    last_session: List[str]       # מה היה בפגישה האחרונה
+    tasks_to_check: List[str]     # משימות לבדיקה היום
+    focus_for_today: List[str]    # על מה כדאי להתמקד
+    watch_out_for: List[str]      # שים לב
 
 
 @router.post("/{session_id}/prep-brief", response_model=SessionPrepBriefResponse)
@@ -547,11 +547,11 @@ async def generate_session_prep_brief(
         )
 
         return SessionPrepBriefResponse(
-            quick_overview=result.quick_overview,
-            recent_progress=result.recent_progress,
-            key_points_to_revisit=result.key_points_to_revisit,
+            history_summary=result.history_summary,
+            last_session=result.last_session,
+            tasks_to_check=result.tasks_to_check,
+            focus_for_today=result.focus_for_today,
             watch_out_for=result.watch_out_for,
-            ideas_for_this_session=result.ideas_for_this_session,
         )
 
     except ValueError as e:

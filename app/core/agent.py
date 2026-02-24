@@ -54,21 +54,21 @@ class PatientInsightResult:
 
 
 class SessionPrepBriefResult:
-    """Structured result from AI session preparation brief."""
+    """Structured result from AI session preparation brief (4-section clinical format)."""
 
     def __init__(
         self,
-        quick_overview: str,
-        recent_progress: str,
-        key_points_to_revisit: List[str],
+        history_summary: List[str],
+        last_session: List[str],
+        tasks_to_check: List[str],
+        focus_for_today: List[str],
         watch_out_for: List[str],
-        ideas_for_this_session: List[str],
     ):
-        self.quick_overview = quick_overview
-        self.recent_progress = recent_progress
-        self.key_points_to_revisit = key_points_to_revisit
-        self.watch_out_for = watch_out_for
-        self.ideas_for_this_session = ideas_for_this_session
+        self.history_summary = history_summary        # מה היה עד עכשיו
+        self.last_session = last_session              # מה היה בפגישה האחרונה
+        self.tasks_to_check = tasks_to_check          # משימות לבדיקה היום
+        self.focus_for_today = focus_for_today        # על מה כדאי להתמקד
+        self.watch_out_for = watch_out_for            # שים לב / סיכון
 
 
 class TherapyAgent:
@@ -502,68 +502,96 @@ class TherapyAgent:
         session_date: str,
         session_number: Optional[int],
         summaries_timeline: List[Dict[str, Any]],
+        open_tasks: List[Dict[str, Any]],
     ) -> SessionPrepBriefResult:
         """
-        Generate a concise prep brief for an upcoming session.
+        Generate a 4-section clinical prep brief using approved history + open tasks.
 
-        summaries_timeline: last N approved summaries (most recent last).
+        summaries_timeline: all approved summaries ordered oldest → newest (most recent last).
+        open_tasks: all incomplete exercises/tasks for this patient.
         """
         if self.client is None:
             raise RuntimeError(
                 "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
             )
 
-        timeline_parts = []
-        for s in summaries_timeline:
-            date_str = str(s.get("session_date", "?"))
-            num = s.get("session_number", "?")
-            # Meeting prep must use the therapist-edited summary (full_summary),
-            # not structured fields alone — the therapist may have rewritten them.
-            full_summary = s.get("full_summary", "") or ""
-            topics = ", ".join(s.get("topics_discussed", []) or [])
-            progress = s.get("patient_progress", "")
-            homework = ", ".join(s.get("homework_assigned", []) or [])
-            risk = s.get("risk_assessment", "")
-            next_plan = s.get("next_session_plan", "")
-            summary_block = f"סיכום מלא (ערוך ע\"י המטפל):\n{full_summary}\n" if full_summary else ""
-            timeline_parts.append(
-                f"--- פגישה #{num} ({date_str}) ---\n"
-                f"{summary_block}"
-                f"נושאים: {topics}\n"
-                f"התקדמות: {progress}\n"
-                f"משימות בית: {homework}\n"
-                f"תוכנית להמשך: {next_plan}\n"
-                f"סיכון: {risk}"
-            )
+        has_summaries = bool(summaries_timeline)
 
-        timeline = "\n\n".join(timeline_parts)
+        # ── Build approved-summaries context ──────────────────────────────────
+        if has_summaries:
+            history_parts = []
+            for s in summaries_timeline:
+                date_str = str(s.get("session_date", "?"))
+                num = s.get("session_number", "?")
+                full_summary = s.get("full_summary", "") or ""
+                topics = ", ".join(s.get("topics_discussed", []) or [])
+                progress = s.get("patient_progress", "") or ""
+                homework = ", ".join(s.get("homework_assigned", []) or [])
+                risk = s.get("risk_assessment", "") or ""
+                next_plan = s.get("next_session_plan", "") or ""
+                summary_block = (
+                    f'סיכום (ערוך ע"י המטפל):\n{full_summary}\n' if full_summary else ""
+                )
+                history_parts.append(
+                    f"--- פגישה #{num} ({date_str}) ---\n"
+                    f"{summary_block}"
+                    f"נושאים: {topics}\n"
+                    f"התקדמות: {progress}\n"
+                    f"משימות בית: {homework}\n"
+                    f"תוכנית להמשך: {next_plan}\n"
+                    f"סיכון: {risk}"
+                )
+            summaries_context = (
+                'היסטוריית הפגישות (מאושרת ע"י המטפל, מהישנה לחדשה):\n\n'
+                + "\n\n".join(history_parts)
+            )
+        else:
+            summaries_context = "(אין סיכומים מאושרים עדיין)"
+
+        # ── Build open tasks context ──────────────────────────────────────────
+        if open_tasks:
+            tasks_lines = "\n".join(
+                f"- {t.get('description', '')} (נוצר: {str(t.get('created_at', '?'))[:10]})"
+                for t in open_tasks
+            )
+            tasks_context = f"משימות פתוחות (לא הושלמו):\n{tasks_lines}"
+        else:
+            tasks_context = "משימות פתוחות: אין"
 
         session_num_str = f"#{session_number}" if session_number else ""
-        prompt = f"""\
-אתה מסייע לחשיבה הקלינית של המטפל. אתה לא מאבחן ולא מקבל החלטות טיפוליות בעצמך.
-שמור על תמציתיות ופרקטיות — הכנה קצרה לפגישה הקרובה.
+        no_history_note = (
+            "\nשים לב: אין עדיין סיכומים מאושרים. "
+            "ציין זאת במפורש ב-history_summary וב-last_session וכתוב תדריך כללי בהתאם.\n"
+            if not has_summaries else ""
+        )
 
+        prompt = f"""\
+אתה עוזר קליני אישי של המטפל. תפקידך לסכם את ההיסטוריה הקלינית ולהכין את המטפל לפגישה הקרובה.
+אתה לא מאבחן ולא מקבל החלטות טיפוליות — אתה מארגן את המידע הקיים בצורה ברורה ופרקטית.
+{no_history_note}
 הפגישה הקרובה: מטופל "{patient_name}", פגישה {session_num_str}, בתאריך {session_date}.
 
-להלן סיכומי הפגישות האחרונות (מאושרים):
+{summaries_context}
 
-{timeline}
-
-צור תדריך הכנה קצר **למטפל בלבד**.
+{tasks_context}
 
 החזר תשובה **אך ורק** כ-JSON תקין (ללא markdown, ללא ```):
 {{
-  "quick_overview": "2-3 משפטים תמציתיים על מצב המטופל כרגע",
-  "recent_progress": "מה השתנה בפגישות האחרונות",
-  "key_points_to_revisit": ["נקודה 1 לחזור אליה", "..."],
-  "watch_out_for": ["נושא רגיש / סיכון לשים לב", "..."],
-  "ideas_for_this_session": ["רעיון קונקרטי 1", "רעיון 2", "..."]
+  "history_summary": ["תמה/דפוס מרכזי מכל ההיסטוריה", "מגמת ההתקדמות הכללית", "..."],
+  "last_session": ["מה עלה בפגישה האחרונה", "מה הוסכם / נותר פתוח", "..."],
+  "tasks_to_check": ["תיאור משימה לבדיקה", "..."],
+  "focus_for_today": ["הצעה קונקרטית 1 למה לשים דגש", "הצעה 2", "..."],
+  "watch_out_for": ["סיכון/רגישות אם קיים", "..."]
 }}
 
 כללים:
-- בסס רק על מידע מהסיכומים. אל תמציא.
-- כתוב בעברית מקצועית שוטפת.
-- שמור על קיצור — מטפל עסוק צריך לקרוא את זה ב-30 שניות.
+- history_summary: 2–3 פריטים — תמות ודפוסים חוצי-פגישות, לא חזרה על כל פגישה.
+- last_session: 2–3 פריטים — ספציפי לפגישה האחרונה בלבד (האחרונה ב-timeline).
+- tasks_to_check: אם אין משימות פתוחות — ["אין משימות פתוחות"]. אחרת — מנה אותן תמציתית.
+- focus_for_today: 2–3 הצעות פרקטיות — מבוסס על ההיסטוריה + הפגישה האחרונה + המשימות.
+- watch_out_for: רק אם יש סיכון/רגישות ממשיים. אחרת — [].
+- בסס אך ורק על המידע שניתן לך. אל תמציא.
+- כתוב בעברית מקצועית שוטפת. תמציתי — מטפל עסוק קורא את זה ב-30 שניות.
 """
 
         try:
@@ -586,21 +614,21 @@ class TherapyAgent:
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError:
-            logger.warning("AI returned non-JSON prep brief, using full text as fallback")
+            logger.warning("AI returned non-JSON prep brief, wrapping as fallback")
             return SessionPrepBriefResult(
-                quick_overview=raw,
-                recent_progress="",
-                key_points_to_revisit=[],
+                history_summary=[raw],
+                last_session=[],
+                tasks_to_check=[],
+                focus_for_today=[],
                 watch_out_for=[],
-                ideas_for_this_session=[],
             )
 
         return SessionPrepBriefResult(
-            quick_overview=data.get("quick_overview", ""),
-            recent_progress=data.get("recent_progress", ""),
-            key_points_to_revisit=data.get("key_points_to_revisit", []),
+            history_summary=data.get("history_summary", []),
+            last_session=data.get("last_session", []),
+            tasks_to_check=data.get("tasks_to_check", []),
+            focus_for_today=data.get("focus_for_today", []),
             watch_out_for=data.get("watch_out_for", []),
-            ideas_for_this_session=data.get("ideas_for_this_session", []),
         )
 
     async def _generate_openai(self, prompt: str) -> str:

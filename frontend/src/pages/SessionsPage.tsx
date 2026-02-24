@@ -12,11 +12,11 @@ import {
 import { sessionsAPI, patientsAPI } from '@/lib/api'
 
 interface PrepBrief {
-  quick_overview: string
-  recent_progress: string
-  key_points_to_revisit: string[]
-  watch_out_for: string[]
-  ideas_for_this_session: string[]
+  history_summary: string[]    // מה היה עד עכשיו
+  last_session: string[]       // מה היה בפגישה האחרונה
+  tasks_to_check: string[]     // משימות לבדיקה היום
+  focus_for_today: string[]    // על מה כדאי להתמקד
+  watch_out_for: string[]      // שים לב
 }
 
 interface Session {
@@ -484,40 +484,7 @@ export default function SessionsPage() {
                   </button>
                 </div>
               ) : prepBrief ? (
-                <div className="space-y-4 text-sm">
-                  <div>
-                    <h3 className="font-semibold text-amber-900 mb-1">סקירה מהירה</h3>
-                    <p className="text-gray-700">{prepBrief.quick_overview}</p>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-amber-900 mb-1">התקדמות אחרונה</h3>
-                    <p className="text-gray-700">{prepBrief.recent_progress}</p>
-                  </div>
-                  {prepBrief.key_points_to_revisit.length > 0 && (
-                    <div>
-                      <h3 className="font-semibold text-amber-900 mb-1">נקודות לחזור אליהן</h3>
-                      <ul className="list-disc list-inside text-gray-700 space-y-0.5">
-                        {prepBrief.key_points_to_revisit.map((p, i) => <li key={i}>{p}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                  {prepBrief.watch_out_for.length > 0 && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                      <h3 className="font-semibold text-red-800 mb-1">שים לב</h3>
-                      <ul className="list-disc list-inside text-red-700 space-y-0.5">
-                        {prepBrief.watch_out_for.map((w, i) => <li key={i}>{w}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                  {prepBrief.ideas_for_this_session.length > 0 && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                      <h3 className="font-semibold text-green-800 mb-1">רעיונות לפגישה זו</h3>
-                      <ul className="list-disc list-inside text-green-700 space-y-0.5">
-                        {prepBrief.ideas_for_this_session.map((idea, i) => <li key={i}>{idea}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                </div>
+                <PrepBriefContent brief={prepBrief} />
               ) : null}
             </div>
 
@@ -701,6 +668,62 @@ export default function SessionsPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PrepBriefContent({ brief }: { brief: PrepBrief }) {
+  return (
+    <div className="space-y-4 text-sm">
+      {/* מה היה עד עכשיו */}
+      {brief.history_summary.length > 0 && (
+        <div>
+          <h3 className="font-semibold text-amber-900 mb-1.5">📖 מה היה עד עכשיו</h3>
+          <ul className="list-disc list-inside text-gray-700 space-y-1 leading-relaxed">
+            {brief.history_summary.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {/* מה היה בפגישה האחרונה */}
+      {brief.last_session.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <h3 className="font-semibold text-blue-900 mb-1.5">🕐 מה היה בפגישה האחרונה</h3>
+          <ul className="list-disc list-inside text-blue-800 space-y-1 leading-relaxed">
+            {brief.last_session.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {/* משימות לבדיקה היום */}
+      {brief.tasks_to_check.length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+          <h3 className="font-semibold text-orange-900 mb-1.5">✅ משימות לבדיקה היום</h3>
+          <ul className="list-disc list-inside text-orange-800 space-y-1 leading-relaxed">
+            {brief.tasks_to_check.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {/* על מה כדאי להתמקד */}
+      {brief.focus_for_today.length > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+          <h3 className="font-semibold text-green-900 mb-1.5">🎯 על מה כדאי להתמקד היום</h3>
+          <ul className="list-disc list-inside text-green-800 space-y-1 leading-relaxed">
+            {brief.focus_for_today.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {/* שים לב */}
+      {brief.watch_out_for.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+          <h3 className="font-semibold text-red-800 mb-1.5">⚠️ שים לב</h3>
+          <ul className="list-disc list-inside text-red-700 space-y-1 leading-relaxed">
+            {brief.watch_out_for.map((item, i) => <li key={i}>{item}</li>)}
+          </ul>
         </div>
       )}
     </div>

@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 from app.models.session import Session as TherapySession, SessionSummary, SessionType, SummaryStatus
 from app.models.patient import Patient
+from app.models.exercise import Exercise
 from app.core.agent import TherapyAgent, PatientInsightResult, SessionPrepBriefResult
 from app.services.audit_service import AuditService
 from app.security.encryption import decrypt_data
@@ -728,17 +729,34 @@ class SessionService:
                     "risk_assessment": summary.risk_assessment,
                 })
 
-        if not approved:
-            raise ValueError("אין סיכומים מאושרים עבור מטופל זה. יש לאשר לפחות סיכום אחד.")
-
-        # Keep only the last N
+        # Keep only the last N approved summaries (graceful: proceed even with 0)
         recent = approved[-max_summaries:]
+
+        # Fetch all open (incomplete) exercises for this patient
+        open_exercises = (
+            self.db.query(Exercise)
+            .filter(
+                Exercise.patient_id == session.patient_id,
+                Exercise.therapist_id == therapist_id,
+                Exercise.completed.is_(False),
+            )
+            .order_by(Exercise.created_at.asc())
+            .all()
+        )
+        open_tasks = [
+            {
+                "description": ex.description,
+                "created_at": str(ex.created_at)[:10] if ex.created_at else None,
+            }
+            for ex in open_exercises
+        ]
 
         result = await agent.generate_session_prep_brief(
             patient_name=patient.full_name_encrypted,
             session_date=str(session.session_date),
             session_number=session.session_number,
             summaries_timeline=recent,
+            open_tasks=open_tasks,
         )
 
         logger.info(f"Generated prep brief for session {session_id} ({len(recent)} summaries)")
