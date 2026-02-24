@@ -6,8 +6,18 @@ import {
   PlusIcon,
   XMarkIcon,
   TrashIcon,
+  SparklesIcon,
+  LightBulbIcon,
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI } from '@/lib/api'
+
+interface PrepBrief {
+  quick_overview: string
+  recent_progress: string
+  key_points_to_revisit: string[]
+  watch_out_for: string[]
+  ideas_for_this_session: string[]
+}
 
 interface Session {
   id: number
@@ -49,6 +59,12 @@ export default function SessionsPage() {
   const [deleteStep, setDeleteStep] = useState<1 | 2>(1)
   const [deleting, setDeleting] = useState(false)
   const [notifyPatient, setNotifyPatient] = useState(false)
+
+  // Prep brief modal state
+  const [prepSession, setPrepSession] = useState<Session | null>(null)
+  const [prepBrief, setPrepBrief] = useState<PrepBrief | null>(null)
+  const [prepLoading, setPrepLoading] = useState(false)
+  const [prepError, setPrepError] = useState('')
 
   // Create session modal state
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -161,10 +177,31 @@ export default function SessionsPage() {
 
   // Lock body scroll whenever a modal is open
   useEffect(() => {
-    const locked = !!deleteTarget || showCreateModal
+    const locked = !!deleteTarget || showCreateModal || !!prepSession
     document.body.style.overflow = locked ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
-  }, [deleteTarget, showCreateModal])
+  }, [deleteTarget, showCreateModal, prepSession])
+
+  const openPrepModal = async (session: Session) => {
+    setPrepSession(session)
+    setPrepBrief(null)
+    setPrepError('')
+    setPrepLoading(true)
+    try {
+      const data = await sessionsAPI.getPrepBrief(session.id)
+      setPrepBrief(data)
+    } catch (err: any) {
+      setPrepError(err.response?.data?.detail || 'שגיאה ביצירת תדריך ההכנה')
+    } finally {
+      setPrepLoading(false)
+    }
+  }
+
+  const closePrepModal = () => {
+    setPrepSession(null)
+    setPrepBrief(null)
+    setPrepError('')
+  }
 
   const filteredSessions = sessions.filter((session) => {
     if (filter === 'with_summary') return session.summary_id != null
@@ -287,7 +324,14 @@ export default function SessionsPage() {
               </div>
 
               {/* Actions — stacked row below info on mobile, inline on desktop */}
-              <div className="flex gap-2 items-center flex-shrink-0">
+              <div className="flex gap-2 items-center flex-shrink-0 flex-wrap sm:flex-nowrap">
+                <button
+                  onClick={() => openPrepModal(session)}
+                  className="flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-2 min-h-[44px] sm:min-h-0 transition-colors touch-manipulation flex-shrink-0"
+                >
+                  <SparklesIcon className="h-4 w-4" />
+                  הכנה לפגישה
+                </button>
                 {session.summary_id == null && (
                   <button
                     onClick={() => navigate(`/sessions/${session.id}`)}
@@ -396,6 +440,96 @@ export default function SessionsPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Prep Brief Modal */}
+      {prepSession && (
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] animate-fade-in">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-amber-100 flex-shrink-0 bg-amber-50 rounded-t-2xl">
+              <div>
+                <h2 className="text-lg font-bold text-amber-900 flex items-center gap-2">
+                  <LightBulbIcon className="h-5 w-5" />
+                  הכנה לפגישה
+                </h2>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  {prepSession.session_number ? `פגישה #${prepSession.session_number} · ` : ''}
+                  {new Date(prepSession.session_date + 'T12:00:00').toLocaleDateString('he-IL')}
+                  {prepSession.session_type && ` · ${SESSION_TYPES.find((t) => t.value === prepSession.session_type)?.label || prepSession.session_type}`}
+                </p>
+              </div>
+              <button onClick={closePrepModal} className="text-amber-600 hover:text-amber-900 p-1 touch-manipulation">
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="overflow-y-auto flex-1 px-5 py-4">
+              {prepLoading ? (
+                <div className="flex flex-col items-center justify-center py-10 gap-3">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
+                  <p className="text-sm text-amber-700">מכין תדריך...</p>
+                </div>
+              ) : prepError ? (
+                <div className="text-amber-800 text-sm space-y-2">
+                  <p>{prepError}</p>
+                  <button
+                    onClick={() => openPrepModal(prepSession)}
+                    className="text-sm px-3 py-1 bg-amber-200 rounded-lg hover:bg-amber-300 transition-colors"
+                  >
+                    נסה שוב
+                  </button>
+                </div>
+              ) : prepBrief ? (
+                <div className="space-y-4 text-sm">
+                  <div>
+                    <h3 className="font-semibold text-amber-900 mb-1">סקירה מהירה</h3>
+                    <p className="text-gray-700">{prepBrief.quick_overview}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-amber-900 mb-1">התקדמות אחרונה</h3>
+                    <p className="text-gray-700">{prepBrief.recent_progress}</p>
+                  </div>
+                  {prepBrief.key_points_to_revisit.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-amber-900 mb-1">נקודות לחזור אליהן</h3>
+                      <ul className="list-disc list-inside text-gray-700 space-y-0.5">
+                        {prepBrief.key_points_to_revisit.map((p, i) => <li key={i}>{p}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {prepBrief.watch_out_for.length > 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                      <h3 className="font-semibold text-red-800 mb-1">שים לב</h3>
+                      <ul className="list-disc list-inside text-red-700 space-y-0.5">
+                        {prepBrief.watch_out_for.map((w, i) => <li key={i}>{w}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {prepBrief.ideas_for_this_session.length > 0 && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <h3 className="font-semibold text-green-800 mb-1">רעיונות לפגישה זו</h3>
+                      <ul className="list-disc list-inside text-green-700 space-y-0.5">
+                        {prepBrief.ideas_for_this_session.map((idea, i) => <li key={i}>{idea}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
+              <button
+                onClick={() => navigate(`/sessions/${prepSession.id}`)}
+                className="btn-secondary w-full min-h-[44px] touch-manipulation"
+              >
+                פתח פגישה מלאה
+              </button>
+            </div>
           </div>
         </div>
       )}

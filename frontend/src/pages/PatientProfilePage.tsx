@@ -738,10 +738,10 @@ export default function PatientProfilePage() {
                     </div>
                     <button
                       onClick={(e) => { e.stopPropagation(); openPrepModal(session) }}
-                      className="flex items-center gap-1 text-xs text-therapy-warm font-medium hover:text-amber-700 px-2 py-1 rounded hover:bg-amber-50 transition-colors whitespace-nowrap touch-manipulation flex-shrink-0"
+                      className="flex items-center gap-1 text-xs font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-2.5 py-1.5 transition-colors whitespace-nowrap touch-manipulation flex-shrink-0"
                     >
                       <SparklesIcon className="h-3.5 w-3.5" />
-                      הכנה
+                      הכנה לפגישה
                     </button>
                     <ArrowRightIcon className="h-4 w-4 text-gray-400 flex-shrink-0 rotate-180" />
                   </div>

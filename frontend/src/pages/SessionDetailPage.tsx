@@ -599,11 +599,15 @@ export default function SessionDetailPage() {
                       <MicrophoneIcon className="h-4 w-4" />
                       תמליל מקורי
                       <span className="text-xs font-normal text-blue-500 mr-1">
-                        {new Date(
-                          summary.created_at.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(summary.created_at)
-                            ? summary.created_at
-                            : summary.created_at + 'Z'
-                        ).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}
+                        {(() => {
+                          const dt = new Date(
+                            summary.created_at.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(summary.created_at)
+                              ? summary.created_at
+                              : summary.created_at + 'Z'
+                          )
+                          return dt.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' }) + ' ' +
+                            String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0')
+                        })()}
                       </span>
                     </h3>
                     <p className="text-blue-700 whitespace-pre-line text-sm leading-relaxed">
