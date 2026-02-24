@@ -418,17 +418,6 @@ export default function SessionDetailPage() {
         </div>
       )}
 
-      {/* Prep Brief Toggle Button (when panel is closed) */}
-      {!showPrepPanel && (
-        <button
-          onClick={() => { setShowPrepPanel(true) }}
-          className="btn-secondary flex items-center gap-2"
-        >
-          <LightBulbIcon className="h-4 w-4" />
-          הכנה לפגישה
-        </button>
-      )}
-
       {/* Input Section — Voice Recap or Text Notes (only when no summary yet) */}
       {!summary && (
         <div className="card">

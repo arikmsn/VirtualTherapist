@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   PlusIcon,
@@ -9,9 +9,19 @@ import {
   ChevronLeftIcon,
   DocumentTextIcon,
   ChatBubbleLeftRightIcon,
+  CalendarIcon,
 } from '@heroicons/react/24/outline'
 import { patientsAPI, sessionsAPI, exercisesAPI } from '@/lib/api'
 import PhoneInput from '@/components/PhoneInput'
+
+const SESSION_TYPES = [
+  { value: 'individual', label: 'פרטני' },
+  { value: 'couples', label: 'זוגי' },
+  { value: 'family', label: 'משפחתי' },
+  { value: 'group', label: 'קבוצתי' },
+  { value: 'intake', label: 'אינטייק' },
+  { value: 'follow_up', label: 'מעקב' },
+]
 
 interface Patient {
   id: number
@@ -30,7 +40,9 @@ interface Patient {
 
 interface Session {
   id: number
+  patient_id: number
   session_date: string
+  session_type?: string
 }
 
 export default function PatientsPage() {
@@ -39,11 +51,21 @@ export default function PatientsPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [pendingTasksCount, setPendingTasksCount] = useState(0)
+  const [patientOpenTasks, setPatientOpenTasks] = useState<Record<number, number>>({})
   const [searchTerm, setSearchTerm] = useState('')
   const [showInactive, setShowInactive] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
 
-  // Create form state
+  // Create-session-for-patient modal state
+  const [createSessionFor, setCreateSessionFor] = useState<Patient | null>(null)
+  const [newSessionDate, setNewSessionDate] = useState(new Date().toISOString().split('T')[0])
+  const [newSessionTime, setNewSessionTime] = useState('')
+  const [newSessionType, setNewSessionType] = useState('individual')
+  const [newSessionDuration, setNewSessionDuration] = useState(50)
+  const [creatingSession, setCreatingSession] = useState(false)
+  const [createSessionError, setCreateSessionError] = useState('')
+
+  // Create patient form state
   const [newPatient, setNewPatient] = useState({
     full_name: '',
     phone: '',
@@ -77,21 +99,75 @@ export default function PatientsPage() {
       const [patientsData] = await Promise.all([loadPatients(), loadSessions()])
       setLoading(false)
 
-      // Fetch exercises for all active patients in parallel to get pending task count
+      // Fetch exercises for all active patients in parallel to get per-patient open task counts
       const active = patientsData.filter((p) => p.status === 'active')
       if (active.length > 0) {
         try {
           const lists = await Promise.all(
             active.map((p) => exercisesAPI.list(p.id).catch(() => []))
           )
-          setPendingTasksCount(
-            (lists as any[]).flat().filter((ex: any) => !ex.completed).length
-          )
+          const openMap: Record<number, number> = {}
+          active.forEach((p, i) => {
+            openMap[p.id] = (lists[i] as any[]).filter((ex: any) => !ex.completed).length
+          })
+          setPatientOpenTasks(openMap)
+          setPendingTasksCount(Object.values(openMap).reduce((sum, n) => sum + n, 0))
         } catch { /* not critical */ }
       }
     }
     init()
   }, [])
+
+  // Lock body scroll when a modal is open
+  useEffect(() => {
+    const locked = showCreateForm || !!createSessionFor
+    document.body.style.overflow = locked ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [showCreateForm, createSessionFor])
+
+  // Next session per patient (nearest future session_date >= today)
+  const nextSessionByPatient = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0]
+    const map: Record<number, Session | null> = {}
+    patients.forEach((p) => {
+      const future = sessions
+        .filter((s) => s.patient_id === p.id && s.session_date >= todayStr)
+        .sort((a, b) => a.session_date.localeCompare(b.session_date))
+      map[p.id] = future[0] ?? null
+    })
+    return map
+  }, [patients, sessions])
+
+  const openCreateSession = (patient: Patient) => {
+    setCreateSessionFor(patient)
+    setNewSessionDate(new Date().toISOString().split('T')[0])
+    setNewSessionTime('')
+    setNewSessionType('individual')
+    setNewSessionDuration(50)
+    setCreateSessionError('')
+  }
+
+  const handleCreateSessionForPatient = async () => {
+    if (!createSessionFor) return
+    setCreatingSession(true)
+    setCreateSessionError('')
+    try {
+      const startTime = newSessionTime ? `${newSessionDate}T${newSessionTime}:00` : undefined
+      await sessionsAPI.create({
+        patient_id: createSessionFor.id,
+        session_date: newSessionDate,
+        session_type: newSessionType,
+        duration_minutes: newSessionDuration,
+        start_time: startTime,
+      })
+      setCreateSessionFor(null)
+      await loadSessions()
+    } catch (err: any) {
+      setCreateSessionError(err.response?.data?.detail || 'שגיאה ביצירת הפגישה')
+    } finally {
+      setCreatingSession(false)
+    }
+  }
 
   const handleCreatePatient = async () => {
     if (!newPatient.full_name.trim()) return
@@ -294,18 +370,48 @@ export default function PatientsPage() {
                 {patient.phone && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">טלפון:</span>
-                    <span className="font-medium">{patient.phone}</span>
+                    <a
+                      href={`tel:${patient.phone}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="font-medium text-therapy-calm hover:underline"
+                      dir="ltr"
+                    >
+                      {patient.phone}
+                    </a>
                   </div>
                 )}
-                <div className="flex justify-between">
-                  <span className="text-gray-600">משימות שהושלמו:</span>
-                  <span className="font-medium">{patient.completed_exercises_count}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">נוצר בתאריך:</span>
-                  <span className="font-medium">
-                    {new Date(patient.created_at).toLocaleDateString('he-IL')}
+                <div
+                  className="flex justify-between cursor-pointer group"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    navigate(`/patients/${patient.id}`, { state: { initialTab: 'sessions' } })
+                  }}
+                >
+                  <span className="text-gray-600 group-hover:text-therapy-calm">משימות פתוחות:</span>
+                  <span className="font-medium group-hover:text-therapy-calm">
+                    {patientOpenTasks[patient.id] ?? 0}
                   </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 flex items-center gap-1">
+                    <CalendarIcon className="h-3.5 w-3.5" />
+                    פגישה הבאה:
+                  </span>
+                  {nextSessionByPatient[patient.id] ? (
+                    <span className="font-medium">
+                      {new Date(nextSessionByPatient[patient.id]!.session_date + 'T12:00:00').toLocaleDateString('he-IL')}
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-gray-400">לא נקבע</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openCreateSession(patient) }}
+                        className="text-xs font-medium text-therapy-calm hover:underline"
+                      >
+                        · קביעת פגישה
+                      </button>
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -332,6 +438,93 @@ export default function PatientsPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Create Session for Patient Modal */}
+      {createSessionFor && (
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] overflow-x-hidden">
+            <div className="flex items-center justify-between px-3 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">פגישה חדשה</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{createSessionFor.full_name}</p>
+              </div>
+              <button onClick={() => setCreateSessionFor(null)} className="text-gray-400 hover:text-gray-600 p-1 touch-manipulation">
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-3 sm:px-6 py-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">תאריך *</label>
+                <input
+                  type="date"
+                  value={newSessionDate}
+                  onChange={(e) => setNewSessionDate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">שעת התחלה</label>
+                <select
+                  value={newSessionTime}
+                  onChange={(e) => setNewSessionTime(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                >
+                  <option value="">בחר שעה...</option>
+                  {Array.from({ length: 14 }, (_, i) => i + 7).map((hour) =>
+                    [0, 30].map((min) => {
+                      const val = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
+                      return <option key={val} value={val}>{val}</option>
+                    })
+                  )}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">משך (דקות)</label>
+                <input
+                  type="number"
+                  value={newSessionDuration}
+                  onChange={(e) => setNewSessionDuration(Number(e.target.value))}
+                  min={10} max={180}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">סוג פגישה</label>
+                <select
+                  value={newSessionType}
+                  onChange={(e) => setNewSessionType(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                >
+                  {SESSION_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              {createSessionError && (
+                <div className="text-red-600 text-sm bg-red-50 rounded-lg p-3">{createSessionError}</div>
+              )}
+            </div>
+
+            <div className="flex gap-3 px-3 sm:px-6 py-4 border-t border-gray-100 flex-shrink-0">
+              <button
+                onClick={handleCreateSessionForPatient}
+                disabled={creatingSession}
+                className="btn-primary flex-1 disabled:opacity-50 min-h-[44px] touch-manipulation"
+              >
+                {creatingSession ? 'יוצר...' : 'צור פגישה'}
+              </button>
+              <button
+                onClick={() => setCreateSessionFor(null)}
+                className="btn-secondary flex-1 min-h-[44px] touch-manipulation"
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
