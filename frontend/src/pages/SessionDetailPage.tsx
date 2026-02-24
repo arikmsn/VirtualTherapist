@@ -325,7 +325,7 @@ export default function SessionDetailPage() {
         </div>
       </div>
 
-      {/* Open Tasks Reminder — visible only when patient has uncompleted tasks */}
+      {/* Open Tasks Reminder — visible throughout the page lifecycle (including after summary creation) */}
       {openTasksCount > 0 && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
           <ClipboardDocumentListIcon className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -334,15 +334,9 @@ export default function SessionDetailPage() {
               יש {openTasksCount} משימות פתוחות למטופל הזה
             </p>
             <p className="text-xs text-amber-700 mt-0.5">
-              מומלץ לעבור יחד על המשימות או לבדוק סטטוס לפני/במהלך הפגישה.
+              גלול למטה למעקב המשימות כדי לעיין ולעדכן אותן.
             </p>
           </div>
-          <button
-            onClick={() => navigate(`/patients/${session.patient_id}`, { state: { initialTab: 'sessions' } })}
-            className="flex-shrink-0 text-xs font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 rounded-lg px-2.5 py-1.5 transition-colors whitespace-nowrap touch-manipulation"
-          >
-            צפה במשימות
-          </button>
         </div>
       )}
 
@@ -811,9 +805,25 @@ function ExerciseTracker({
   const [editText, setEditText] = useState('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
-  // Suggestions from homework_assigned that aren't yet tracked
+  // Dismissed AI suggestions — persisted in localStorage per summary
+  const [dismissed, setDismissed] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(`dismissed_ai_suggestions_${summaryId}`)
+      return new Set(raw ? JSON.parse(raw) : [])
+    } catch { return new Set() }
+  })
+
+  const dismissSuggestion = (s: string) => {
+    const updated = new Set([...dismissed, s])
+    setDismissed(updated)
+    try {
+      localStorage.setItem(`dismissed_ai_suggestions_${summaryId}`, JSON.stringify([...updated]))
+    } catch { /* localStorage unavailable */ }
+  }
+
+  // Suggestions from homework_assigned that aren't yet tracked and haven't been dismissed
   const tracked = new Set(exercises.map((e) => e.description))
-  const untracked = homeworkSuggestions.filter((s) => !tracked.has(s))
+  const untracked = homeworkSuggestions.filter((s) => !tracked.has(s) && !dismissed.has(s))
 
   const toggleExercise = async (ex: Exercise) => {
     setToggling(ex.id)
@@ -966,21 +976,34 @@ function ExerciseTracker({
         </ul>
       )}
 
-      {/* Untracked homework suggestions — quick "add tracking" buttons */}
+      {/* Untracked AI suggestions — each can be added as a task or dismissed */}
       {untracked.length > 0 && (
         <div className="mb-3">
-          <p className="text-xs text-gray-500 mb-1">מ-AI (לחץ למעקב):</p>
-          <div className="space-y-1">
+          <p className="text-xs text-gray-500 mb-1.5">הצעות AI (טרם אושרו כמשימות):</p>
+          <div className="space-y-1.5">
             {untracked.map((s) => (
-              <button
+              <div
                 key={s}
-                onClick={() => trackSuggestion(s)}
-                disabled={adding === s}
-                className="w-full text-right text-sm px-3 py-1.5 border border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-green-400 hover:text-green-700 hover:bg-green-50 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="flex items-center gap-2 text-sm px-3 py-1.5 border border-dashed border-gray-300 rounded-lg text-gray-600 bg-gray-50"
               >
-                <span className="text-green-600">+</span>
-                {adding === s ? 'מוסיף...' : s}
-              </button>
+                <span className="flex-1 leading-relaxed">{s}</span>
+                <button
+                  onClick={() => trackSuggestion(s)}
+                  disabled={adding === s}
+                  className="flex-shrink-0 text-xs font-medium text-green-700 hover:text-green-900 border border-green-300 hover:border-green-500 bg-white hover:bg-green-50 rounded px-2 py-0.5 transition-colors disabled:opacity-50 whitespace-nowrap touch-manipulation"
+                  title="הוסף כמשימה פעילה"
+                >
+                  {adding === s ? '...' : '+ הוסף'}
+                </button>
+                <button
+                  onClick={() => dismissSuggestion(s)}
+                  className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors touch-manipulation"
+                  title="לא רלוונטי — הסתר"
+                  aria-label="הסתר הצעה"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
             ))}
           </div>
         </div>

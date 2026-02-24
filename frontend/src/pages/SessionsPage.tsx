@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   DocumentTextIcon,
   CheckCircleIcon,
@@ -46,13 +46,18 @@ const SESSION_TYPES = [
   { value: 'follow_up', label: 'מעקב' },
 ]
 
+const todayStr = new Date().toISOString().split('T')[0]
+
 export default function SessionsPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [sessions, setSessions] = useState<Session[]>([])
   const [patients, setPatients] = useState<Patient[]>([])
   const [patientMap, setPatientMap] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'with_summary' | 'no_summary'>('all')
+  const [filter, setFilter] = useState<'all' | 'with_summary' | 'no_summary'>(
+    (searchParams.get('filter') as 'all' | 'with_summary' | 'no_summary') || 'all'
+  )
 
   // Delete session modal state
   const [deleteTarget, setDeleteTarget] = useState<Session | null>(null)
@@ -325,13 +330,16 @@ export default function SessionsPage() {
 
               {/* Actions — stacked row below info on mobile, inline on desktop */}
               <div className="flex gap-2 items-center flex-shrink-0 flex-wrap sm:flex-nowrap">
-                <button
-                  onClick={() => openPrepModal(session)}
-                  className="flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-2 min-h-[44px] sm:min-h-0 transition-colors touch-manipulation flex-shrink-0"
-                >
-                  <SparklesIcon className="h-4 w-4" />
-                  הכנה לפגישה
-                </button>
+                {/* Prep button: only for future sessions or sessions without a summary */}
+                {(session.summary_id == null || session.session_date >= todayStr) && (
+                  <button
+                    onClick={() => openPrepModal(session)}
+                    className="flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-2 min-h-[44px] sm:min-h-0 transition-colors touch-manipulation flex-shrink-0"
+                  >
+                    <SparklesIcon className="h-4 w-4" />
+                    הכנה לפגישה
+                  </button>
+                )}
                 {session.summary_id == null && (
                   <button
                     onClick={() => navigate(`/sessions/${session.id}`)}

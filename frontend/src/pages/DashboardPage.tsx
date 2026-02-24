@@ -13,7 +13,7 @@ import {
   LightBulbIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
-import { patientsAPI, sessionsAPI, exercisesAPI, therapistAPI } from '@/lib/api'
+import { patientsAPI, sessionsAPI, therapistAPI } from '@/lib/api'
 import { useAuth } from '@/auth/useAuth'
 
 interface Patient {
@@ -113,7 +113,7 @@ export default function DashboardPage() {
   const [allSessions, setAllSessions] = useState<SimpleSession[]>([])
 
   const [stats, setStats] = useState({
-    openTasks: 0,
+    pendingSummary: 0,
     todaySessions: 0,
     activePatients: 0,
     completedSummaries: 0,
@@ -148,16 +148,17 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadStats = async () => {
       try {
-        const [patientsData, sessionsData, openTaskCount] = await Promise.all([
+        const [patientsData, sessionsData] = await Promise.all([
           patientsAPI.list(),
           sessionsAPI.list(),
-          exercisesAPI.getOpenCount().catch(() => 0),
         ])
         setPatients(patientsData)
         setAllSessions(sessionsData)
         const today = todayISO()
         setStats({
-          openTasks: openTaskCount,
+          pendingSummary: sessionsData.filter(
+            (s: any) => s.session_date <= today && s.summary_id == null
+          ).length,
           todaySessions: sessionsData.filter(
             (s: any) => s.session_date === today
           ).length,
@@ -480,15 +481,18 @@ export default function DashboardPage() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="card bg-blue-50 border border-blue-200">
+        <button
+          onClick={() => navigate('/sessions?filter=no_summary')}
+          className="card bg-blue-50 border border-blue-200 text-right hover:shadow-md transition-shadow cursor-pointer"
+        >
           <div className="flex items-center gap-3">
             <ClockIcon className="h-8 w-8 text-blue-600" />
             <div>
-              <div className="text-2xl font-bold text-blue-900">{stats.openTasks}</div>
-              <div className="text-sm text-blue-700">משימות פתוחות</div>
+              <div className="text-2xl font-bold text-blue-900">{stats.pendingSummary}</div>
+              <div className="text-sm text-blue-700">פגישות ממתינות לסיכום</div>
             </div>
           </div>
-        </div>
+        </button>
 
         <div className="card bg-green-50 border border-green-200">
           <div className="flex items-center gap-3">
@@ -541,20 +545,20 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-            {stats.openTasks > 0 && (
+            {stats.pendingSummary > 0 && (
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                   <div>
-                    <div className="font-medium">{stats.openTasks} משימות פתוחות ממתינות</div>
-                    <div className="text-sm text-gray-500">בין-פגישות</div>
+                    <div className="font-medium">{stats.pendingSummary} פגישות ממתינות לסיכום</div>
+                    <div className="text-sm text-gray-500">פגישות שהתקיימו ועדיין אין להן סיכום</div>
                   </div>
                 </div>
                 <button
-                  onClick={() => navigate('/patients')}
+                  onClick={() => navigate('/sessions?filter=no_summary')}
                   className="text-therapy-calm text-sm font-medium hover:underline"
                 >
-                  עבור למטופלים →
+                  צור סיכומים →
                 </button>
               </div>
             )}
