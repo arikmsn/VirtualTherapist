@@ -55,6 +55,14 @@ export default function Layout() {
   // Show full name when available, fall back to email; hide block if neither exists
   const displayName = user?.fullName?.trim() || user?.email || null
 
+  const getGreeting = () => {
+    const h = new Date().getHours()
+    if (h < 12) return 'בוקר טוב'
+    if (h < 17) return 'צהריים טובים'
+    return 'ערב טוב'
+  }
+  const firstName = user?.fullName?.trim().split(' ')[0] || null
+
   const navigation = [
     { name: 'ראשי', href: '/dashboard', icon: HomeIcon },
     { name: 'הודעות', href: '/messages', icon: ChatBubbleLeftRightIcon },
@@ -80,9 +88,8 @@ export default function Layout() {
                 <Bars3Icon className="h-6 w-6" />
               </button>
 
-              <div className="text-lg sm:text-2xl font-bold text-therapy-calm">
-                🧠 <span className="hidden xs:inline">TherapyCompanion.AI</span>
-                <span className="xs:hidden sm:hidden">TC.AI</span>
+              <div className="text-base sm:text-2xl font-bold text-therapy-calm">
+                🧠 TherapyCompanion.AI
               </div>
             </div>
 
@@ -162,9 +169,11 @@ export default function Layout() {
             dir="rtl"
           >
             <div className="px-4 py-4 space-y-1">
-              {/* Drawer header — app name + close button */}
+              {/* Drawer header — greeting + close button */}
               <div className="flex items-center justify-between pb-3 mb-2 border-b border-gray-100">
-                <div className="text-lg font-bold text-therapy-calm">🧠 TC.AI</div>
+                <div className="text-base font-semibold text-gray-800">
+                  {firstName ? `${getGreeting()}, ${firstName}` : getGreeting()}
+                </div>
                 <button
                   onClick={() => setMobileMenuOpen(false)}
                   className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 touch-manipulation min-w-[40px] min-h-[40px] flex items-center justify-center"
