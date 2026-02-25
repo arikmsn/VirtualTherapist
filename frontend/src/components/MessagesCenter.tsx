@@ -25,11 +25,18 @@ import {
   ExclamationTriangleIcon,
   PlusIcon,
 } from '@heroicons/react/24/outline'
-import { messagesAPI } from '@/lib/api'
-import { formatDatetimeIL } from '@/lib/dateUtils'
+import { messagesAPI, sessionsAPI } from '@/lib/api'
+import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
 import PhoneInput from '@/components/PhoneInput'
 
 // --- Types ---
+
+interface UpcomingSession {
+  id: number
+  session_date: string
+  start_time: string | null
+  session_number: number | null
+}
 
 interface Message {
   id: number
@@ -96,9 +103,10 @@ export default function MessagesCenter({
 
   // Task context (for task_reminder)
   const [taskText, setTaskText] = useState('')
-  // Session context (for session_reminder)
-  const [sessionDate, setSessionDate] = useState('')
-  const [sessionTime, setSessionTime] = useState('')
+  // Session picker (for session_reminder)
+  const [upcomingSessions, setUpcomingSessions] = useState<UpcomingSession[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null)
 
   // Scheduling sub-panel (shown when therapist clicks "תזמן")
   const [showScheduler, setShowScheduler] = useState(false)
@@ -136,6 +144,44 @@ export default function MessagesCenter({
     loadHistory()
   }, [loadHistory])
 
+  // Load upcoming sessions when the therapist picks "session_reminder"
+  useEffect(() => {
+    if (messageType !== 'session_reminder') return
+    const today = new Date().toISOString().split('T')[0]
+    let cancelled = false
+    const load = async () => {
+      setSessionsLoading(true)
+      try {
+        const data = await sessionsAPI.getPatientSessions(patientId)
+        if (cancelled) return
+        const upcoming = (data as UpcomingSession[])
+          .filter((s) => s.session_date >= today)
+          .sort((a, b) => a.session_date.localeCompare(b.session_date))
+        setUpcomingSessions(upcoming)
+        // Auto-select the first upcoming session so the composer is ready immediately
+        if (upcoming.length > 0 && selectedSessionId === null) {
+          setSelectedSessionId(upcoming[0].id)
+        }
+      } catch (err) {
+        console.error('Failed to load upcoming sessions:', err)
+      } finally {
+        if (!cancelled) setSessionsLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [messageType, patientId]) // intentionally omit selectedSessionId — auto-select runs once
+
+  /** Extract HH:mm from an ISO datetime string using local time. */
+  const formatSessionTime = (startTime: string | null): string => {
+    if (!startTime) return ''
+    const d = new Date(startTime)
+    if (isNaN(d.getTime())) return ''
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+
+  const selectedSession = upcomingSessions.find((s) => s.id === selectedSessionId) ?? null
+
   const handleGenerate = async () => {
     setGenerating(true)
     setGeneratorError('')
@@ -144,9 +190,10 @@ export default function MessagesCenter({
 
     const context: Record<string, string> = {}
     if (messageType === 'task_reminder' && taskText) context.task = taskText
-    if (messageType === 'session_reminder') {
-      if (sessionDate) context.session_date = sessionDate
-      if (sessionTime) context.session_time = sessionTime
+    if (messageType === 'session_reminder' && selectedSession) {
+      context.session_date = formatDateIL(selectedSession.session_date)
+      const t = formatSessionTime(selectedSession.start_time)
+      if (t) context.session_time = t
     }
 
     try {
@@ -179,8 +226,8 @@ export default function MessagesCenter({
     setContent('')
     setGenerated(false)
     setTaskText('')
-    setSessionDate('')
-    setSessionTime('')
+    setSelectedSessionId(null)
+    setUpcomingSessions([])
     setSendWhen('now')
     setSendTime('')
     setSendDatetime('')
@@ -202,6 +249,7 @@ export default function MessagesCenter({
         content,
         recipient_phone: recipientPhone,
         send_at: sendAt,
+        related_session_id: selectedSessionId ?? undefined,
       })
       resetComposer()
       await loadHistory()
@@ -324,39 +372,56 @@ export default function MessagesCenter({
           )}
 
           {messageType === 'session_reminder' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">תאריך הפגישה</label>
-                <input
-                  type="date"
-                  value={sessionDate}
-                  onChange={(e) => setSessionDate(e.target.value)}
-                  className="input-field"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">שעת הפגישה</label>
-                <select
-                  value={sessionTime}
-                  onChange={(e) => setSessionTime(e.target.value)}
-                  className="input-field"
-                >
-                  <option value="">בחר שעה...</option>
-                  {Array.from({ length: 14 }, (_, i) => i + 7).map((hour) =>
-                    [0, 30].map((min) => {
-                      const val = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
-                      return <option key={val} value={val}>{val}</option>
-                    })
-                  )}
-                </select>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">בחר פגישה עתידית</label>
+              {sessionsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
+                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-therapy-calm flex-shrink-0" />
+                  טוען פגישות...
+                </div>
+              ) : upcomingSessions.length === 0 ? (
+                <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  לא נמצאו פגישות עתידיות עבור מטופל זה. יש ליצור פגישה לפני שליחת תזכורת.
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {upcomingSessions.map((s) => {
+                    const timeStr = formatSessionTime(s.start_time)
+                    const isSelected = selectedSessionId === s.id
+                    return (
+                      <label
+                        key={s.id}
+                        className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'border-therapy-calm bg-therapy-calm/5'
+                            : 'border-gray-200 hover:border-gray-300 bg-white'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          checked={isSelected}
+                          onChange={() => setSelectedSessionId(s.id)}
+                          className="accent-therapy-calm flex-shrink-0"
+                        />
+                        <span className="text-sm text-gray-800">
+                          {formatDateIL(s.session_date)}
+                          {timeStr && <span className="text-therapy-calm font-medium"> · {timeStr}</span>}
+                          {s.session_number != null && (
+                            <span className="text-gray-400"> · פגישה #{s.session_number}</span>
+                          )}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
 
           {/* Generate button */}
           <button
             onClick={handleGenerate}
-            disabled={generating}
+            disabled={generating || (messageType === 'session_reminder' && selectedSessionId === null)}
             className="btn-secondary flex items-center gap-2 disabled:opacity-50 text-sm"
           >
             {generating ? (
@@ -387,8 +452,14 @@ export default function MessagesCenter({
               </div>
               <div className="text-sm text-gray-700 space-y-1 border-r-4 border-blue-300 pr-3">
                 <p><span className="text-gray-400">מטופל/ת: </span>{patientName}</p>
-                <p><span className="text-gray-400">תאריך: </span>{sessionDate || '—'}</p>
-                <p><span className="text-gray-400">שעה: </span>{sessionTime || '—'}</p>
+                <p>
+                  <span className="text-gray-400">תאריך: </span>
+                  {selectedSession ? formatDateIL(selectedSession.session_date) : '—'}
+                </p>
+                <p>
+                  <span className="text-gray-400">שעה: </span>
+                  {selectedSession ? (formatSessionTime(selectedSession.start_time) || '—') : '—'}
+                </p>
                 <p className="text-xs text-gray-400 mt-1">
                   ההודעה תישלח עם שם המטפל/ת ושם הקליניקה דרך תבנית WhatsApp מאושרת.
                 </p>

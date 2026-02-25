@@ -299,6 +299,7 @@ class ComposeRequest(BaseModel):
     content: str
     recipient_phone: Optional[str] = None
     send_at: Optional[datetime] = None
+    related_session_id: Optional[int] = None  # links session_reminder to a specific session
 
 
 class SendOrScheduleRequest(BaseModel):
@@ -367,6 +368,7 @@ async def compose_message(
             content=request.content,
             recipient_phone=request.recipient_phone,
             send_at=request.send_at,
+            related_session_id=request.related_session_id,
         )
         return MessageResponse.model_validate(message)
 

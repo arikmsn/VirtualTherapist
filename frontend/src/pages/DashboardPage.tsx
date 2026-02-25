@@ -184,28 +184,27 @@ export default function DashboardPage() {
     loadStats()
   }, [])
 
-  // Load last sent reminder per patient (non-blocking)
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const msgs = await messagesAPI.getAll()
-        const map: Record<number, { type: string; sent_at: string }> = {}
-        msgs
-          .filter((m: any) =>
-            (m.status === 'sent' || m.status === 'delivered') &&
-            (m.message_type === 'session_reminder' || m.message_type === 'task_reminder')
-          )
-          .forEach((m: any) => {
-            const sentAt = m.sent_at || m.created_at
-            const existing = map[m.patient_id]
-            if (!existing || sentAt > existing.sent_at) {
-              map[m.patient_id] = { type: m.message_type, sent_at: sentAt }
-            }
-          })
-        setLastReminderByPatient(map)
-      } catch { /* non-critical */ }
-    }
-    load()
+  // Load last sent reminder per patient (non-blocking).
+  // Extracted as useCallback so it can be called from the date-change effect —
+  // this ensures the reminder info is always fresh when returning to the dashboard.
+  const loadLastReminders = useCallback(async () => {
+    try {
+      const msgs = await messagesAPI.getAll()
+      const map: Record<number, { type: string; sent_at: string }> = {}
+      msgs
+        .filter((m: any) =>
+          (m.status === 'sent' || m.status === 'delivered') &&
+          (m.message_type === 'session_reminder' || m.message_type === 'task_reminder')
+        )
+        .forEach((m: any) => {
+          const sentAt = m.sent_at || m.created_at
+          const existing = map[m.patient_id]
+          if (!existing || sentAt > existing.sent_at) {
+            map[m.patient_id] = { type: m.message_type, sent_at: sentAt }
+          }
+        })
+      setLastReminderByPatient(map)
+    } catch { /* non-critical */ }
   }, [])
 
   // Load daily sessions when date changes
@@ -222,9 +221,13 @@ export default function DashboardPage() {
     }
   }, [])
 
+  // Run both on every selectedDate change (which includes component mount).
+  // This guarantees the reminder badges are up-to-date after the therapist navigates
+  // away to send a reminder and then returns to the dashboard.
   useEffect(() => {
     loadDailySessions(selectedDate)
-  }, [selectedDate, loadDailySessions])
+    loadLastReminders()
+  }, [selectedDate, loadDailySessions, loadLastReminders])
 
   // Load smart reminders — only for today, never blocks the session list
   useEffect(() => {

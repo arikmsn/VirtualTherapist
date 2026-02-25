@@ -358,7 +358,7 @@ export default function SessionsPage() {
                 {session.summary_id != null && (
                   <button
                     onClick={() => navigate(`/sessions/${session.id}`)}
-                    className="btn-secondary flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
+                    className="btn-success flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
                   >
                     צפה בסיכום
                   </button>

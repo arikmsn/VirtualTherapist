@@ -465,6 +465,7 @@ class MessageService:
         content: str,
         recipient_phone: Optional[str] = None,
         send_at: Optional[datetime] = None,
+        related_session_id: Optional[int] = None,
     ) -> Message:
         """
         Create a message and immediately send or schedule it (no draft state).
@@ -489,6 +490,7 @@ class MessageService:
             generated_by_ai=(message_type == "task_reminder"),
             ai_model=settings.AI_MODEL if message_type == "task_reminder" else None,
             channel="whatsapp",
+            related_session_id=related_session_id,
         )
         self.db.add(message)
         self.db.commit()

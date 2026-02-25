@@ -162,6 +162,7 @@ export const messagesAPI = {
     content: string
     recipient_phone?: string
     send_at?: string | null
+    related_session_id?: number   // links session_reminder to a specific session
   }) => {
     const response = await api.post('/messages/compose', {
       patient_id: data.patient_id,
@@ -169,6 +170,7 @@ export const messagesAPI = {
       content: data.content,
       recipient_phone: data.recipient_phone || null,
       send_at: data.send_at || null,
+      related_session_id: data.related_session_id ?? null,
     })
     return response.data
   },
