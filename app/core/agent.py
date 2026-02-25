@@ -793,16 +793,38 @@ class TherapyAgent:
             f"Last session: {last_date}" + gaps_note
         )
 
-        limited_data_note = ""
-        if len(approved_summaries) < 2:
-            limited_data_note = (
-                "\nNOTE: Very few or no approved summaries exist. "
-                "Every section MUST explicitly state this limitation and remain conservative.\n"
+        approved_count = len(approved_summaries)
+        task_count = len(all_tasks)
+
+        # ── Strict data-constraint block (always included) ────────────────────
+        data_constraints = (
+            f"\nSTRICT DATA CONSTRAINTS — YOU MUST OBEY THESE EXACTLY:\n"
+            f"- The data above contains exactly {approved_count} approved session summary(ies).\n"
+            f"  Do NOT reference, invent, or imply any sessions beyond those shown.\n"
+            f"- The task list above contains exactly {task_count} task(s).\n"
+            f"  Do NOT mention any tasks, homework, or exercises not explicitly listed in the task list.\n"
+        )
+        if approved_count == 1:
+            data_constraints += (
+                "- There is only ONE session in the data. "
+                "Do NOT use plural 'sessions', 'previous sessions', 'across sessions', "
+                "'over multiple sessions', or any phrase implying more than one session.\n"
+            )
+        if approved_count == 0:
+            data_constraints += (
+                "- There are NO approved sessions. "
+                "Every section must state that no session data is available.\n"
+            )
+        if task_count == 0:
+            data_constraints += (
+                "- There are NO tasks. "
+                "The goals_and_tasks field must describe only the therapeutic focus areas visible "
+                "in the session text. Do NOT invent or suggest tasks.\n"
             )
 
         prompt = f"""\
 You are a clinical reflection assistant for the therapist. You synthesize and reflect — you do not diagnose, prescribe, or invent information.
-{limited_data_note}
+{data_constraints}
 Patient: "{patient_name}"
 
 {summaries_context}
@@ -810,23 +832,24 @@ Patient: "{patient_name}"
 {tasks_context}
 
 {metrics_context}
+(Note: "Total sessions" above counts all scheduled sessions; only the {approved_count} approved \
+summaries shown above are available as data — do not infer content from sessions without summaries.)
 
 LANGUAGE REQUIREMENT: All text values MUST be written in {output_language}. \
 JSON field names must remain exactly in English as shown below.
 
 Return ONLY valid JSON (no markdown fences, no text outside JSON):
 {{
-  "overall_treatment_picture": "2-3 paragraphs: main themes across sessions and how treatment has evolved.",
-  "timeline_highlights": ["key milestone or shift 1", "key milestone or shift 2", "..."],
-  "goals_and_tasks": "Describe: what goals/focus areas emerge from the history, how consistently they were addressed, which open tasks are important now.",
-  "measurable_progress": "Concrete examples of change in thoughts, behaviors, or relationships visible in the summaries and task completion.",
-  "directions_for_next_phase": "2-3 suggested directions for the next phase of treatment."
+  "overall_treatment_picture": "2-3 paragraphs summarising the main themes visible in the approved session summaries. If there is only one session, summarise that single session without implying prior history.",
+  "timeline_highlights": ["key observation or moment from the data — only from sessions listed above"],
+  "goals_and_tasks": "Describe the therapeutic focus areas visible in the session text. List ONLY the tasks that appear in the task list above — if none, state that no tasks have been defined.",
+  "measurable_progress": "Concrete examples of change visible in the session summaries. If only one session exists, describe what was observed in that session without comparing to non-existent prior sessions.",
+  "directions_for_next_phase": "2-3 suggested directions for the next phase, based solely on the data above."
 }}
 
 Rules:
-- Base everything ONLY on the data provided. Do not invent.
-- timeline_highlights: 3-6 bullet items.
-- If limited data: say so clearly in every relevant section and stay conservative.
+- Base everything ONLY on the data provided above. Do NOT invent sessions, tasks, or details.
+- timeline_highlights: 1-3 items when there is only 1 session; up to 6 items for 5+ sessions.
 - No clinical diagnoses, no medication suggestions.
 - All text values in {output_language}. JSON keys must be English.
 """

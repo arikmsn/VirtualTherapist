@@ -860,6 +860,9 @@ class SessionService:
             patient_id, therapist_id
         )
 
+        if not approved_summaries:
+            raise ValueError("אין סיכומים מאושרים עבור מטופל זה. יש לאשר לפחות סיכום אחד.")
+
         therapist_locale = (agent.profile.language if agent.profile else None) or "he"
 
         result = await agent.generate_deep_summary(
@@ -869,6 +872,27 @@ class SessionService:
             metrics=metrics,
             therapist_locale=therapist_locale,
         )
+
+        # ── Sanity checks: trim AI over-reach relative to actual data ─────────
+        approved_count = len(approved_summaries)
+        task_count = len(all_tasks)
+
+        # Cap timeline_highlights when very little data exists
+        max_highlights = max(1, min(approved_count * 2, 6))
+        if len(result.timeline_highlights) > max_highlights:
+            logger.warning(
+                f"deep_summary patient={patient_id}: AI returned "
+                f"{len(result.timeline_highlights)} timeline items for "
+                f"{approved_count} approved summaries — trimming to {max_highlights}"
+            )
+            result.timeline_highlights = result.timeline_highlights[:max_highlights]
+
+        # If no tasks exist but goals_and_tasks looks task-specific, log for visibility
+        if task_count == 0 and result.goals_and_tasks:
+            logger.info(
+                f"deep_summary patient={patient_id}: no tasks in DB — "
+                f"goals_and_tasks should only reflect session focus areas"
+            )
 
         await self.audit_service.log_action(
             user_id=therapist_id,

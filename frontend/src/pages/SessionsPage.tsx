@@ -507,7 +507,7 @@ export default function SessionsPage() {
                 onClick={() => navigate(`/sessions/${prepSession.id}`)}
                 className="btn-secondary w-full min-h-[44px] touch-manipulation"
               >
-                פתח פגישה מלאה
+                צור סיכום לפגישה הנוכחית
               </button>
             </div>
           </div>
