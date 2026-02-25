@@ -416,9 +416,11 @@ export default function DashboardPage() {
                       </div>
                       {lastReminder ? (
                         <div className="text-xs text-gray-400 mt-0.5">
-                          תזכורת אחרונה:{' '}
-                          {lastReminder.type === 'session_reminder' ? 'פגישה' : 'משימה'}{' '}
-                          ב-{formatDateIL(lastReminder.sent_at)}
+                          הודעה אחרונה:{' '}
+                          {lastReminder.type === 'session_reminder'
+                            ? 'תזכורת לפגישה'
+                            : 'תזכורת לביצוע משימה'}{' '}
+                          (נשלחה בתאריך {formatDateIL(lastReminder.sent_at)})
                         </div>
                       ) : (
                         <div className="text-xs text-gray-300 mt-0.5">לא נשלחה תזכורת עדיין</div>
