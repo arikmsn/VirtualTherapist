@@ -32,16 +32,19 @@ app = FastAPI(
 
 
 # CORS middleware
-# Origins come from CORS_ORIGINS env var (comma-separated).
-# Default "*" works in dev; production should set the exact Vercel URL.
+# Origins come from CORS_ORIGINS env var (comma-separated list of exact origins).
+# For multiple domains set: CORS_ORIGINS="https://a.vercel.app,https://app.metapel.online"
+# Alternatively use CORS_ORIGIN_REGEX for a regex pattern covering multiple origins.
 _cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
-app.add_middleware(
-    CORSMiddleware,
+_cors_kwargs: dict = dict(
     allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+if settings.CORS_ORIGIN_REGEX:
+    _cors_kwargs["allow_origin_regex"] = settings.CORS_ORIGIN_REGEX
+app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
 
 # Include routers

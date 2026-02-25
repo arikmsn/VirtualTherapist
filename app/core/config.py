@@ -86,9 +86,13 @@ class Settings(BaseSettings):
 
     # CORS
     # Comma-separated list of allowed frontend origins.
-    # In production set to your Vercel URL, e.g. "https://app.vercel.app".
+    # For multiple domains: "https://app.vercel.app,https://app.metapel.online"
+    # Alternatively set CORS_ORIGIN_REGEX for a regex pattern (e.g. for wildcard subdomains).
     # Defaults to "*" so local development works without extra config.
     CORS_ORIGINS: str = "*"
+    # Optional regex pattern for allowed origins (applied in addition to CORS_ORIGINS).
+    # Example: "https://(virtual-therapist-sigma\\.vercel\\.app|app\\.metapel\\.online)"
+    CORS_ORIGIN_REGEX: str | None = None
 
     # Logging
     LOG_LEVEL: str = "INFO"
