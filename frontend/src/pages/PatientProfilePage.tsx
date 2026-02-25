@@ -34,6 +34,7 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline'
 import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI, treatmentPlanAPI } from '@/lib/api'
+import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
 
 const SESSION_TYPES = [
   { value: 'individual', label: 'פרטני' },
@@ -152,6 +153,7 @@ export default function PatientProfilePage() {
   const pid = Number(patientId)
 
   const initialTab = (location.state as { initialTab?: Tab } | null)?.initialTab ?? 'sessions'
+  const openComposer = (location.state as { openComposer?: boolean } | null)?.openComposer ?? false
   const [tab, setTab] = useState<Tab>(initialTab)
 
   // Notebook state
@@ -186,6 +188,7 @@ export default function PatientProfilePage() {
     start_time: '',
     session_type: 'individual',
     duration_minutes: 50,
+    notify_patient: false,
   })
   const [newSessionCreating, setNewSessionCreating] = useState(false)
   const [newSessionError, setNewSessionError] = useState('')
@@ -494,6 +497,7 @@ export default function PatientProfilePage() {
         session_type: newSessionForm.session_type,
         duration_minutes: newSessionForm.duration_minutes,
         start_time: startTime,
+        notify_patient: newSessionForm.notify_patient,
       })
       setShowNewSession(false)
       setNewSessionForm({
@@ -501,6 +505,7 @@ export default function PatientProfilePage() {
         start_time: '',
         session_type: 'individual',
         duration_minutes: 50,
+        notify_patient: false,
       })
       navigate(`/sessions/${created.id}`)
     } catch (err: any) {
@@ -627,12 +632,12 @@ export default function PatientProfilePage() {
               {patient.start_date && (
                 <div className="flex gap-1">
                   <span className="text-gray-400">תחילת טיפול:</span>
-                  <span>{new Date(patient.start_date).toLocaleDateString('he-IL')}</span>
+                  <span>{formatDateIL(patient.start_date)}</span>
                 </div>
               )}
               <div className="flex gap-1">
                 <span className="text-gray-400">נוצר:</span>
-                <span>{new Date(patient.created_at).toLocaleDateString('he-IL')}</span>
+                <span>{formatDatetimeIL(patient.created_at)}</span>
               </div>
             </div>
 
@@ -754,7 +759,7 @@ export default function PatientProfilePage() {
                           {session.session_number ? `פגישה #${session.session_number}` : 'פגישה'}
                         </span>
                         <span className="text-sm text-gray-500">
-                          {new Date(session.session_date).toLocaleDateString('he-IL')}
+                          {formatDateIL(session.session_date)}
                         </span>
                         {session.session_type && (
                           <span className="text-xs px-2 py-0.5 bg-gray-100 rounded-full text-gray-600">
@@ -943,7 +948,7 @@ export default function PatientProfilePage() {
                           {item.session_number ? `פגישה #${item.session_number}` : 'פגישה'}
                         </span>
                         <span className="text-sm text-gray-500">
-                          {new Date(item.session_date).toLocaleDateString('he-IL')}
+                          {formatDateIL(item.session_date)}
                         </span>
                         {item.summary.status === 'approved' || item.summary.approved_by_therapist ? (
                           <span className="badge badge-approved text-xs">
@@ -1150,6 +1155,7 @@ export default function PatientProfilePage() {
           patientId={pid}
           patientName={patient.full_name}
           patientPhone={patient.phone}
+          autoOpen={openComposer}
         />
       )}
 
@@ -1201,9 +1207,7 @@ export default function PatientProfilePage() {
                     <p className="text-sm text-gray-700 whitespace-pre-line line-clamp-3">{note.content}</p>
                     <div className="flex items-center justify-between mt-1.5">
                       <span className="text-xs text-gray-400">
-                        {new Date(note.created_at).toLocaleDateString('he-IL', {
-                          day: 'numeric', month: 'short', year: 'numeric',
-                        })}
+                        {formatDatetimeIL(note.created_at)}
                       </span>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDeleteNote(note.id) }}
@@ -1254,7 +1258,7 @@ export default function PatientProfilePage() {
                 <h2 className="text-lg font-bold text-amber-900">הכנה לפגישה</h2>
                 <p className="text-xs text-amber-700 mt-0.5">
                   {prepModalSession.session_number ? `פגישה #${prepModalSession.session_number} · ` : ''}
-                  {new Date(prepModalSession.session_date + 'T12:00:00').toLocaleDateString('he-IL')}
+                  {formatDateIL(prepModalSession.session_date)}
                 </p>
               </div>
               <button onClick={closePrepModal} className="text-amber-600 hover:text-amber-800 p-1 touch-manipulation">
@@ -1337,9 +1341,7 @@ export default function PatientProfilePage() {
               <h2 className="text-lg font-bold text-gray-900">פתק</h2>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-gray-400">
-                  {new Date(viewingNote.created_at).toLocaleDateString('he-IL', {
-                    day: 'numeric', month: 'long', year: 'numeric',
-                  })}
+                  {formatDatetimeIL(viewingNote.created_at)}
                 </span>
                 <button
                   onClick={() => setViewingNote(null)}
@@ -1558,6 +1560,27 @@ export default function PatientProfilePage() {
                       <option key={t.value} value={t.value}>{t.label}</option>
                     ))}
                   </select>
+                </div>
+
+                {/* Notify patient toggle */}
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">שליחת הודעה על הפגישה למטופל</div>
+                    <div className="text-xs text-gray-400 mt-0.5">שליחת תזכורת WhatsApp עם פרטי הפגישה</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNewSessionForm((f) => ({ ...f, notify_patient: !f.notify_patient }))}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                      newSessionForm.notify_patient ? 'bg-therapy-calm' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                        newSessionForm.notify_patient ? '-translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
                 </div>
 
                 {newSessionError && (

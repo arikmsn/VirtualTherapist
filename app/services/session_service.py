@@ -116,6 +116,7 @@ class SessionService:
         duration_minutes: Optional[int] = None,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
+        notify_patient: bool = False,
     ) -> TherapySession:
         """Create a new therapy session record"""
 
@@ -164,26 +165,27 @@ class SessionService:
 
         logger.info(f"Created session {session.id} for patient {patient_id}")
 
-        # ── Appointment reminders ─────────────────────────────────────────────
-        # 1. Immediate confirmation (best-effort, does not block the response)
-        asyncio.create_task(send_appointment_reminder(session.id))
+        # ── Appointment reminders — only when therapist opted in ──────────────
+        if notify_patient:
+            # 1. Immediate confirmation (best-effort, does not block the response)
+            asyncio.create_task(send_appointment_reminder(session.id))
 
-        # 2. 24h-before reminder — only when a future start_time is provided
-        if session.start_time:
-            remind_at = session.start_time - timedelta(hours=24)
-            if remind_at > datetime.now():
-                from app.core.scheduler import scheduler
-                scheduler.add_job(
-                    send_appointment_reminder,
-                    trigger="date",
-                    run_date=remind_at,
-                    args=[session.id],
-                    id=f"appt_reminder_{session.id}",
-                    replace_existing=True,
-                )
-                logger.info(
-                    f"Scheduled 24h appointment reminder for session {session.id} at {remind_at}"
-                )
+            # 2. 24h-before reminder — only when a future start_time is provided
+            if session.start_time:
+                remind_at = session.start_time - timedelta(hours=24)
+                if remind_at > datetime.now():
+                    from app.core.scheduler import scheduler
+                    scheduler.add_job(
+                        send_appointment_reminder,
+                        trigger="date",
+                        run_date=remind_at,
+                        args=[session.id],
+                        id=f"appt_reminder_{session.id}",
+                        replace_existing=True,
+                    )
+                    logger.info(
+                        f"Scheduled 24h appointment reminder for session {session.id} at {remind_at}"
+                    )
 
         return session
 

@@ -25,6 +25,7 @@ class CreateSessionRequest(BaseModel):
     end_time: Optional[datetime] = None
     session_type: SessionType = SessionType.INDIVIDUAL
     duration_minutes: Optional[int] = None
+    notify_patient: bool = False  # send WhatsApp appointment reminder on creation
 
 
 class UpdateSessionRequest(BaseModel):
@@ -144,6 +145,7 @@ async def create_session(
             duration_minutes=request.duration_minutes,
             start_time=request.start_time,
             end_time=request.end_time,
+            notify_patient=request.notify_patient,
         )
         return SessionResponse.model_validate(session)
 

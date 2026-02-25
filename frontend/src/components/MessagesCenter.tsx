@@ -26,6 +26,7 @@ import {
   PlusIcon,
 } from '@heroicons/react/24/outline'
 import { messagesAPI } from '@/lib/api'
+import { formatDatetimeIL } from '@/lib/dateUtils'
 import PhoneInput from '@/components/PhoneInput'
 
 // --- Types ---
@@ -47,6 +48,7 @@ interface MessagesCenterProps {
   patientId: number
   patientName: string
   patientPhone?: string   // Decrypted patient phone (default recipient)
+  autoOpen?: boolean      // Open the composer immediately (e.g. deep-link from Today view)
 }
 
 type SendWhen = 'now' | 'today' | 'custom'
@@ -72,24 +74,7 @@ const TYPE_LABELS: Record<string, string> = {
   session: 'תזכורת',
 }
 
-// Parse ISO timestamp as UTC even when the backend omits the 'Z' suffix
-function parseUTC(iso: string): Date {
-  if (!iso.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(iso)) {
-    return new Date(iso + 'Z')
-  }
-  return new Date(iso)
-}
-
-function formatDatetime(iso: string | null): string {
-  if (!iso) return ''
-  return parseUTC(iso).toLocaleString('he-IL', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+// formatDatetimeIL is imported from @/lib/dateUtils (DD.MM.YY HH:mm, UTC-aware)
 
 // --- Component ---
 
@@ -97,9 +82,10 @@ export default function MessagesCenter({
   patientId,
   patientName,
   patientPhone,
+  autoOpen = false,
 }: MessagesCenterProps) {
   // Composer state
-  const [composerOpen, setComposerOpen] = useState(false)
+  const [composerOpen, setComposerOpen] = useState(autoOpen)
   const [messageType, setMessageType] = useState<'task_reminder' | 'session_reminder'>('task_reminder')
   const [useCustomPhone, setUseCustomPhone] = useState(false)
   const [customPhone, setCustomPhone] = useState('')
@@ -536,7 +522,7 @@ export default function MessagesCenter({
                               value={sendTime}
                               min={todayInputMin}
                               onChange={(e) => setSendTime(e.target.value)}
-                              className="input-field w-full sm:w-28 text-sm"
+                              className="input-field w-full sm:w-40 text-sm"
                             />
                           </div>
                         )}
@@ -627,10 +613,10 @@ export default function MessagesCenter({
                       </span>
                       <span className="text-xs text-gray-400">
                         {msg.sent_at
-                          ? formatDatetime(msg.sent_at)
+                          ? formatDatetimeIL(msg.sent_at)
                           : msg.scheduled_send_at
-                            ? `📅 ${formatDatetime(msg.scheduled_send_at)}`
-                            : formatDatetime(msg.created_at)}
+                            ? `📅 ${formatDatetimeIL(msg.scheduled_send_at)}`
+                            : formatDatetimeIL(msg.created_at)}
                       </span>
                     </div>
                   </div>

@@ -10,6 +10,7 @@ import {
   LightBulbIcon,
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI } from '@/lib/api'
+import { formatDateIL } from '@/lib/dateUtils'
 
 interface PrepBrief {
   history_summary: string[]    // מה היה עד עכשיו
@@ -81,6 +82,7 @@ export default function SessionsPage() {
     start_time: '',
     session_type: 'individual',
     duration_minutes: 50,
+    notify_patient: false,
   })
 
   const loadSessions = async () => {
@@ -162,6 +164,7 @@ export default function SessionsPage() {
         session_type: formData.session_type,
         duration_minutes: formData.duration_minutes,
         start_time: startTime,
+        notify_patient: formData.notify_patient,
       })
 
       setShowCreateModal(false)
@@ -171,6 +174,7 @@ export default function SessionsPage() {
         start_time: '',
         session_type: 'individual',
         duration_minutes: 50,
+        notify_patient: false,
       })
       await loadSessions()
     } catch (error: any) {
@@ -309,9 +313,7 @@ export default function SessionsPage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                    <span>
-                      {new Date(session.session_date).toLocaleDateString('he-IL')}
-                    </span>
+                    <span>{formatDateIL(session.session_date)}</span>
                     {session.duration_minutes && (
                       <span>{session.duration_minutes} דקות</span>
                     )}
@@ -394,9 +396,7 @@ export default function SessionsPage() {
                   האם אתה בטוח שברצונך למחוק את הפגישה של{' '}
                   <strong>{patientMap[deleteTarget.patient_id] || `מטופל #${deleteTarget.patient_id}`}</strong>{' '}
                   מתאריך{' '}
-                  <strong>
-                    {new Date(deleteTarget.session_date).toLocaleDateString('he-IL')}
-                  </strong>?
+                  <strong>{formatDateIL(deleteTarget.session_date)}</strong>?
                 </p>
                 {deleteTarget.summary_id != null && (
                   <p className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3 mb-4">
@@ -648,6 +648,27 @@ export default function SessionsPage() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Notify patient toggle */}
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">שליחת הודעה על הפגישה למטופל</div>
+                    <div className="text-xs text-gray-400 mt-0.5">שליחת תזכורת WhatsApp עם פרטי הפגישה</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData((prev) => ({ ...prev, notify_patient: !prev.notify_patient }))}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                      formData.notify_patient ? 'bg-therapy-calm' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                        formData.notify_patient ? '-translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
                 </div>
 
                 {createError && (

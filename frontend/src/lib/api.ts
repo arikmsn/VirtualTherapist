@@ -281,6 +281,7 @@ export const sessionsAPI = {
     duration_minutes?: number
     start_time?: string
     end_time?: string
+    notify_patient?: boolean   // send WhatsApp appointment reminder (default false)
   }) => {
     const response = await api.post('/sessions/', data)
     return response.data

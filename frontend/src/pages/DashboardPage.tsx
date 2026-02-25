@@ -13,7 +13,8 @@ import {
   LightBulbIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
-import { patientsAPI, sessionsAPI, therapistAPI } from '@/lib/api'
+import { patientsAPI, sessionsAPI, therapistAPI, messagesAPI } from '@/lib/api'
+import { formatDateIL } from '@/lib/dateUtils'
 import { useAuth } from '@/auth/useAuth'
 
 interface Patient {
@@ -139,6 +140,11 @@ export default function DashboardPage() {
     return () => { document.body.style.overflow = '' }
   }, [showSummaryModal, showMessagePickerModal, prepSession])
 
+  // Last reminder per patient (non-blocking background load)
+  const [lastReminderByPatient, setLastReminderByPatient] = useState<
+    Record<number, { type: string; sent_at: string }>
+  >({})
+
   // Smart reminders state (today only, non-blocking)
   const [todayInsights, setTodayInsights] = useState<Array<{ patient_id: number; title: string; body: string }>>([])
   const [insightsLoading, setInsightsLoading] = useState(false)
@@ -176,6 +182,30 @@ export default function DashboardPage() {
       }
     }
     loadStats()
+  }, [])
+
+  // Load last sent reminder per patient (non-blocking)
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const msgs = await messagesAPI.getAll()
+        const map: Record<number, { type: string; sent_at: string }> = {}
+        msgs
+          .filter((m: any) =>
+            (m.status === 'sent' || m.status === 'delivered') &&
+            (m.message_type === 'session_reminder' || m.message_type === 'task_reminder')
+          )
+          .forEach((m: any) => {
+            const sentAt = m.sent_at || m.created_at
+            const existing = map[m.patient_id]
+            if (!existing || sentAt > existing.sent_at) {
+              map[m.patient_id] = { type: m.message_type, sent_at: sentAt }
+            }
+          })
+        setLastReminderByPatient(map)
+      } catch { /* non-critical */ }
+    }
+    load()
   }, [])
 
   // Load daily sessions when date changes
@@ -358,57 +388,79 @@ export default function DashboardPage() {
             <p>אין מפגשים בתאריך זה</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {dailySessions.map((session) => (
-              <div
-                key={session.id}
-                className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors gap-2 sm:gap-0"
-              >
-                <div className="flex items-center gap-3 sm:gap-4">
-                  {/* Time */}
-                  <div className="text-base sm:text-lg font-mono font-semibold text-therapy-calm min-w-[52px] sm:min-w-[60px]">
-                    {formatTime(session.start_time) || '—'}
-                  </div>
-
-                  {/* Patient name + session info */}
-                  <div>
-                    <div className="font-medium text-gray-900">{session.patient_name}</div>
-                    <div className="text-xs text-gray-500">
-                      {session.session_number ? `פגישה #${session.session_number}` : ''}
-                      {session.session_number && session.session_type ? ' · ' : ''}
-                      {SESSION_TYPE_LABELS[session.session_type] || session.session_type || ''}
+          // Fixed-height scrollable list — card height stable when browsing dates
+          <div className="max-h-[26rem] overflow-y-auto -mx-1 px-1 space-y-2">
+            {dailySessions.map((session) => {
+              const lastReminder = lastReminderByPatient[session.patient_id]
+              return (
+                <div
+                  key={session.id}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors gap-2 sm:gap-0"
+                >
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    {/* Time */}
+                    <div className="text-base sm:text-lg font-mono font-semibold text-therapy-calm min-w-[52px] sm:min-w-[60px]">
+                      {formatTime(session.start_time) || '—'}
                     </div>
+
+                    {/* Patient name + session info + last reminder */}
+                    <div>
+                      <div className="font-medium text-gray-900">{session.patient_name}</div>
+                      <div className="text-xs text-gray-500">
+                        {session.session_number ? `פגישה #${session.session_number}` : ''}
+                        {session.session_number && session.session_type ? ' · ' : ''}
+                        {SESSION_TYPE_LABELS[session.session_type] || session.session_type || ''}
+                      </div>
+                      {lastReminder ? (
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          תזכורת אחרונה:{' '}
+                          {lastReminder.type === 'session_reminder' ? 'פגישה' : 'משימה'}{' '}
+                          ב-{formatDateIL(lastReminder.sent_at)}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-gray-300 mt-0.5">לא נשלחה תזכורת עדיין</div>
+                      )}
+                    </div>
+
+                    {/* Summary badge — hidden on mobile to save space */}
+                    <span className="hidden sm:inline text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                      {session.has_summary ? 'יש סיכום' : ''}
+                    </span>
+                    {!session.has_summary && (
+                      <span className="hidden sm:inline text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
+                        ללא סיכום
+                      </span>
+                    )}
                   </div>
 
-                  {/* Summary badge — hidden on mobile to save space */}
-                  <span className="hidden sm:inline text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                    {session.has_summary ? 'יש סיכום' : ''}
-                  </span>
-                  {!session.has_summary && (
-                    <span className="hidden sm:inline text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
-                      ללא סיכום
-                    </span>
-                  )}
+                  {/* Action buttons — full-width side-by-side on mobile */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => navigate(`/sessions/${session.id}`)}
+                      className="flex-1 sm:flex-none text-sm px-3 py-2 sm:py-1 bg-therapy-calm text-white rounded-lg hover:bg-therapy-calm/90 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
+                    >
+                      פתח סשן
+                    </button>
+                    <button
+                      onClick={() => navigate(`/patients/${session.patient_id}`, {
+                        state: { initialTab: 'inbetween', openComposer: true },
+                      })}
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-sm px-3 py-2 sm:py-1 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
+                    >
+                      <PaperAirplaneIcon className="h-4 w-4 flex-shrink-0" />
+                      שלח הודעה
+                    </button>
+                    <button
+                      onClick={() => openPrepModal(session)}
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-sm px-3 py-2 sm:py-1 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
+                    >
+                      <SparklesIcon className="h-4 w-4 flex-shrink-0" />
+                      הכנה
+                    </button>
+                  </div>
                 </div>
-
-                {/* Action buttons — full-width side-by-side on mobile */}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => navigate(`/sessions/${session.id}`)}
-                    className="flex-1 sm:flex-none text-sm px-3 py-2 sm:py-1 bg-therapy-calm text-white rounded-lg hover:bg-therapy-calm/90 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
-                  >
-                    פתח סשן
-                  </button>
-                  <button
-                    onClick={() => openPrepModal(session)}
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-sm px-3 py-2 sm:py-1 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
-                  >
-                    <SparklesIcon className="h-4 w-4 flex-shrink-0" />
-                    הכנה לפגישה
-                  </button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -581,7 +633,7 @@ export default function DashboardPage() {
                   {prepSession.patient_name}
                   {prepSession.session_number ? ` · פגישה #${prepSession.session_number}` : ''}
                   {' · '}
-                  {new Date(prepSession.session_date + 'T12:00:00').toLocaleDateString('he-IL')}
+                  {formatDateIL(prepSession.session_date)}
                   {prepSession.session_type && ` · ${SESSION_TYPE_LABELS[prepSession.session_type] || prepSession.session_type}`}
                 </p>
               </div>
@@ -724,7 +776,7 @@ function SummaryPickerModal({
                     >
                       <div>
                         <div className="font-medium">
-                          {new Date(s.session_date + 'T12:00:00').toLocaleDateString('he-IL')}
+                          {formatDateIL(s.session_date)}
                           {s.session_number ? ` · פגישה #${s.session_number}` : ''}
                         </div>
                       </div>
