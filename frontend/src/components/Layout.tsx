@@ -89,7 +89,7 @@ export default function Layout() {
               </button>
 
               <div className="text-base sm:text-2xl font-bold text-therapy-calm">
-                🧠 TherapyCompanion.AI
+                🧠 מטפל.אונליין
               </div>
             </div>
 
@@ -236,7 +236,7 @@ export default function Layout() {
       <footer className="bg-white border-t border-gray-200 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="text-center text-sm text-gray-500">
-            <p>TherapyCompanion.AI - עוזר טיפולי חכם למטפלים</p>
+            <p>מטפל.אונליין - עוזר טיפולי חכם למטפלים</p>
             <p className="mt-1 text-xs">מוצפן מקצה לקצה | תואם GDPR | נתונים בישראל/אירופה בלבד</p>
           </div>
         </div>
