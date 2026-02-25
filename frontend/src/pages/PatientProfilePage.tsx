@@ -631,7 +631,7 @@ export default function PatientProfilePage() {
               {patient.email && (
                 <div className="flex items-center gap-1.5 min-w-0">
                   <EnvelopeIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                  <span className="truncate">{patient.email}</span>
+                  <a href={`mailto:${patient.email}`} className="truncate text-blue-600 hover:underline">{patient.email}</a>
                 </div>
               )}
               {patient.start_date && (
