@@ -453,7 +453,7 @@ export default function DashboardPage() {
                       className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-sm px-3 py-2 sm:py-1 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
                     >
                       <PaperAirplaneIcon className="h-4 w-4 flex-shrink-0" />
-                      שלח הודעה
+                      הודעה
                     </button>
                     <button
                       onClick={() => openPrepModal(session)}

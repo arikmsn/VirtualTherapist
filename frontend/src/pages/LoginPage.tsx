@@ -37,7 +37,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <div className="text-5xl mb-4">🧠</div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            TherapyCompanion.AI
+            מטפל.אונליין
           </h1>
           <p className="text-gray-600">עוזר טיפולי חכם למטפלים</p>
         </div>

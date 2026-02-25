@@ -44,12 +44,6 @@ export default function AudioRecorder({
 
   const startRecording = useCallback(async () => {
     setPermissionError('')
-
-    // Always attempt getUserMedia first — never use the Permissions API as a gate.
-    // On iOS Safari and some Android browsers, navigator.permissions.query() can
-    // report 'denied' even when the user has granted access, causing a false block.
-    // Instead, we rely solely on getUserMedia's own error, then consult the
-    // Permissions API only to produce a more precise error message.
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -83,31 +77,13 @@ export default function AudioRecorder({
       }, 1000)
     } catch (err: any) {
       const name: string = err?.name || ''
-
+      // Branch solely on the error name returned by getUserMedia.
+      // navigator.permissions.query is NOT consulted — it reports inconsistent
+      // states on iOS Safari and some Android browsers, causing false "blocked" messages.
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        // getUserMedia was blocked — consult Permissions API to distinguish between
-        // "permanently denied in browser settings" vs "dismissed / not yet decided".
-        // This check happens AFTER getUserMedia fails, so a false 'denied' from the
-        // Permissions API can never prevent recording from being attempted.
-        let permState = 'prompt' // safe default if Permissions API unavailable
-        if (typeof navigator.permissions?.query === 'function') {
-          try {
-            const status = await navigator.permissions.query({ name: 'microphone' as PermissionName })
-            permState = status.state
-          } catch {
-            // Permissions API unsupported (older Safari) — keep default 'prompt'
-          }
-        }
-
-        if (permState === 'denied') {
-          // Permanently blocked in browser settings — must go to settings to fix
-          setPermissionError('גישה למיקרופון נחסמה בדפדפן. יש לאפשר גישה בהגדרות הדפדפן ולרענן את הדף.')
-        } else {
-          // Dismissed or not yet decided — prompt the user to tap Allow
-          setPermissionError('גישה למיקרופון לא אושרה. אנא אשר/י גישה בחלון ההרשאות שיופיע, או בהגדרות הדפדפן.')
-        }
+        setPermissionError('גישה למיקרופון נחסמה בדפדפן. יש לאפשר גישה בהגדרות הדפדפן ולרענן את הדף.')
       } else {
-        // Device error, OS lock, or anything else — show a generic actionable message
+        // NotFoundError, NotReadableError, AbortError, OverconstrainedError, or unknown
         setPermissionError('לא הצלחנו להתחיל הקלטה. נסה שוב, או בדוק את המיקרופון והגדרות המכשיר.')
       }
     }
