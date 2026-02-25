@@ -470,7 +470,7 @@ export default function SessionsPage() {
                 </h2>
                 <p className="text-xs text-amber-700 mt-0.5">
                   {prepSession.session_number ? `פגישה #${prepSession.session_number} · ` : ''}
-                  {new Date(prepSession.session_date + 'T12:00:00').toLocaleDateString('he-IL')}
+                  {formatDateIL(prepSession.session_date)}
                   {prepSession.session_type && ` · ${SESSION_TYPES.find((t) => t.value === prepSession.session_type)?.label || prepSession.session_type}`}
                 </p>
               </div>

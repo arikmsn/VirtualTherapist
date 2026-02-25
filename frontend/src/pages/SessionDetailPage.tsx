@@ -13,6 +13,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI, exercisesAPI } from '@/lib/api'
 import AudioRecorder from '@/components/AudioRecorder'
+import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
 
 interface SessionSummary {
   id: number
@@ -312,7 +313,7 @@ export default function SessionDetailPage() {
           <div>
             <h1 className="text-2xl font-bold">{patientName}</h1>
             <div className="flex items-center gap-3 text-sm text-gray-600 mt-1">
-              <span>{new Date(session.session_date).toLocaleDateString('he-IL')}</span>
+              <span>{formatDateIL(session.session_date)}</span>
               {session.session_number && <span>פגישה #{session.session_number}</span>}
               {session.duration_minutes && <span>{session.duration_minutes} דקות</span>}
               {session.session_type && (
@@ -594,15 +595,7 @@ export default function SessionDetailPage() {
                       <MicrophoneIcon className="h-4 w-4" />
                       תמליל מקורי
                       <span className="text-xs font-normal text-blue-500 mr-1">
-                        {(() => {
-                          const dt = new Date(
-                            summary.created_at.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(summary.created_at)
-                              ? summary.created_at
-                              : summary.created_at + 'Z'
-                          )
-                          return dt.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' }) + ' ' +
-                            String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0')
-                        })()}
+                        {formatDatetimeIL(summary.created_at)}
                       </span>
                     </h3>
                     <p className="text-blue-700 whitespace-pre-line text-sm leading-relaxed">

@@ -8,6 +8,7 @@ import {
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline'
 import { patientsAPI, patientSummariesAPI } from '@/lib/api'
+import { formatDateIL } from '@/lib/dateUtils'
 
 interface SummaryItem {
   session_id: number
@@ -226,7 +227,7 @@ export default function PatientSummariesPage() {
                         {item.session_number ? `פגישה #${item.session_number}` : 'פגישה'}
                       </span>
                       <span className="text-sm text-gray-500">
-                        {new Date(item.session_date).toLocaleDateString('he-IL')}
+                        {formatDateIL(item.session_date)}
                       </span>
                       {item.summary.status === 'approved' || item.summary.approved_by_therapist ? (
                         <span className="badge badge-approved text-xs">

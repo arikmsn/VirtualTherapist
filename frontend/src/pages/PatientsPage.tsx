@@ -12,6 +12,7 @@ import {
   CalendarIcon,
 } from '@heroicons/react/24/outline'
 import { patientsAPI, sessionsAPI, exercisesAPI } from '@/lib/api'
+import { formatDateIL } from '@/lib/dateUtils'
 import PhoneInput from '@/components/PhoneInput'
 
 const SESSION_TYPES = [
@@ -399,7 +400,7 @@ export default function PatientsPage() {
                   </span>
                   {nextSessionByPatient[patient.id] ? (
                     <span className="font-medium">
-                      {new Date(nextSessionByPatient[patient.id]!.session_date + 'T12:00:00').toLocaleDateString('he-IL')}
+                      {formatDateIL(nextSessionByPatient[patient.id]!.session_date)}
                     </span>
                   ) : (
                     <span className="flex items-center gap-1.5">
