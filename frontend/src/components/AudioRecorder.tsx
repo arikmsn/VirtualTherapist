@@ -44,6 +44,22 @@ export default function AudioRecorder({
 
   const startRecording = useCallback(async () => {
     setPermissionError('')
+
+    // Proactive check: if the browser already has a 'denied' permission record,
+    // skip getUserMedia (which would silently fail on some browsers) and show a
+    // clear instruction instead. Falls through if the Permissions API isn't available.
+    if (typeof navigator.permissions?.query === 'function') {
+      try {
+        const status = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+        if (status.state === 'denied') {
+          setPermissionError('גישה למיקרופון נחסמה בדפדפן. יש לאפשר גישה בהגדרות הדפדפן ולרענן את הדף.')
+          return
+        }
+      } catch {
+        // Permissions API unsupported (older Safari) — fall through to getUserMedia
+      }
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -76,10 +92,18 @@ export default function AudioRecorder({
         setElapsed((prev) => prev + 1)
       }, 1000)
     } catch (err: any) {
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setPermissionError('יש לאשר גישה למיקרופון כדי להקליט')
+      const name: string = err?.name || ''
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        // Permission was actually denied (or dismissed) by the user
+        setPermissionError('גישה למיקרופון לא אושרה. לחץ "אפשר" בחלון ההרשאות או בדוק הגדרות הדפדפן.')
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        // No microphone hardware found
+        setPermissionError('לא נמצא מיקרופון במכשיר. בדוק שמיקרופון מחובר ומזוהה.')
+      } else if (name === 'NotReadableError' || name === 'AbortError') {
+        // Hardware/OS already has the mic locked
+        setPermissionError('המיקרופון כבר בשימוש על ידי אפליקציה אחרת. סגור אותה ונסה שוב.')
       } else {
-        setPermissionError('שגיאה בגישה למיקרופון')
+        setPermissionError(`שגיאה טכנית בגישה למיקרופון${name ? ` (${name})` : ''}. נסה לרענן את הדף.`)
       }
     }
   }, [])
