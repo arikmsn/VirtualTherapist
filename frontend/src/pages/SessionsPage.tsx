@@ -81,7 +81,7 @@ export default function SessionsPage() {
     session_date: new Date().toISOString().split('T')[0],
     start_time: '',
     session_type: 'individual',
-    duration_minutes: 50,
+    duration_minutes: '50',   // string so clearing the field stays empty (not 0)
     notify_patient: false,
   })
 
@@ -150,6 +150,11 @@ export default function SessionsPage() {
       setCreateError('יש לבחור מטופל')
       return
     }
+    const dur = parseInt(formData.duration_minutes, 10)
+    if (!formData.duration_minutes || isNaN(dur) || dur <= 0) {
+      setCreateError('יש להזין משך פגישה תקין (מספר דקות חיובי)')
+      return
+    }
 
     setCreating(true)
     try {
@@ -162,7 +167,7 @@ export default function SessionsPage() {
         patient_id: Number(formData.patient_id),
         session_date: formData.session_date,
         session_type: formData.session_type,
-        duration_minutes: formData.duration_minutes,
+        duration_minutes: dur,
         start_time: startTime,
         notify_patient: formData.notify_patient,
       })
@@ -173,7 +178,7 @@ export default function SessionsPage() {
         session_date: new Date().toISOString().split('T')[0],
         start_time: '',
         session_type: 'individual',
-        duration_minutes: 50,
+        duration_minutes: '50',
         notify_patient: false,
       })
       await loadSessions()
@@ -619,13 +624,11 @@ export default function SessionsPage() {
                     type="number"
                     value={formData.duration_minutes}
                     onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        duration_minutes: Number(e.target.value),
-                      }))
+                      setFormData((prev) => ({ ...prev, duration_minutes: e.target.value }))
                     }
-                    min={10}
-                    max={180}
+                    min={1}
+                    max={360}
+                    placeholder="50"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
                   />
                 </div>

@@ -187,7 +187,7 @@ export default function PatientProfilePage() {
     session_date: new Date().toISOString().split('T')[0],
     start_time: '',
     session_type: 'individual',
-    duration_minutes: 50,
+    duration_minutes: '50',   // string so clearing the field stays empty (not 0)
     notify_patient: false,
   })
   const [newSessionCreating, setNewSessionCreating] = useState(false)
@@ -485,6 +485,11 @@ export default function PatientProfilePage() {
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault()
     setNewSessionError('')
+    const dur = parseInt(newSessionForm.duration_minutes, 10)
+    if (!newSessionForm.duration_minutes || isNaN(dur) || dur <= 0) {
+      setNewSessionError('יש להזין משך פגישה תקין (מספר דקות חיובי)')
+      return
+    }
     setNewSessionCreating(true)
     try {
       let startTime: string | undefined
@@ -495,7 +500,7 @@ export default function PatientProfilePage() {
         patient_id: pid,
         session_date: newSessionForm.session_date,
         session_type: newSessionForm.session_type,
-        duration_minutes: newSessionForm.duration_minutes,
+        duration_minutes: dur,
         start_time: startTime,
         notify_patient: newSessionForm.notify_patient,
       })
@@ -504,7 +509,7 @@ export default function PatientProfilePage() {
         session_date: new Date().toISOString().split('T')[0],
         start_time: '',
         session_type: 'individual',
-        duration_minutes: 50,
+        duration_minutes: '50',
         notify_patient: false,
       })
       navigate(`/sessions/${created.id}`)
@@ -1542,8 +1547,10 @@ export default function PatientProfilePage() {
                   <input
                     type="number"
                     value={newSessionForm.duration_minutes}
-                    onChange={(e) => setNewSessionForm((f) => ({ ...f, duration_minutes: Number(e.target.value) }))}
-                    min={10} max={180}
+                    onChange={(e) => setNewSessionForm((f) => ({ ...f, duration_minutes: e.target.value }))}
+                    min={1}
+                    max={360}
+                    placeholder="50"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
                   />
                 </div>
