@@ -325,7 +325,9 @@ export default function SessionDetailPage() {
         </div>
       </div>
 
-      {/* Open Tasks Reminder — visible throughout the page lifecycle (including after summary creation) */}
+      {/* Open Tasks Reminder:
+           · summary exists  → "scroll down to task tracking" (ExerciseTracker is rendered below)
+           · no summary yet  → softer hint with no "scroll down" reference (section doesn't exist yet) */}
       {openTasksCount > 0 && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
           <ClipboardDocumentListIcon className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -334,7 +336,9 @@ export default function SessionDetailPage() {
               יש {openTasksCount} משימות פתוחות למטופל הזה
             </p>
             <p className="text-xs text-amber-700 mt-0.5">
-              גלול למטה למעקב המשימות כדי לעיין ולעדכן אותן.
+              {summary
+                ? 'גלול למטה למעקב המשימות כדי לעיין ולעדכן אותן.'
+                : 'רצוי לבדוק ולעדכן אותן לאחר יצירת הסיכום.'}
             </p>
           </div>
         </div>
