@@ -622,11 +622,19 @@ class TherapyAgent:
             tasks_context = "משימות פתוחות: אין"
 
         session_num_str = f"#{session_number}" if session_number else ""
-        no_history_note = (
-            "\nשים לב: אין עדיין סיכומים מאושרים. "
-            "ציין זאת במפורש ב-history_summary וב-last_session וכתוב תדריך כללי בהתאם.\n"
-            if not has_summaries else ""
-        )
+
+        if not has_summaries:
+            no_history_note = (
+                "\n⚠️ CRITICAL — NO HISTORY EXISTS FOR THIS PATIENT.\n"
+                "There are ZERO approved session summaries in the database.\n"
+                "You MUST NOT invent, fabricate, or guess any past sessions, topics, progress, "
+                "homework, or clinical details. Any invented history is a serious clinical error.\n"
+                "history_summary and last_session MUST state clearly that there is no history yet "
+                "and that this appears to be the first documented session. "
+                "focus_for_today should contain only general first-session guidance.\n"
+            )
+        else:
+            no_history_note = ""
 
         prompt = f"""\
 אתה עוזר קליני אישי של המטפל. תפקידך לסכם את ההיסטוריה הקלינית ולהכין את המטפל לפגישה הקרובה.
@@ -649,16 +657,22 @@ class TherapyAgent:
 
 כללים:
 - history_summary: 2–3 פריטים — תמות ודפוסים חוצי-פגישות, לא חזרה על כל פגישה.
-- last_session: 2–3 פריטים — ספציפי לפגישה האחרונה בלבד (האחרונה ב-timeline).
+  אם אין היסטוריה מאושרת — כתוב ["אין סיכומים מאושרים עדיין — זו ככל הנראה הפגישה הראשונה"].
+- last_session: 2–3 פריטים — ספציפי לפגישה האחרונה בלבד.
+  אם אין היסטוריה — כתוב ["אין פגישות קודמות מתועדות"].
 - tasks_to_check: אם אין משימות פתוחות — ["אין משימות פתוחות"]. אחרת — מנה אותן תמציתית.
-- focus_for_today: 2–3 הצעות פרקטיות — מבוסס על ההיסטוריה + הפגישה האחרונה + המשימות.
-- watch_out_for: רק אם יש סיכון/רגישות ממשיים. אחרת — [].
-- בסס אך ורק על המידע שניתן לך. אל תמציא.
+- focus_for_today: 2–3 הצעות פרקטיות — מבוסס אך ורק על מידע שנמסר לך. אם אין היסטוריה — הצע גישה לפגישה ראשונה.
+- watch_out_for: רק אם יש סיכון/רגישות ממשיים בנתונים. אחרת — [].
+- אסור בהחלט להמציא פגישות, פרטים קליניים, משימות, נושאים, או כל מידע שלא מופיע במפורש בנתונים שנמסרו.
 - כתוב בעברית מקצועית שוטפת. תמציתי — מטפל עסוק קורא את זה ב-30 שניות.
 """
 
+        # Use low temperature for prep brief — factual retrieval, not creative generation.
+        # For no-history patients this is critical to prevent hallucination.
+        prep_temperature = 0.1
+
         try:
-            raw = await self._generate_openai(prompt)
+            raw = await self._generate_openai(prompt, temperature=prep_temperature)
             return self._parse_prep_brief_json(raw)
 
         except Exception as e:
@@ -1115,15 +1129,15 @@ Today's patients:
 
         return TodayInsightsResult(insights=items)
 
-    async def _generate_openai(self, prompt: str) -> str:
-        """Generate response using OpenAI"""
+    async def _generate_openai(self, prompt: str, temperature: Optional[float] = None) -> str:
+        """Generate response using OpenAI. Pass temperature to override the profile default."""
         response = await self.client.chat.completions.create(
             model=settings.AI_MODEL,
             messages=[
                 {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": prompt}
             ],
-            temperature=settings.TEMPERATURE,
+            temperature=temperature if temperature is not None else settings.TEMPERATURE,
             max_tokens=settings.MAX_TOKENS,
         )
         return response.choices[0].message.content
