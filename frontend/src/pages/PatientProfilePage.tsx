@@ -248,28 +248,27 @@ export default function PatientProfilePage() {
     load()
   }, [pid])
 
+  const reloadSessions = async () => {
+    setSessionsLoading(true)
+    try {
+      const data = await sessionsAPI.getPatientSessions(pid)
+      setSessions([...data].sort((a: Session, b: Session) => {
+        if (b.session_date > a.session_date) return 1
+        if (b.session_date < a.session_date) return -1
+        return b.id - a.id
+      }))
+    } catch (err) {
+      console.error('Error loading sessions:', err)
+    } finally {
+      setSessionsLoading(false)
+    }
+  }
+
   // Load sessions when sessions tab is active
   useEffect(() => {
     if (tab !== 'sessions') return
-    const load = async () => {
-      setSessionsLoading(true)
-      try {
-        const data = await sessionsAPI.getPatientSessions(pid)
-        // Sort newest first
-        setSessions([...data].sort((a: Session, b: Session) => {
-          // Compare YYYY-MM-DD strings directly — timezone-safe and correct
-          if (b.session_date > a.session_date) return 1
-          if (b.session_date < a.session_date) return -1
-          // Same date: newer session (higher id) first
-          return b.id - a.id
-        }))
-      } catch (err) {
-        console.error('Error loading sessions:', err)
-      } finally {
-        setSessionsLoading(false)
-      }
-    }
-    load()
+    reloadSessions()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pid, tab])
 
   // Load summaries when summaries tab is active
@@ -496,7 +495,7 @@ export default function PatientProfilePage() {
       if (newSessionForm.start_time) {
         startTime = `${newSessionForm.session_date}T${newSessionForm.start_time}:00`
       }
-      const created = await sessionsAPI.create({
+      await sessionsAPI.create({
         patient_id: pid,
         session_date: newSessionForm.session_date,
         session_type: newSessionForm.session_type,
@@ -512,7 +511,9 @@ export default function PatientProfilePage() {
         duration_minutes: '50',
         notify_patient: false,
       })
-      navigate(`/sessions/${created.id}`)
+      // Stay on the patient page — switch to sessions tab and refresh the list
+      setTab('sessions')
+      await reloadSessions()
     } catch (err: any) {
       setNewSessionError(err.response?.data?.detail || 'שגיאה ביצירת הפגישה')
     } finally {
