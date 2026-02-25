@@ -19,7 +19,10 @@ export default function LoginPage() {
     try {
       const data = await authAPI.login(email, password)
       login(data.access_token, { id: data.therapist_id, email: data.email, fullName: data.full_name })
-      navigate('/dashboard')
+      // Return to the page the user was on before the session expired
+      const redirectTo = sessionStorage.getItem('redirect_after_login') || '/dashboard'
+      sessionStorage.removeItem('redirect_after_login')
+      navigate(redirectTo)
     } catch (err: any) {
       setError(err.response?.data?.detail || 'שגיאה בהתחברות')
     } finally {

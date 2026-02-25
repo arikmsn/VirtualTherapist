@@ -27,11 +27,16 @@ api.interceptors.request.use(
   }
 )
 
-// Handle 401 errors — clear token and redirect to login
+// Handle 401 errors — save current path, clear token, redirect to login
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      // Save the current page so LoginPage can redirect back after login
+      const currentPath = window.location.pathname + window.location.search
+      if (currentPath !== '/login') {
+        sessionStorage.setItem('redirect_after_login', currentPath)
+      }
       localStorage.removeItem(TOKEN_KEY)
       localStorage.removeItem('auth_user')
       window.location.href = '/login'
@@ -60,6 +65,14 @@ export const authAPI = {
       full_name: fullName,
       phone,
     })
+    return response.data
+  },
+
+  // Silent token refresh — called proactively by AuthProvider before expiry.
+  // Uses the current Authorization header (set by request interceptor).
+  // Returns 401 if token is already expired → interceptor handles logout.
+  refresh: async (): Promise<{ access_token: string; therapist_id: number; email: string; full_name: string }> => {
+    const response = await api.post('/auth/refresh')
     return response.data
   },
 }
