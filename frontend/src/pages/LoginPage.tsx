@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/useAuth'
 import { authAPI } from '@/lib/api'
+import AppLogo from '@/components/common/AppLogo'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -34,12 +35,10 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gradient-to-br from-therapy-calm to-therapy-gentle flex items-center justify-center p-4" dir="rtl">
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
         {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="text-5xl mb-4">🧠</div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            מטפל.אונליין
-          </h1>
-          <p className="text-gray-600">עוזר טיפולי חכם למטפלים</p>
+        <div className="flex flex-col items-center mb-8">
+          <AppLogo variant="full" size="lg" className="max-w-[240px] mb-4" />
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">מטפל.אונליין</h1>
+          <p className="text-gray-600 text-sm">עוזר טיפולי חכם למטפלים</p>
         </div>
 
         {/* Login Form */}

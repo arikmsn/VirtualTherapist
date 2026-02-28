@@ -25,6 +25,7 @@ import {
   LightBulbIcon,
 } from '@heroicons/react/24/outline'
 import SideNotebook from '@/components/SideNotebook'
+import AppLogo from '@/components/common/AppLogo'
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -88,8 +89,11 @@ export default function Layout() {
                 <Bars3Icon className="h-6 w-6" />
               </button>
 
-              <div className="text-base sm:text-2xl font-bold text-therapy-calm">
-                🧠 מטפל.אונליין
+              <div className="flex items-center gap-2">
+                <AppLogo variant="icon" size="sm" />
+                <span className="text-base sm:text-2xl font-bold text-therapy-calm">
+                  מטפל.אונליין
+                </span>
               </div>
             </div>
 
@@ -169,10 +173,16 @@ export default function Layout() {
             dir="rtl"
           >
             <div className="px-4 py-4 space-y-1">
-              {/* Drawer header — greeting + close button */}
+              {/* Drawer header — logo + greeting + close button */}
               <div className="flex items-center justify-between pb-3 mb-2 border-b border-gray-100">
-                <div className="text-base font-semibold text-gray-800">
-                  {firstName ? `${getGreeting()}, ${firstName}` : getGreeting()}
+                <div className="flex items-center gap-2">
+                  <AppLogo variant="icon" size="md" />
+                  <div>
+                    <div className="text-xs font-bold text-therapy-calm">מטפל.אונליין</div>
+                    <div className="text-sm font-medium text-gray-700">
+                      {firstName ? `${getGreeting()}, ${firstName}` : getGreeting()}
+                    </div>
+                  </div>
                 </div>
                 <button
                   onClick={() => setMobileMenuOpen(false)}
@@ -235,9 +245,14 @@ export default function Layout() {
       {/* Footer */}
       <footer className="bg-white border-t border-gray-200 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="text-center text-sm text-gray-500">
-            <p>מטפל.אונליין - עוזר טיפולי חכם למטפלים</p>
-            <p className="mt-1 text-xs">מוצפן מקצה לקצה | תואם GDPR | נתונים בישראל/אירופה בלבד</p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 text-sm text-gray-500">
+            {/* Full logo on sm+, icon-only on xs */}
+            <AppLogo variant="full" size="sm" className="hidden sm:block" />
+            <AppLogo variant="icon" size="sm" className="sm:hidden" />
+            <div className="text-center sm:text-right">
+              <p className="font-medium text-gray-600">עוזר טיפולי חכם למטפלים</p>
+              <p className="mt-0.5 text-xs">מוצפן מקצה לקצה | תואם GDPR | נתונים בישראל/אירופה בלבד</p>
+            </div>
           </div>
         </div>
       </footer>
