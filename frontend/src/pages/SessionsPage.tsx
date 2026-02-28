@@ -292,88 +292,111 @@ export default function SessionsPage() {
 
       {/* Sessions List */}
       <div className="space-y-4">
-        {filteredSessions.map((session) => (
-          <div key={session.id} className="card hover:shadow-xl transition-shadow">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-              {/* Session Info */}
-              <div className="flex items-start gap-4 flex-1 min-w-0">
-                <div className="w-12 h-12 bg-therapy-calm text-white rounded-full flex items-center justify-center flex-shrink-0">
-                  <DocumentTextIcon className="h-6 w-6" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <h3 className="text-lg font-bold">
-                      {patientMap[session.patient_id] || `מטופל #${session.patient_id}`}
-                    </h3>
-                    {session.summary_id != null ? (
-                      <span className="badge badge-approved">
-                        <CheckCircleIcon className="h-4 w-4 inline ml-1" />
-                        יש סיכום
-                      </span>
-                    ) : (
-                      <span className="badge badge-draft">
-                        אין סיכום
-                      </span>
-                    )}
-                  </div>
+        {filteredSessions.map((session) => {
+          // Past: session date is strictly before today (today's sessions are not "past").
+          // warnPast is true only when the session is past AND has no summary yet.
+          const isPast = session.session_date < todayStr
+          const warnPast = session.summary_id == null && isPast
 
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                    <span>{formatDateIL(session.session_date)}</span>
-                    {session.duration_minutes && (
-                      <span>{session.duration_minutes} דקות</span>
-                    )}
-                    {session.session_number && (
-                      <span>פגישה #{session.session_number}</span>
-                    )}
-                    {session.session_type && (
-                      <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">
-                        {SESSION_TYPES.find((t) => t.value === session.session_type)?.label ||
-                          session.session_type}
-                      </span>
-                    )}
+          return (
+            <div
+              key={session.id}
+              className={`card hover:shadow-xl transition-shadow ${
+                warnPast ? 'border-l-4 border-l-amber-400 bg-amber-50' : ''
+              }`}
+            >
+              {/* Warning label — only for past sessions missing a summary */}
+              {warnPast && (
+                <div className="mb-3">
+                  <span className="text-xs font-medium text-amber-700 bg-amber-100 border border-amber-200 rounded-md px-2 py-0.5">
+                    ⚠ פגישה שהסתיימה – ללא סיכום
+                  </span>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                {/* Session Info */}
+                <div className="flex items-start gap-4 flex-1 min-w-0">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    warnPast ? 'bg-amber-500 text-white' : 'bg-therapy-calm text-white'
+                  }`}>
+                    <DocumentTextIcon className="h-6 w-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <h3 className="text-lg font-bold">
+                        {patientMap[session.patient_id] || `מטופל #${session.patient_id}`}
+                      </h3>
+                      {session.summary_id != null ? (
+                        <span className="badge badge-approved">
+                          <CheckCircleIcon className="h-4 w-4 inline ml-1" />
+                          יש סיכום
+                        </span>
+                      ) : (
+                        <span className="badge badge-draft">
+                          אין סיכום
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                      <span>{formatDateIL(session.session_date)}</span>
+                      {session.duration_minutes && (
+                        <span>{session.duration_minutes} דקות</span>
+                      )}
+                      {session.session_number && (
+                        <span>פגישה #{session.session_number}</span>
+                      )}
+                      {session.session_type && (
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">
+                          {SESSION_TYPES.find((t) => t.value === session.session_type)?.label ||
+                            session.session_type}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Actions — stacked row below info on mobile, inline on desktop */}
-              <div className="flex gap-2 items-center flex-shrink-0 flex-wrap sm:flex-nowrap">
-                {/* Prep button: only for future sessions or sessions without a summary */}
-                {(session.summary_id == null || session.session_date >= todayStr) && (
+                {/* Actions — stacked row below info on mobile, inline on desktop */}
+                <div className="flex gap-2 items-center flex-shrink-0 flex-wrap sm:flex-nowrap">
+                  {/* Prep button: only for future sessions or sessions without a summary */}
+                  {(session.summary_id == null || session.session_date >= todayStr) && (
+                    <button
+                      onClick={() => openPrepModal(session)}
+                      className="flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-2 min-h-[44px] sm:min-h-0 transition-colors touch-manipulation flex-shrink-0"
+                    >
+                      <SparklesIcon className="h-4 w-4" />
+                      הכנה לפגישה
+                    </button>
+                  )}
+                  {session.summary_id == null && (
+                    <button
+                      onClick={() => navigate(`/sessions/${session.id}`)}
+                      className="btn-primary flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
+                    >
+                      צור סיכום
+                    </button>
+                  )}
+                  {session.summary_id != null && (
+                    <button
+                      onClick={() => navigate(`/sessions/${session.id}`)}
+                      className="btn-success flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
+                    >
+                      צפה בסיכום
+                    </button>
+                  )}
                   <button
-                    onClick={() => openPrepModal(session)}
-                    className="flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-2 min-h-[44px] sm:min-h-0 transition-colors touch-manipulation flex-shrink-0"
+                    onClick={() => openDeleteModal(session)}
+                    className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors touch-manipulation flex-shrink-0"
+                    title="מחק פגישה"
                   >
-                    <SparklesIcon className="h-4 w-4" />
-                    הכנה לפגישה
+                    <TrashIcon className="h-5 w-5" />
                   </button>
-                )}
-                {session.summary_id == null && (
-                  <button
-                    onClick={() => navigate(`/sessions/${session.id}`)}
-                    className="btn-primary flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
-                  >
-                    צור סיכום
-                  </button>
-                )}
-                {session.summary_id != null && (
-                  <button
-                    onClick={() => navigate(`/sessions/${session.id}`)}
-                    className="btn-success flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
-                  >
-                    צפה בסיכום
-                  </button>
-                )}
-                <button
-                  onClick={() => openDeleteModal(session)}
-                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors touch-manipulation flex-shrink-0"
-                  title="מחק פגישה"
-                >
-                  <TrashIcon className="h-5 w-5" />
-                </button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {filteredSessions.length === 0 && (
