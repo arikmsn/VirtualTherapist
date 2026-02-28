@@ -36,9 +36,9 @@ export default function LoginPage() {
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
         {/* Logo — full brand image centered, title + subtitle as plain text below */}
         <div className="flex flex-col items-center mb-8">
-          <AppLogo variant="full" size="lg" className="max-w-[220px] mb-4" />
-          <h1 className="text-xl font-bold text-gray-900 mb-1">התחברות למטפל.אונליין</h1>
-          <p className="text-gray-500 text-sm">עוזר טיפולי חכם למטפלים</p>
+          <AppLogo variant="full" size="lg" className="max-w-[260px] mb-6" />
+          <h1 className="text-xl font-bold text-gray-900">התחברות</h1>
+          <p className="text-sm text-gray-500 mt-2">מטפל אונליין – עוזר חכם למטפלים</p>
         </div>
 
         {/* Login Form */}
