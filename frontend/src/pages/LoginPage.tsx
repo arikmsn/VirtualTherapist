@@ -33,14 +33,13 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-therapy-calm to-therapy-gentle flex items-center justify-center p-4" dir="rtl">
-      <div className="bg-white rounded-2xl shadow-2xl px-8 pb-8 pt-6 w-full max-w-md">
-        {/* Logo — full brand image centered, title + subtitle as plain text below */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="mx-auto mb-4 w-[220px] sm:w-[260px] md:w-[280px]">
+      <div className="bg-white rounded-2xl shadow-2xl px-8 pb-8 pt-5 w-full max-w-md">
+        {/* Logo + title header */}
+        <div className="flex flex-col items-center mb-5">
+          <Link to="/" className="mx-auto mb-3 w-[200px] sm:w-[240px] md:w-[260px] block">
             <AppLogo variant="full" fluid />
-          </div>
+          </Link>
           <h1 className="text-xl font-bold text-gray-900">התחברות</h1>
-          <p className="text-sm text-gray-500 mt-2">מטפל אונליין – עוזר חכם למטפלים</p>
         </div>
 
         {/* Login Form */}
@@ -112,8 +111,6 @@ export default function LoginPage() {
             <span>מוצפן מקצה לקצה</span>
             <span>•</span>
             <span>תואם GDPR</span>
-            <span>•</span>
-            <span>נתונים בישראל</span>
           </div>
         </div>
       </div>
