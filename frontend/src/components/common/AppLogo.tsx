@@ -12,6 +12,12 @@ interface AppLogoProps {
   variant: 'full' | 'icon'
   /** Controls the rendered height; width scales automatically. */
   size?: 'sm' | 'md' | 'lg'
+  /**
+   * fluid — width-driven sizing: image fills its container width, height is auto.
+   * Use by wrapping in a div with responsive width classes.
+   * When true, `size` is ignored.
+   */
+  fluid?: boolean
   className?: string
 }
 
@@ -21,17 +27,21 @@ const heightMap: Record<string, string> = {
   lg: 'h-16',
 }
 
-export default function AppLogo({ variant, size = 'md', className = '' }: AppLogoProps) {
+export default function AppLogo({ variant, size = 'md', fluid = false, className = '' }: AppLogoProps) {
   const src =
     variant === 'icon'
       ? '/assets/logo/only-sign.jpeg'
       : '/assets/logo/clean-logo.jpg'
 
+  const imgClass = fluid
+    ? `w-full h-auto object-contain select-none ${className}`
+    : `${heightMap[size]} w-auto object-contain select-none ${className}`
+
   return (
     <img
       src={src}
       alt="מטפל.אונליין"
-      className={`${heightMap[size]} w-auto object-contain select-none ${className}`}
+      className={imgClass}
       draggable={false}
     />
   )

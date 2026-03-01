@@ -52,10 +52,12 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-therapy-calm to-therapy-gentle flex items-center justify-center p-4" dir="rtl">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-2xl px-8 pb-8 pt-6 w-full max-w-md">
         {/* Logo — full brand image centered, title + subtitle as plain text below */}
         <div className="flex flex-col items-center mb-8">
-          <AppLogo variant="full" size="lg" className="max-w-[320px] mb-6" />
+          <div className="mx-auto mb-6 w-[260px] sm:w-[300px] md:w-[360px] lg:w-[400px]">
+            <AppLogo variant="full" fluid />
+          </div>
           <h1 className="text-xl font-bold text-gray-900">הרשמה</h1>
           <p className="text-sm text-gray-500 mt-2">מטפל אונליין – עוזר חכם למטפלים</p>
         </div>
