@@ -31,7 +31,7 @@ export default function AppLogo({ variant, size = 'md', fluid = false, className
   const src =
     variant === 'icon'
       ? '/assets/logo/only-sign.jpeg'
-      : '/assets/logo/clean-logo.jpg'
+      : '/assets/logo/Full-Logo-V1.png'
 
   const imgClass = fluid
     ? `w-full h-auto object-contain select-none ${className}`
