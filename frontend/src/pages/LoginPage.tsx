@@ -36,9 +36,9 @@ export default function LoginPage() {
       <div className="bg-white rounded-2xl shadow-2xl px-8 pb-8 pt-5 w-full max-w-md">
         {/* Logo + title header */}
         <div className="flex flex-col items-center mb-5">
-          <Link to="/" className="mx-auto mb-3 w-[200px] sm:w-[240px] md:w-[260px] block">
+          <a href="https://metapel.online" target="_blank" rel="noopener noreferrer" className="mx-auto mb-3 w-[200px] sm:w-[240px] md:w-[260px] block">
             <AppLogo variant="full" fluid />
-          </Link>
+          </a>
           <h1 className="text-xl font-bold text-gray-900">התחברות</h1>
         </div>
 
