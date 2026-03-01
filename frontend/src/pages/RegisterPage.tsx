@@ -55,7 +55,7 @@ export default function RegisterPage() {
       <div className="bg-white rounded-2xl shadow-2xl px-8 pb-8 pt-6 w-full max-w-md">
         {/* Logo — full brand image centered, title + subtitle as plain text below */}
         <div className="flex flex-col items-center mb-8">
-          <div className="mx-auto mb-6 w-[260px] sm:w-[300px] md:w-[360px] lg:w-[400px]">
+          <div className="mx-auto mb-4 w-[220px] sm:w-[260px] md:w-[280px]">
             <AppLogo variant="full" fluid />
           </div>
           <h1 className="text-xl font-bold text-gray-900">הרשמה</h1>
