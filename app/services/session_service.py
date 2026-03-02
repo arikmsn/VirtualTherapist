@@ -89,6 +89,33 @@ async def send_appointment_reminder(session_id: int) -> None:
                 f"[appt_reminder] session {session_id}: reminder sent to {patient_phone} "
                 f"(provider_id={result['provider_id']})"
             )
+            # Persist the reminder as a Message record so it appears in the Messages screen
+            try:
+                from app.models.message import Message, MessageStatus, MessageDirection
+                content_text = (
+                    f"שלום {patient_name}, זוהי תזכורת לפגישתך עם {therapist.full_name} "
+                    f"בתאריך {session_date_str} בשעה {session_time_str}."
+                )
+                msg_record = Message(
+                    therapist_id=therapist.id,
+                    patient_id=patient.id,
+                    direction=MessageDirection.TO_PATIENT,
+                    content=content_text,
+                    status=MessageStatus.SENT,
+                    requires_approval=False,
+                    generated_by_ai=False,
+                    sent_at=datetime.utcnow(),
+                    message_type="appointment_reminder",
+                    related_session_id=session_id,
+                    channel="whatsapp",
+                    recipient_phone=patient_phone,
+                )
+                db.add(msg_record)
+                db.commit()
+                logger.info(f"[appt_reminder] session {session_id}: message record saved (id={msg_record.id})")
+            except Exception as save_exc:
+                logger.error(f"[appt_reminder] session {session_id}: failed to save message record — {save_exc}")
+                db.rollback()
         else:
             logger.error(f"[appt_reminder] session {session_id}: send failed — {result['error']}")
 

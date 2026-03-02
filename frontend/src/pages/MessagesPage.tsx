@@ -56,6 +56,7 @@ const STATUS_META: Record<string, { label: string; className: string }> = {
 const TYPE_LABELS: Record<string, string> = {
   task_reminder: 'תזכורת משימה',
   session_reminder: 'תזכורת לפגישה',
+  appointment_reminder: 'תזכורת קביעת פגישה',
   follow_up: 'מעקב',
   exercise_reminder: 'תזכורת תרגיל',
   check_in: "צ'ק-אין",
