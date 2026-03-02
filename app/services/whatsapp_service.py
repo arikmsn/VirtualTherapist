@@ -25,7 +25,8 @@ def _build_plain_text(content_variables: dict) -> str:
     v = {k: ("" if val is None else str(val)) for k, val in content_variables.items()}
 
     if len(v) == 4:
-        # Session reminder: 1=patient, 2=therapist, 3=date, 4=time
+        # Appointment reminder and session reminder share this format:
+        #   1=patient, 2=therapist, 3=date (DD.MM.YY), 4=time (HH:MM)
         parts = [f"שלום {v.get('1', '')},", f"זוהי תזכורת לפגישתך עם {v.get('2', '')}"]
         date = v.get("3", "")
         time = v.get("4", "")
@@ -34,13 +35,6 @@ def _build_plain_text(content_variables: dict) -> str:
         if time and time != "לא צוינה":
             parts.append(f"בשעה {time}.")
         return " ".join(parts)
-
-    if len(v) == 5:
-        # Appointment reminder: 1=patient, 2=therapist, 3=clinic, 4=date, 5=time
-        return (
-            f"שלום {v.get('1', '')}, זוהי תזכורת לפגישתך עם {v.get('2', '')} "
-            f"מקליניקת {v.get('3', '')} בתאריך {v.get('4', '')} בשעה {v.get('5', '')}."
-        )
 
     # Fallback: join all values (now guaranteed to be strings)
     return " ".join(v.values())

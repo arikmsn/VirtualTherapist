@@ -21,8 +21,7 @@ from loguru import logger
 
 
 # Twilio Content Template SID for appointment reminders.
-# Template "appointment" (Utility, Hebrew) — variables:
-#   1=patient name, 2=therapist name, 3=clinic name, 4=session date, 5=session time
+# Template variables: 1=patient name, 2=therapist name, 3=session date, 4=session time
 APPOINTMENT_TEMPLATE_SID = "HX6975c9f8284208ae4b202035dac62c85"
 
 
@@ -69,8 +68,8 @@ async def send_appointment_reminder(session_id: int) -> None:
             if patient.full_name_encrypted else "מטופל"
         )
 
-        # Format date/time for the template
-        session_date_str = session.session_date.strftime("%d/%m/%Y")
+        # Format date/time for the template — DD.MM.YY, 24h time
+        session_date_str = session.session_date.strftime("%d.%m.%y")
         session_time_str = session.start_time.strftime("%H:%M") if session.start_time else "לא צוינה"
 
         result = await send_whatsapp_message(
@@ -80,9 +79,8 @@ async def send_appointment_reminder(session_id: int) -> None:
             content_variables={
                 "1": patient_name,
                 "2": therapist.full_name,
-                "3": settings.CLINIC_NAME,
-                "4": session_date_str,
-                "5": session_time_str,
+                "3": session_date_str,
+                "4": session_time_str,
             },
         )
 
