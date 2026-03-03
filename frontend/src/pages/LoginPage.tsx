@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/useAuth'
 import { authAPI } from '@/lib/api'
 import AppLogo from '@/components/common/AppLogo'
+import GoogleSignInButton from '@/components/auth/GoogleSignInButton'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -93,6 +94,16 @@ export default function LoginPage() {
             )}
           </button>
         </form>
+
+        {/* Google Sign-In */}
+        <div className="mt-4">
+          <div className="relative flex items-center gap-3 my-4">
+            <div className="flex-1 border-t border-gray-200" />
+            <span className="text-xs text-gray-400 whitespace-nowrap">או</span>
+            <div className="flex-1 border-t border-gray-200" />
+          </div>
+          <GoogleSignInButton disabled={loading} />
+        </div>
 
         {/* Register Link */}
         <div className="mt-6 text-center">

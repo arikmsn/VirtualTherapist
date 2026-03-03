@@ -4,6 +4,7 @@ import { useAuth } from '@/auth/useAuth'
 import { authAPI } from '@/lib/api'
 import PhoneInput from '@/components/PhoneInput'
 import AppLogo from '@/components/common/AppLogo'
+import GoogleSignInButton from '@/components/auth/GoogleSignInButton'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -151,6 +152,16 @@ export default function RegisterPage() {
             )}
           </button>
         </form>
+
+        {/* Google Sign-In */}
+        <div className="mt-4">
+          <div className="relative flex items-center gap-3 my-4">
+            <div className="flex-1 border-t border-gray-200" />
+            <span className="text-xs text-gray-400 whitespace-nowrap">או</span>
+            <div className="flex-1 border-t border-gray-200" />
+          </div>
+          <GoogleSignInButton disabled={loading} />
+        </div>
 
         {/* Login Link */}
         <div className="mt-6 text-center">

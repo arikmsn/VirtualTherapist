@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     GREEN_API_INSTANCE_ID: str | None = None   # Green API instance ID
     GREEN_API_TOKEN: str | None = None         # Green API access token
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
+
     # CORS
     # Comma-separated list of allowed frontend origins.
     # For multiple domains: "https://app.vercel.app,https://app.metapel.online"

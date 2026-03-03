@@ -75,6 +75,23 @@ export const authAPI = {
     const response = await api.post('/auth/refresh')
     return response.data
   },
+
+  // Exchange a Google authorization code for our JWT.
+  // redirect_uri must match exactly what was used to start the OAuth flow.
+  googleCallback: async (code: string, redirectUri: string): Promise<{
+    access_token: string
+    token_type: string
+    therapist_id: number
+    full_name: string
+    email: string
+    is_onboarding_completed: boolean
+  }> => {
+    const response = await api.post('/auth/google/callback', {
+      code,
+      redirect_uri: redirectUri,
+    })
+    return response.data
+  },
 }
 
 // Agent API

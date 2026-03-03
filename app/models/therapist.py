@@ -35,6 +35,10 @@ class Therapist(BaseModel):
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
 
+    # OAuth
+    auth_provider = Column(String(50), default="email")   # "email" | "google"
+    google_sub = Column(String(255), unique=True, index=True)  # Google user ID (nullable)
+
     # Relationships
     profile = relationship(
         "TherapistProfile", back_populates="therapist",

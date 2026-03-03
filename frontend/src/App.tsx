@@ -13,6 +13,7 @@ import SessionDetailPage from './pages/SessionDetailPage'
 import PatientSummariesPage from './pages/PatientSummariesPage'
 import PatientProfilePage from './pages/PatientProfilePage'
 import TwinProfilePage from './pages/TwinProfilePage'
+import GoogleCallbackPage from './pages/GoogleCallbackPage'
 import Layout from './components/Layout'
 
 function AppRoutes() {
@@ -35,6 +36,8 @@ function AppRoutes() {
         {/* Public routes — redirect to dashboard if already logged in */}
         <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" />} />
         <Route path="/register" element={!isAuthenticated ? <RegisterPage /> : <Navigate to="/dashboard" />} />
+        {/* Google OAuth callback — always public, handles its own auth state */}
+        <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
 
         {/* Protected routes — ProtectedRoute redirects to /login if not authenticated */}
         <Route element={<ProtectedRoute />}>
