@@ -53,9 +53,10 @@ export default function GoogleCallbackPage() {
     }
 
     // ── Exchange code with backend ────────────────────────────────────
+    // Send state along so the backend can verify the HMAC signature.
     const redirectUri = `${window.location.origin}/auth/google/callback`
 
-    authAPI.googleCallback(code, redirectUri)
+    authAPI.googleCallback(code, redirectUri, returnedState)
       .then((data) => {
         login(data.access_token, {
           id: data.therapist_id,

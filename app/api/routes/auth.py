@@ -1,6 +1,8 @@
 """Authentication routes"""
 
 from datetime import timedelta, datetime, timezone
+import hashlib
+import hmac
 import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -11,6 +13,28 @@ from app.services.therapist_service import TherapistService
 from app.security.auth import verify_password, get_password_hash, create_access_token
 from app.models.therapist import Therapist
 from app.core.config import settings
+
+
+# ---------------------------------------------------------------------------
+# HMAC-signed OAuth state helpers (CSRF protection)
+# ---------------------------------------------------------------------------
+
+def _sign_state(raw: str) -> str:
+    """Return HMAC-SHA256 hex signature of raw using SECRET_KEY."""
+    key = settings.SECRET_KEY.encode()
+    return hmac.new(key, raw.encode(), hashlib.sha256).hexdigest()
+
+
+def _verify_state(signed_state: str) -> bool:
+    """
+    Verify that signed_state is '{raw}.{sig}' where sig is the HMAC of raw.
+    Uses hmac.compare_digest to prevent timing attacks.
+    """
+    if not signed_state or "." not in signed_state:
+        return False
+    raw, _, sig = signed_state.rpartition(".")
+    expected_sig = _sign_state(raw)
+    return hmac.compare_digest(expected_sig, sig)
 
 
 router = APIRouter()
@@ -144,12 +168,27 @@ async def refresh_token(
 
 
 # ---------------------------------------------------------------------------
-# Google OAuth callback
+# Google OAuth — state generation + callback
 # ---------------------------------------------------------------------------
+
+@router.get("/google/state")
+async def google_state():
+    """
+    Generate an HMAC-signed OAuth state token for CSRF protection.
+
+    The frontend calls this before redirecting to Google, stores the signed
+    state in sessionStorage, and passes it as the `state` parameter.
+    On callback the signed state is sent back here and its HMAC is verified.
+    """
+    raw = secrets.token_urlsafe(16)
+    sig = _sign_state(raw)
+    return {"state": f"{raw}.{sig}"}
+
 
 class GoogleCallbackRequest(BaseModel):
     code: str
     redirect_uri: str
+    state: str  # HMAC-signed state — verified server-side for CSRF protection
 
 
 class GoogleTokenResponse(BaseModel):
@@ -177,6 +216,13 @@ async def google_callback(
 
     State / CSRF protection is handled on the frontend (checked before this call).
     """
+    # ── 0. Verify HMAC-signed state (CSRF protection) ────────────────────
+    if not _verify_state(request.state):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OAuth state parameter",
+        )
+
     if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

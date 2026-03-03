@@ -76,9 +76,17 @@ export const authAPI = {
     return response.data
   },
 
+  // Fetch an HMAC-signed OAuth state token from the backend for CSRF protection.
+  // Called by GoogleSignInButton before redirecting to Google.
+  googleState: async (): Promise<{ state: string }> => {
+    const response = await api.get('/auth/google/state')
+    return response.data
+  },
+
   // Exchange a Google authorization code for our JWT.
   // redirect_uri must match exactly what was used to start the OAuth flow.
-  googleCallback: async (code: string, redirectUri: string): Promise<{
+  // state is the HMAC-signed value returned by googleState() — verified server-side.
+  googleCallback: async (code: string, redirectUri: string, state: string): Promise<{
     access_token: string
     token_type: string
     therapist_id: number
@@ -89,6 +97,7 @@ export const authAPI = {
     const response = await api.post('/auth/google/callback', {
       code,
       redirect_uri: redirectUri,
+      state,
     })
     return response.data
   },

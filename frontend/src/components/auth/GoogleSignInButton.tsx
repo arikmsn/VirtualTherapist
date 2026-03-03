@@ -1,12 +1,15 @@
 /**
  * GoogleSignInButton
  *
- * Builds the Google OAuth URL with a CSRF-safe `state` parameter,
- * stores the state in sessionStorage, then redirects the browser to Google.
+ * Builds the Google OAuth URL with a CSRF-safe `state` parameter and
+ * redirects the browser to Google.
  *
- * The state is verified in GoogleCallbackPage before sending the code to
- * the backend, following the OAuth 2.0 CSRF protection spec.
+ * State is HMAC-signed by the backend (GET /auth/google/state), stored in
+ * sessionStorage, and verified server-side on callback. This provides both
+ * client-side (sessionStorage comparison) and server-side (HMAC) CSRF protection.
  */
+
+import { authAPI } from '@/lib/api'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
 
@@ -22,13 +25,23 @@ function getRedirectUri(): string {
   return `${window.location.origin}/auth/google/callback`
 }
 
-function startGoogleOAuth() {
+async function startGoogleOAuth() {
   if (!GOOGLE_CLIENT_ID) {
     alert('Google Sign-In is not configured. Please contact support.')
     return
   }
 
-  const state = crypto.randomUUID()
+  // Fetch a server-signed state token for CSRF protection.
+  // The backend will verify the HMAC on callback.
+  let state: string
+  try {
+    const result = await authAPI.googleState()
+    state = result.state
+  } catch {
+    alert('שגיאה בפתיחת חלון Google. אנא נסה שוב.')
+    return
+  }
+
   sessionStorage.setItem(GOOGLE_STATE_KEY, state)
 
   const params = new URLSearchParams({
