@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_CLIENT_SECRET: str | None = None
 
+    # Admin maintenance endpoints (POST /api/admin/*)
+    # Set a long random value in Render; leave unset to disable all admin endpoints.
+    ADMIN_SECRET: str | None = None
+
     # CORS
     # Comma-separated list of allowed frontend origins.
     # For multiple domains: "https://app.vercel.app,https://app.metapel.online"

@@ -6,7 +6,7 @@ TherapyCompanion.AI - Virtual Therapist Assistant
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import auth, agent, messages, patients, sessions, therapist, debug, exercises
+from app.api.routes import auth, agent, messages, patients, sessions, therapist, debug, exercises, admin
 from app.core.scheduler import scheduler
 from app.services.message_service import deliver_due_scheduled_messages
 from loguru import logger
@@ -59,6 +59,11 @@ app.include_router(exercises.router, prefix="/api/v1/exercises", tags=["Exercise
 # Debug routes — only in development / staging (never production)
 if settings.ENVIRONMENT != "production":
     app.include_router(debug.router, prefix="/api/debug", tags=["Debug"])
+
+# Admin maintenance routes — always mounted, protected by X-Admin-Secret header.
+# Set ADMIN_SECRET env var to enable; leave unset to get 503 on all admin calls.
+if settings.ADMIN_SECRET:
+    app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 
 @app.on_event("startup")
