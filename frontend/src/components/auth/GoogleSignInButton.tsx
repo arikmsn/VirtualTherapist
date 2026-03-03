@@ -13,6 +13,20 @@ import { authAPI } from '@/lib/api'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
 
+// Dev-only diagnostic: confirm the env var was inlined at build time.
+// The client ID is a public value (it appears in every OAuth redirect URL).
+if (import.meta.env.DEV) {
+  if (GOOGLE_CLIENT_ID) {
+    console.log('[GoogleSignInButton] VITE_GOOGLE_CLIENT_ID loaded:', GOOGLE_CLIENT_ID)
+  } else {
+    console.warn(
+      '[GoogleSignInButton] VITE_GOOGLE_CLIENT_ID is undefined.\n' +
+      'Add it to frontend/.env (local) or Vercel env vars (production).\n' +
+      'The variable MUST be prefixed with VITE_ — Vite only exposes VITE_* vars to the browser.'
+    )
+  }
+}
+
 const GOOGLE_SCOPES = [
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
@@ -26,8 +40,10 @@ function getRedirectUri(): string {
 }
 
 async function startGoogleOAuth() {
+  // Guard is kept here as a safety net, but the button is not rendered
+  // at all when GOOGLE_CLIENT_ID is missing (see component return below).
   if (!GOOGLE_CLIENT_ID) {
-    alert('Google Sign-In is not configured. Please contact support.')
+    console.error('[GoogleSignInButton] startGoogleOAuth called but VITE_GOOGLE_CLIENT_ID is not set.')
     return
   }
 
@@ -62,6 +78,10 @@ interface Props {
 }
 
 export default function GoogleSignInButton({ disabled }: Props) {
+  // If the env var wasn't set at build time, hide the button entirely.
+  // This prevents a confusing "not configured" alert in production.
+  if (!GOOGLE_CLIENT_ID) return null
+
   return (
     <button
       type="button"
