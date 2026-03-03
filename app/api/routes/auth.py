@@ -11,7 +11,7 @@ from pydantic import BaseModel, EmailStr
 from app.api.deps import get_db, get_current_therapist
 from app.services.therapist_service import TherapistService
 from app.security.auth import verify_password, get_password_hash, create_access_token
-from app.models.therapist import Therapist
+from app.models.therapist import Therapist, TherapistProfile, TherapeuticApproach
 from app.core.config import settings
 
 
@@ -316,6 +316,21 @@ async def google_callback(
         db.add(therapist)
         db.commit()
         db.refresh(therapist)
+
+        # Create a blank TherapistProfile so the onboarding flow works.
+        # Without this, POST /agent/onboarding/start and /complete-step both
+        # crash with "Profile not found" (they expect a profile row to exist).
+        # This mirrors what TherapistService.create_therapist() does for
+        # email/password registrations.
+        blank_profile = TherapistProfile(
+            therapist_id=therapist.id,
+            therapeutic_approach=TherapeuticApproach.CBT,  # overridden during step 1
+            onboarding_completed=False,
+            onboarding_step=0,
+        )
+        db.add(blank_profile)
+        db.commit()
+        db.refresh(therapist)  # reload so therapist.profile is populated
 
     if not therapist.is_active:
         raise HTTPException(
