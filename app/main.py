@@ -86,6 +86,16 @@ async def startup_event():
         masked = "(not set)"
     logger.info(f"AI Key ({key_field}): {masked}")
 
+    # Google OAuth credential status — log presence without printing secrets
+    if settings.GOOGLE_CLIENT_ID:
+        logger.info(f"Google OAuth: GOOGLE_CLIENT_ID is set ({settings.GOOGLE_CLIENT_ID[:12]}...)")
+    else:
+        logger.warning("Google OAuth: GOOGLE_CLIENT_ID is NOT set — Google Sign-In will be rejected")
+    if settings.GOOGLE_CLIENT_SECRET:
+        logger.info("Google OAuth: GOOGLE_CLIENT_SECRET is set")
+    else:
+        logger.warning("Google OAuth: GOOGLE_CLIENT_SECRET is NOT set — Google Sign-In will be rejected")
+
     # Auto-create tables in development (for SQLite or fresh databases)
     if settings.ENVIRONMENT == "development":
         from app.core.database import engine

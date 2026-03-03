@@ -224,9 +224,14 @@ async def google_callback(
         )
 
     if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        missing = []
+        if not settings.GOOGLE_CLIENT_ID:
+            missing.append("GOOGLE_CLIENT_ID")
+        if not settings.GOOGLE_CLIENT_SECRET:
+            missing.append("GOOGLE_CLIENT_SECRET")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Google OAuth is not configured on this server",
+            detail=f"Google OAuth is not configured on this server (missing: {', '.join(missing)})",
         )
 
     # ── 1. Exchange authorization code for Google tokens ─────────────────
