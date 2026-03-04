@@ -39,6 +39,9 @@ class Therapist(BaseModel):
     auth_provider = Column(String(50), default="email")   # "email" | "google"
     google_sub = Column(String(255), unique=True, index=True)  # Google user ID (nullable)
 
+    # Supabase Auth link (populated when direct client-side Supabase Auth is enabled)
+    supabase_user_id = Column(String(36), unique=True, nullable=True)  # auth.users UUID
+
     # Relationships
     profile = relationship(
         "TherapistProfile", back_populates="therapist",
