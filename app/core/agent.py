@@ -5,9 +5,11 @@ This is the heart of the system - the personalized AI therapist assistant
 
 from typing import Optional, Dict, Any, List
 import json
-from openai import AsyncOpenAI
 from app.core.config import settings
 from app.models.therapist import TherapistProfile
+from app.ai.models import FlowType, GenerationResult
+from app.ai.provider import AIProvider, AnthropicProvider
+from app.ai.router import ModelRouter
 from loguru import logger
 
 
@@ -146,18 +148,29 @@ class TherapyAgent:
     5. Speaks primarily in Hebrew
     """
 
-    def __init__(self, therapist_profile: Optional[TherapistProfile] = None):
-        """Initialize the agent with optional therapist profile"""
+    def __init__(
+        self,
+        therapist_profile: Optional[TherapistProfile] = None,
+        provider: Optional[AIProvider] = None,
+    ):
+        """
+        Args:
+            therapist_profile: personalises prompts.
+            provider:          AI provider; defaults to AnthropicProvider from settings.
+        """
         from app.core.config import is_placeholder_key
 
         self.profile = therapist_profile
-        self.client = None
+        self.router = ModelRouter()
+        self._last_result: Optional[GenerationResult] = None
 
-        # Initialize OpenAI client only if a real key is available
-        if not is_placeholder_key(settings.OPENAI_API_KEY):
-            self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        if provider is not None:
+            self.provider: Optional[AIProvider] = provider
+        elif not is_placeholder_key(settings.ANTHROPIC_API_KEY):
+            self.provider = AnthropicProvider(api_key=settings.ANTHROPIC_API_KEY)
         else:
-            logger.warning("OpenAI client not initialized: missing or placeholder API key")
+            logger.warning("ANTHROPIC_API_KEY is missing - AI text generation will not work")
+            self.provider = None
 
         self.system_prompt = self._build_system_prompt()
 
@@ -348,9 +361,9 @@ class TherapyAgent:
         Returns:
             Generated response in therapist's style
         """
-        if self.client is None:
+        if self.provider is None:
             raise RuntimeError(
-                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
+                "AI provider not initialised. Set a valid ANTHROPIC_API_KEY in .env."
             )
 
         try:
@@ -359,7 +372,7 @@ class TherapyAgent:
             if context:
                 full_prompt = f"הקשר: {context}\n\n{message}"
 
-            response = await self._generate_openai(full_prompt)
+            response = await self._generate(full_prompt, FlowType.CHAT)
 
             therapist_email = (
                 self.profile.therapist.email if self.profile else "Unknown"
@@ -381,9 +394,9 @@ class TherapyAgent:
 
         Returns a SessionSummaryResult with parsed fields.
         """
-        if self.client is None:
+        if self.provider is None:
             raise RuntimeError(
-                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
+                "AI provider not initialised. Set a valid ANTHROPIC_API_KEY in .env."
             )
 
         summary_prompt = f"""\
@@ -418,7 +431,7 @@ class TherapyAgent:
         full_prompt = ctx_str + summary_prompt
 
         try:
-            raw = await self._generate_openai(full_prompt)
+            raw = await self._generate(full_prompt, FlowType.SESSION_SUMMARY)
             return self._parse_summary_json(raw)
 
         except Exception as e:
@@ -473,9 +486,9 @@ class TherapyAgent:
             session_date, session_number, full_summary, topics_discussed,
             patient_progress, risk_assessment
         """
-        if self.client is None:
+        if self.provider is None:
             raise RuntimeError(
-                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
+                "AI provider not initialised. Set a valid ANTHROPIC_API_KEY in .env."
             )
 
         # Build timeline text
@@ -523,7 +536,7 @@ class TherapyAgent:
 """
 
         try:
-            raw = await self._generate_openai(prompt)
+            raw = await self._generate(prompt, FlowType.PATIENT_INSIGHT)
             return self._parse_insight_json(raw)
 
         except Exception as e:
@@ -573,9 +586,9 @@ class TherapyAgent:
         summaries_timeline: all approved summaries ordered oldest → newest (most recent last).
         open_tasks: all incomplete exercises/tasks for this patient.
         """
-        if self.client is None:
+        if self.provider is None:
             raise RuntimeError(
-                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
+                "AI provider not initialised. Set a valid ANTHROPIC_API_KEY in .env."
             )
 
         has_summaries = bool(summaries_timeline)
@@ -672,7 +685,7 @@ class TherapyAgent:
         prep_temperature = 0.1
 
         try:
-            raw = await self._generate_openai(prompt, temperature=prep_temperature)
+            raw = await self._generate(prompt, FlowType.SESSION_PREP, temperature=prep_temperature)
             return self._parse_prep_brief_json(raw)
 
         except Exception as e:
@@ -725,9 +738,9 @@ class TherapyAgent:
         metrics: {total_sessions, first_session_date, last_session_date, long_gaps}.
         therapist_locale: ISO language code, e.g. "he" or "en".
         """
-        if self.client is None:
+        if self.provider is None:
             raise RuntimeError(
-                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
+                "AI provider not initialised. Set a valid ANTHROPIC_API_KEY in .env."
             )
 
         locale_names: Dict[str, str] = {"he": "Hebrew", "en": "English"}
@@ -855,7 +868,7 @@ Rules:
 """
 
         try:
-            raw = await self._generate_openai(prompt)
+            raw = await self._generate(prompt, FlowType.DEEP_SUMMARY)
             return self._parse_deep_summary_json(raw)
         except Exception as e:
             logger.error(f"Error generating deep summary: {e}")
@@ -902,9 +915,9 @@ Rules:
 
         JSON keys are always English; text values are written in therapist_locale.
         """
-        if self.client is None:
+        if self.provider is None:
             raise RuntimeError(
-                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
+                "AI provider not initialised. Set a valid ANTHROPIC_API_KEY in .env."
             )
 
         locale_names: Dict[str, str] = {"he": "Hebrew", "en": "English"}
@@ -985,7 +998,7 @@ Rules:
 """
 
         try:
-            raw = await self._generate_openai(prompt)
+            raw = await self._generate(prompt, FlowType.TREATMENT_PLAN)
             return self._parse_treatment_plan_json(raw)
         except Exception as e:
             logger.error(f"Error generating treatment plan preview: {e}")
@@ -1038,9 +1051,9 @@ Rules:
         Makes ONE AI call for all patients combined.
         Returns TodayInsightsResult with one item per patient.
         """
-        if self.client is None:
+        if self.provider is None:
             raise RuntimeError(
-                "AI client not initialized. Set a valid OPENAI_API_KEY in .env."
+                "AI provider not initialised. Set a valid ANTHROPIC_API_KEY in .env."
             )
 
         if not patients_context:
@@ -1115,7 +1128,7 @@ Today's patients:
 """
 
         try:
-            raw = await self._generate_openai(prompt)
+            raw = await self._generate(prompt, FlowType.PATIENT_INSIGHT)
             return self._parse_today_insights_json(raw)
         except Exception as e:
             logger.error(f"Error generating today insights: {e}")
@@ -1152,18 +1165,43 @@ Today's patients:
 
         return TodayInsightsResult(insights=items)
 
-    async def _generate_openai(self, prompt: str, temperature: Optional[float] = None) -> str:
-        """Generate response using OpenAI. Pass temperature to override the profile default."""
-        response = await self.client.chat.completions.create(
-            model=settings.AI_MODEL,
-            messages=[
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": prompt}
-            ],
+    async def _generate(
+        self,
+        prompt: str,
+        flow_type: FlowType,
+        temperature: Optional[float] = None,
+    ) -> str:
+        """
+        Core generation method. Routes to the correct model via ModelRouter,
+        calls the provider, stores GenerationResult in self._last_result.
+        Callers read self._last_result to capture telemetry for ai_generation_log.
+        """
+        if self.provider is None:
+            raise RuntimeError(
+                "AI provider not initialised. Set a valid ANTHROPIC_API_KEY in .env."
+            )
+        model_id, route_reason = self.router.resolve(flow_type)
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+        result = await self.provider.generate(
+            messages,
+            model=model_id,
+            flow_type=flow_type,
             temperature=temperature if temperature is not None else settings.TEMPERATURE,
             max_tokens=settings.MAX_TOKENS,
+            route_reason=route_reason,
         )
-        return response.choices[0].message.content
+        self._last_result = result
+        return result.content
+
+    @property
+    def ai_provider(self) -> str:
+        """Provider identifier string for API responses."""
+        if self.provider is None:
+            return "none"
+        return type(self.provider).__name__.replace("Provider", "").lower()
 
     async def handle_command(self, command: str, args: str = "") -> str:
         """

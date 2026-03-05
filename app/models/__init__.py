@@ -6,6 +6,10 @@ from app.models.session import Session, SessionSummary
 from app.models.message import Message, MessageStatus
 from app.models.audit import AuditLog
 from app.models.exercise import Exercise
+from app.models.modality import ModalityPack
+from app.models.signature import TherapistSignatureProfile
+from app.models.ai_log import AIGenerationLog
+from app.models.reference_vault import TherapistReferenceVault
 
 __all__ = [
     "Therapist",
@@ -20,4 +24,8 @@ __all__ = [
     "AuditLog",
     "Exercise",
     "PatientNote",
+    "ModalityPack",
+    "TherapistSignatureProfile",
+    "AIGenerationLog",
+    "TherapistReferenceVault",
 ]

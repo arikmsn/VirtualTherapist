@@ -43,6 +43,11 @@ class Therapist(BaseModel):
     supabase_user_id = Column(String(36), unique=True, nullable=True)  # auth.users UUID
 
     # Relationships
+    signature_profiles = relationship(
+        "TherapistSignatureProfile",
+        foreign_keys="TherapistSignatureProfile.therapist_id",
+        cascade="all, delete-orphan",
+    )
     profile = relationship(
         "TherapistProfile", back_populates="therapist",
         uselist=False, cascade="all, delete-orphan",
@@ -110,6 +115,13 @@ class TherapistProfile(BaseModel):
     certifications = Column(Text)        # Professional titles & certifications
     years_of_experience = Column(String(50))  # e.g. "12" or "10-15"
     areas_of_expertise = Column(Text)    # Comma-separated or free-text areas
+
+    # AI layer (added migration 014)
+    # Links to the modality pack currently active for this therapist.
+    # NULL falls back to generic_integrative pack at generation time.
+    modality_pack_id = Column(Integer, ForeignKey("modality_packs.id",
+                                                   ondelete="SET NULL"),
+                              nullable=True)
 
     # Relationship
     therapist = relationship("Therapist", back_populates="profile")

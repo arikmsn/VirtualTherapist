@@ -40,9 +40,16 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # AI Configuration
-    OPENAI_API_KEY: str | None = None
-    AI_PROVIDER: Literal["openai"] = "openai"
-    AI_MODEL: str = "gpt-4o"
+    OPENAI_API_KEY: str | None = None      # Used for Whisper transcription only
+    ANTHROPIC_API_KEY: str | None = None   # Primary provider for all text generation
+
+    # Model routing - read from env so model IDs update without code changes.
+    # Defaults match the approved IDs from the Phase 1 spec decision.
+    AI_FAST_MODEL: str = "claude-haiku-4-5-20251001"
+    AI_STANDARD_MODEL: str = "claude-sonnet-4-6-20250929"
+    AI_DEEP_MODEL: str = "claude-opus-4-6-20251101"
+
+    # Generation defaults (apply when not overridden by the router)
     TEMPERATURE: float = 0.7
     MAX_TOKENS: int = 2000
 
@@ -115,16 +122,24 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_ai_keys(self) -> "Settings":
+        from loguru import logger
+
+        # Whisper transcription
         if is_placeholder_key(self.OPENAI_API_KEY):
+            logger.warning(
+                "OPENAI_API_KEY is missing - audio transcription (Whisper) will not work."
+            )
+
+        # Primary text generation provider
+        if is_placeholder_key(self.ANTHROPIC_API_KEY):
             msg = (
-                "OPENAI_API_KEY is missing or a placeholder. "
-                "AI features (chat, summaries) will not work. "
-                "Set a valid key in .env."
+                "ANTHROPIC_API_KEY is missing or a placeholder. "
+                "All AI text generation (chat, summaries, prep, twin profile) will fail. "
+                "Set a valid key in .env or the deployment environment."
             )
             if self.ENVIRONMENT == "production":
                 raise ValueError(msg)
             else:
-                from loguru import logger
                 logger.warning(msg)
 
         return self

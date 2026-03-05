@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models.session import Session as TherapySession, SessionSummary, SessionType, SummaryStatus
 from app.models.patient import Patient
 from app.models.exercise import Exercise
+from app.models.ai_log import AIGenerationLog
 from app.core.agent import (
     TherapyAgent,
     PatientInsightResult,
@@ -15,6 +16,7 @@ from app.core.agent import (
     TreatmentPlanResult,
     TreatmentGoal,
 )
+from app.ai.models import FlowType
 from app.services.audit_service import AuditService
 from app.security.encryption import decrypt_data
 from loguru import logger
@@ -131,6 +133,41 @@ class SessionService:
     def __init__(self, db: Session):
         self.db = db
         self.audit_service = AuditService(db)
+
+    def _write_generation_log(
+        self,
+        *,
+        therapist_id: int,
+        flow_type: FlowType,
+        agent: TherapyAgent,
+        session_id: Optional[int] = None,
+        session_summary_id: Optional[int] = None,
+    ) -> None:
+        """
+        Best-effort: write a row to ai_generation_log using agent._last_result.
+        Called immediately after every agent generation call.
+        Never raises — a logging failure must not block the main flow.
+        """
+        try:
+            last = agent._last_result
+            if last is None:
+                return
+            log_row = AIGenerationLog(
+                therapist_id=therapist_id,
+                flow_type=flow_type.value,
+                session_id=session_id,
+                session_summary_id=session_summary_id,
+                model_used=last.model_used,
+                route_reason=last.route_reason,
+                prompt_version="1.0",
+                prompt_tokens=last.prompt_tokens,
+                completion_tokens=last.completion_tokens,
+                generation_ms=last.generation_ms,
+            )
+            self.db.add(log_row)
+            self.db.flush()
+        except Exception as exc:
+            logger.warning(f"_write_generation_log failed (non-blocking): {exc}")
 
     async def create_session(
         self,
@@ -256,8 +293,11 @@ class SessionService:
                 "patient_id": session.patient_id,
             },
         )
+        # Capture raw AI output (before parsing) for signature learning
+        ai_draft = agent._last_result.content if agent._last_result else None
+        ai_model = agent._last_result.model_used if agent._last_result else None
 
-        # Step 3 — Persist transcript + summary
+        # Step 3 — Persist transcript + summary + AI metadata
         summary = SessionSummary(
             full_summary=result.full_summary,
             topics_discussed=result.topics_discussed,
@@ -271,6 +311,9 @@ class SessionService:
             generated_from="audio",
             therapist_edited=False,
             approved_by_therapist=False,
+            ai_draft_text=ai_draft,
+            ai_model=ai_model,
+            ai_prompt_version="1.0",
         )
 
         self.db.add(summary)
@@ -278,6 +321,17 @@ class SessionService:
 
         session.has_recording = True
         session.summary_id = summary.id
+        self.db.flush()
+
+        # Write generation telemetry row
+        self._write_generation_log(
+            therapist_id=therapist_id,
+            flow_type=FlowType.SESSION_SUMMARY,
+            agent=agent,
+            session_id=session.id,
+            session_summary_id=summary.id,
+        )
+
         self.db.commit()
         self.db.refresh(summary)
 
@@ -319,6 +373,9 @@ class SessionService:
                 "patient_id": session.patient_id,
             },
         )
+        # Capture raw AI output for signature learning
+        ai_draft = agent._last_result.content if agent._last_result else None
+        ai_model = agent._last_result.model_used if agent._last_result else None
 
         summary = SessionSummary(
             full_summary=result.full_summary,
@@ -332,12 +389,26 @@ class SessionService:
             generated_from="text",
             therapist_edited=False,
             approved_by_therapist=False,
+            ai_draft_text=ai_draft,
+            ai_model=ai_model,
+            ai_prompt_version="1.0",
         )
 
         self.db.add(summary)
-        self.db.flush()  # get summary.id without full commit
+        self.db.flush()
 
         session.summary_id = summary.id
+        self.db.flush()
+
+        # Write generation telemetry row
+        self._write_generation_log(
+            therapist_id=therapist_id,
+            flow_type=FlowType.SESSION_SUMMARY,
+            agent=agent,
+            session_id=session.id,
+            session_summary_id=summary.id,
+        )
+
         self.db.commit()
         self.db.refresh(summary)
 
