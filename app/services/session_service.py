@@ -18,6 +18,7 @@ from app.core.agent import (
 )
 from app.ai.models import FlowType
 from app.ai.completeness import CompletenessChecker
+from app.ai.summary_pipeline import SummaryInput, SummaryPipeline, compute_edit_distance
 from app.services.audit_service import AuditService
 from app.security.encryption import decrypt_data
 from loguru import logger
@@ -256,6 +257,66 @@ class SessionService:
 
         return session
 
+    async def _assemble_summary_input(
+        self,
+        session: TherapySession,
+        raw_content: str,
+        agent: TherapyAgent,
+    ) -> SummaryInput:
+        """
+        Build a SummaryInput from session data and DB context.
+
+        - last_approved_summary: only from rows where approved_by_therapist = True
+        - open_tasks: exercises not yet completed for this patient
+        """
+        from sqlalchemy import desc
+        from app.security.encryption import decrypt_data as _decrypt
+
+        # Patient display name (best-effort — never raise)
+        patient = self.db.query(Patient).filter(Patient.id == session.patient_id).first()
+        client_name = "מטופל"
+        if patient and patient.full_name_encrypted:
+            try:
+                client_name = _decrypt(patient.full_name_encrypted)
+            except Exception:
+                pass
+
+        # Most recent approved summary for this patient (excluding the current session)
+        last_approved_row = (
+            self.db.query(SessionSummary)
+            .join(TherapySession, TherapySession.summary_id == SessionSummary.id)
+            .filter(
+                TherapySession.patient_id == session.patient_id,
+                TherapySession.id != session.id,
+                SessionSummary.approved_by_therapist == True,  # noqa: E712
+            )
+            .order_by(desc(TherapySession.session_date))
+            .first()
+        )
+        last_approved_text = last_approved_row.full_summary if last_approved_row else None
+
+        # Open (incomplete) homework / exercises for this patient
+        open_exercises = (
+            self.db.query(Exercise)
+            .filter(
+                Exercise.patient_id == session.patient_id,
+                Exercise.completed == False,  # noqa: E712
+            )
+            .all()
+        )
+        open_tasks = [e.description or "" for e in open_exercises if e.description]
+
+        return SummaryInput(
+            raw_content=raw_content,
+            client_name=client_name,
+            session_number=session.session_number or 1,
+            session_date=session.session_date,
+            last_approved_summary=last_approved_text,
+            open_tasks=open_tasks,
+            modality_pack=agent.modality_pack,
+            therapist_signature=None,  # Phase 6
+        )
+
     async def generate_summary_from_audio(
         self,
         session_id: int,
@@ -290,38 +351,48 @@ class SessionService:
             language=language,
         )
 
-        # Step 2 — Structured summary from transcript (reuse same JSON-based prompt)
-        result = await agent.generate_session_summary(
-            notes=transcript,
-            context={
-                "session_number": session.session_number,
-                "patient_id": session.patient_id,
-            },
+        # Step 2 — Summary 2.0: two-call pipeline (extraction → rendering)
+        summary_input = await self._assemble_summary_input(
+            session=session,
+            raw_content=transcript,
+            agent=agent,
         )
-        # Capture raw AI output (before parsing) for signature learning
-        ai_draft = agent._last_result.content if agent._last_result else None
-        ai_model = agent._last_result.model_used if agent._last_result else None
+        pipeline = SummaryPipeline(agent)
+        clinical_json_dict, rendered_text = await pipeline.run(summary_input)
 
         modality_pack = agent.modality_pack
         modality_pack_id = modality_pack.id if modality_pack else None
+        ai_model = (
+            pipeline._last_render_result.model_used if pipeline._last_render_result else None
+        )
+        ai_confidence = int(clinical_json_dict.get("confidence", 0.0) * 100)
+        new_homework_val = clinical_json_dict.get("new_homework")
+        homework_list = (
+            [new_homework_val]
+            if isinstance(new_homework_val, str) and new_homework_val
+            else (new_homework_val if isinstance(new_homework_val, list) else [])
+        )
+        risk_notes = (clinical_json_dict.get("risk_assessment") or {}).get("notes")
 
         # Step 3 — Persist transcript + summary + AI metadata
         summary = SessionSummary(
-            full_summary=result.full_summary,
-            topics_discussed=result.topics_discussed,
-            interventions_used=result.interventions_used,
-            patient_progress=result.patient_progress,
-            homework_assigned=result.homework_assigned,
-            next_session_plan=result.next_session_plan,
-            mood_observed=result.mood_observed,
-            risk_assessment=result.risk_assessment,
+            full_summary=rendered_text,
+            topics_discussed=clinical_json_dict.get("key_themes", []),
+            interventions_used=clinical_json_dict.get("interventions_used", []),
+            patient_progress=clinical_json_dict.get("client_response", ""),
+            homework_assigned=homework_list,
+            next_session_plan=clinical_json_dict.get("next_session_focus"),
+            mood_observed=clinical_json_dict.get("mood_observed"),
+            risk_assessment=risk_notes,
+            clinical_json=clinical_json_dict,
             transcript=transcript,
             generated_from="audio",
             therapist_edited=False,
             approved_by_therapist=False,
-            ai_draft_text=ai_draft,
+            ai_draft_text=rendered_text,   # rendered prose = what therapist sees and edits
             ai_model=ai_model,
-            ai_prompt_version="1.0",
+            ai_prompt_version="2.0",
+            ai_confidence=ai_confidence,
             modality_pack_id=modality_pack_id,
         )
 
@@ -336,13 +407,12 @@ class SessionService:
         if agent.provider:
             checker = CompletenessChecker(agent.provider)
             completeness = await checker.check(
-                summary_text=result.full_summary or "",
+                summary_text=rendered_text,
                 modality_pack=modality_pack,
             )
             summary.completeness_score = completeness.score if completeness.score >= 0 else None
             summary.completeness_data = completeness.to_dict()
             self.db.flush()
-            # Log the checker call as a separate generation row
             self._write_generation_log(
                 therapist_id=therapist_id,
                 flow_type=FlowType.COMPLETENESS_CHECK,
@@ -353,7 +423,7 @@ class SessionService:
                 generation_result=checker._last_result,
             )
 
-        # Write main generation telemetry row
+        # Log extraction call and render call separately
         self._write_generation_log(
             therapist_id=therapist_id,
             flow_type=FlowType.SESSION_SUMMARY,
@@ -361,6 +431,16 @@ class SessionService:
             session_id=session.id,
             session_summary_id=summary.id,
             modality_pack_id=modality_pack_id,
+            generation_result=pipeline._last_extraction_result,
+        )
+        self._write_generation_log(
+            therapist_id=therapist_id,
+            flow_type=FlowType.SESSION_SUMMARY,
+            agent=agent,
+            session_id=session.id,
+            session_summary_id=summary.id,
+            modality_pack_id=modality_pack_id,
+            generation_result=pipeline._last_render_result,
         )
 
         self.db.commit()
@@ -397,34 +477,46 @@ class SessionService:
         if not session:
             raise ValueError("Session not found or does not belong to this therapist")
 
-        result = await agent.generate_session_summary(
-            notes=therapist_notes,
-            context={
-                "session_number": session.session_number,
-                "patient_id": session.patient_id,
-            },
+        # Summary 2.0: two-call pipeline (extraction → rendering)
+        summary_input = await self._assemble_summary_input(
+            session=session,
+            raw_content=therapist_notes,
+            agent=agent,
         )
-        # Capture raw AI output for signature learning
-        ai_draft = agent._last_result.content if agent._last_result else None
-        ai_model = agent._last_result.model_used if agent._last_result else None
+        pipeline = SummaryPipeline(agent)
+        clinical_json_dict, rendered_text = await pipeline.run(summary_input)
+
         modality_pack = agent.modality_pack
         modality_pack_id = modality_pack.id if modality_pack else None
+        ai_model = (
+            pipeline._last_render_result.model_used if pipeline._last_render_result else None
+        )
+        ai_confidence = int(clinical_json_dict.get("confidence", 0.0) * 100)
+        new_homework_val = clinical_json_dict.get("new_homework")
+        homework_list = (
+            [new_homework_val]
+            if isinstance(new_homework_val, str) and new_homework_val
+            else (new_homework_val if isinstance(new_homework_val, list) else [])
+        )
+        risk_notes = (clinical_json_dict.get("risk_assessment") or {}).get("notes")
 
         summary = SessionSummary(
-            full_summary=result.full_summary,
-            topics_discussed=result.topics_discussed,
-            interventions_used=result.interventions_used,
-            patient_progress=result.patient_progress,
-            homework_assigned=result.homework_assigned,
-            next_session_plan=result.next_session_plan,
-            mood_observed=result.mood_observed,
-            risk_assessment=result.risk_assessment,
+            full_summary=rendered_text,
+            topics_discussed=clinical_json_dict.get("key_themes", []),
+            interventions_used=clinical_json_dict.get("interventions_used", []),
+            patient_progress=clinical_json_dict.get("client_response", ""),
+            homework_assigned=homework_list,
+            next_session_plan=clinical_json_dict.get("next_session_focus"),
+            mood_observed=clinical_json_dict.get("mood_observed"),
+            risk_assessment=risk_notes,
+            clinical_json=clinical_json_dict,
             generated_from="text",
             therapist_edited=False,
             approved_by_therapist=False,
-            ai_draft_text=ai_draft,
+            ai_draft_text=rendered_text,   # rendered prose = what therapist sees and edits
             ai_model=ai_model,
-            ai_prompt_version="1.0",
+            ai_prompt_version="2.0",
+            ai_confidence=ai_confidence,
             modality_pack_id=modality_pack_id,
         )
 
@@ -438,13 +530,12 @@ class SessionService:
         if agent.provider:
             checker = CompletenessChecker(agent.provider)
             completeness = await checker.check(
-                summary_text=result.full_summary or "",
+                summary_text=rendered_text,
                 modality_pack=modality_pack,
             )
             summary.completeness_score = completeness.score if completeness.score >= 0 else None
             summary.completeness_data = completeness.to_dict()
             self.db.flush()
-            # Log the checker call as a separate generation row
             self._write_generation_log(
                 therapist_id=therapist_id,
                 flow_type=FlowType.COMPLETENESS_CHECK,
@@ -455,7 +546,7 @@ class SessionService:
                 generation_result=checker._last_result,
             )
 
-        # Write main generation telemetry row
+        # Log extraction and render calls separately
         self._write_generation_log(
             therapist_id=therapist_id,
             flow_type=FlowType.SESSION_SUMMARY,
@@ -463,6 +554,16 @@ class SessionService:
             session_id=session.id,
             session_summary_id=summary.id,
             modality_pack_id=modality_pack_id,
+            generation_result=pipeline._last_extraction_result,
+        )
+        self._write_generation_log(
+            therapist_id=therapist_id,
+            flow_type=FlowType.SESSION_SUMMARY,
+            agent=agent,
+            session_id=session.id,
+            session_summary_id=summary.id,
+            modality_pack_id=modality_pack_id,
+            generation_result=pipeline._last_render_result,
         )
 
         self.db.commit()
@@ -506,6 +607,16 @@ class SessionService:
 
         summary = session.summary
         summary.approved_by_therapist = True
+
+        # Compute edit distance: how much did the therapist change the AI draft?
+        # ai_draft_text = rendered prose at generation time; full_summary = current (possibly edited) text
+        if summary.ai_draft_text and summary.full_summary:
+            try:
+                summary.therapist_edit_distance = compute_edit_distance(
+                    summary.ai_draft_text, summary.full_summary
+                )
+            except Exception:
+                pass  # non-blocking — best effort
 
         self.db.commit()
 

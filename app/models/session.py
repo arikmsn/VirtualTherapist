@@ -106,5 +106,9 @@ class SessionSummary(BaseModel):
     completeness_score = Column(Float, nullable=True)  # 0.0–1.0; -1.0 = checker error
     completeness_data = Column(JSON, nullable=True)    # full CompletenessResult dict
 
+    # Session Summary 2.0 (added migration 016)
+    clinical_json = Column(JSON, nullable=True)        # intermediate extraction artifact (Call 1)
+    therapist_edit_distance = Column(Integer, nullable=True)  # chars changed vs ai_draft_text
+
     # Relationship
     session = relationship("Session", back_populates="summary")

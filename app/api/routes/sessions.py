@@ -112,6 +112,8 @@ class SummaryResponse(BaseModel):
     # Completeness check results (Phase 2)
     completeness_score: Optional[float] = None
     completeness_data: Optional[Dict[str, Any]] = None
+    # Session Summary 2.0 (Phase 3)
+    clinical_json: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
