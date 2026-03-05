@@ -106,6 +106,12 @@ class SummaryResponse(BaseModel):
     next_session_plan: Optional[str] = None
     mood_observed: Optional[str] = None
     risk_assessment: Optional[str] = None
+    # AI generation metadata (Phase 1+)
+    ai_model: Optional[str] = None
+    modality_pack_id: Optional[int] = None
+    # Completeness check results (Phase 2)
+    completeness_score: Optional[float] = None
+    completeness_data: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 

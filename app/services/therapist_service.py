@@ -177,6 +177,7 @@ class TherapistService:
 
     async def get_agent_for_therapist(self, therapist_id: int) -> TherapyAgent:
         """Get a personalized AI agent for a specific therapist"""
+        from app.ai.modality import resolve_modality_pack
 
         therapist = self.db.query(Therapist).filter(Therapist.id == therapist_id).first()
         if not therapist:
@@ -185,8 +186,13 @@ class TherapistService:
         if not therapist.profile.onboarding_completed:
             logger.warning(f"Therapist {therapist.email} has not completed onboarding")
 
-        # Create personalized agent
-        agent = TherapyAgent(therapist_profile=therapist.profile)
+        modality_pack = resolve_modality_pack(self.db, therapist_id)
+
+        # Create personalized agent with modality pack for three-layer prompt assembly
+        agent = TherapyAgent(
+            therapist_profile=therapist.profile,
+            modality_pack=modality_pack,
+        )
 
         return agent
 

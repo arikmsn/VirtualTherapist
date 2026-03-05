@@ -1,7 +1,7 @@
 """Session models - therapy sessions and summaries"""
 
 from sqlalchemy import (
-    Column, String, Text, JSON, Boolean, Integer,
+    Column, String, Text, JSON, Boolean, Integer, Float,
     ForeignKey, Date, DateTime, Enum as SQLEnum,
 )
 from sqlalchemy.orm import relationship
@@ -101,6 +101,10 @@ class SessionSummary(BaseModel):
     ai_confidence = Column(Integer)          # 0–100 confidence from generation call
     modality_pack_id = Column(Integer, ForeignKey("modality_packs.id",
                                                    ondelete="SET NULL"))
+
+    # Completeness check results (added migration 015)
+    completeness_score = Column(Float, nullable=True)  # 0.0–1.0; -1.0 = checker error
+    completeness_data = Column(JSON, nullable=True)    # full CompletenessResult dict
 
     # Relationship
     session = relationship("Session", back_populates="summary")

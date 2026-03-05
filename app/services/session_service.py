@@ -17,6 +17,7 @@ from app.core.agent import (
     TreatmentGoal,
 )
 from app.ai.models import FlowType
+from app.ai.completeness import CompletenessChecker
 from app.services.audit_service import AuditService
 from app.security.encryption import decrypt_data
 from loguru import logger
@@ -142,14 +143,17 @@ class SessionService:
         agent: TherapyAgent,
         session_id: Optional[int] = None,
         session_summary_id: Optional[int] = None,
+        modality_pack_id: Optional[int] = None,
+        generation_result=None,  # Optional[GenerationResult]; defaults to agent._last_result
     ) -> None:
         """
-        Best-effort: write a row to ai_generation_log using agent._last_result.
-        Called immediately after every agent generation call.
+        Best-effort: write a row to ai_generation_log.
+        Pass generation_result explicitly to log a result other than agent._last_result
+        (e.g. from the CompletenessChecker).
         Never raises — a logging failure must not block the main flow.
         """
         try:
-            last = agent._last_result
+            last = generation_result if generation_result is not None else agent._last_result
             if last is None:
                 return
             log_row = AIGenerationLog(
@@ -157,6 +161,7 @@ class SessionService:
                 flow_type=flow_type.value,
                 session_id=session_id,
                 session_summary_id=session_summary_id,
+                modality_pack_id=modality_pack_id,
                 model_used=last.model_used,
                 route_reason=last.route_reason,
                 prompt_version="1.0",
@@ -297,6 +302,9 @@ class SessionService:
         ai_draft = agent._last_result.content if agent._last_result else None
         ai_model = agent._last_result.model_used if agent._last_result else None
 
+        modality_pack = agent.modality_pack
+        modality_pack_id = modality_pack.id if modality_pack else None
+
         # Step 3 — Persist transcript + summary + AI metadata
         summary = SessionSummary(
             full_summary=result.full_summary,
@@ -314,6 +322,7 @@ class SessionService:
             ai_draft_text=ai_draft,
             ai_model=ai_model,
             ai_prompt_version="1.0",
+            modality_pack_id=modality_pack_id,
         )
 
         self.db.add(summary)
@@ -323,13 +332,35 @@ class SessionService:
         session.summary_id = summary.id
         self.db.flush()
 
-        # Write generation telemetry row
+        # Step 4 — Completeness check (fast model, best-effort)
+        if agent.provider:
+            checker = CompletenessChecker(agent.provider)
+            completeness = await checker.check(
+                summary_text=result.full_summary or "",
+                modality_pack=modality_pack,
+            )
+            summary.completeness_score = completeness.score if completeness.score >= 0 else None
+            summary.completeness_data = completeness.to_dict()
+            self.db.flush()
+            # Log the checker call as a separate generation row
+            self._write_generation_log(
+                therapist_id=therapist_id,
+                flow_type=FlowType.COMPLETENESS_CHECK,
+                agent=agent,
+                session_id=session.id,
+                session_summary_id=summary.id,
+                modality_pack_id=modality_pack_id,
+                generation_result=checker._last_result,
+            )
+
+        # Write main generation telemetry row
         self._write_generation_log(
             therapist_id=therapist_id,
             flow_type=FlowType.SESSION_SUMMARY,
             agent=agent,
             session_id=session.id,
             session_summary_id=summary.id,
+            modality_pack_id=modality_pack_id,
         )
 
         self.db.commit()
@@ -376,6 +407,8 @@ class SessionService:
         # Capture raw AI output for signature learning
         ai_draft = agent._last_result.content if agent._last_result else None
         ai_model = agent._last_result.model_used if agent._last_result else None
+        modality_pack = agent.modality_pack
+        modality_pack_id = modality_pack.id if modality_pack else None
 
         summary = SessionSummary(
             full_summary=result.full_summary,
@@ -392,6 +425,7 @@ class SessionService:
             ai_draft_text=ai_draft,
             ai_model=ai_model,
             ai_prompt_version="1.0",
+            modality_pack_id=modality_pack_id,
         )
 
         self.db.add(summary)
@@ -400,13 +434,35 @@ class SessionService:
         session.summary_id = summary.id
         self.db.flush()
 
-        # Write generation telemetry row
+        # Completeness check (fast model, best-effort)
+        if agent.provider:
+            checker = CompletenessChecker(agent.provider)
+            completeness = await checker.check(
+                summary_text=result.full_summary or "",
+                modality_pack=modality_pack,
+            )
+            summary.completeness_score = completeness.score if completeness.score >= 0 else None
+            summary.completeness_data = completeness.to_dict()
+            self.db.flush()
+            # Log the checker call as a separate generation row
+            self._write_generation_log(
+                therapist_id=therapist_id,
+                flow_type=FlowType.COMPLETENESS_CHECK,
+                agent=agent,
+                session_id=session.id,
+                session_summary_id=summary.id,
+                modality_pack_id=modality_pack_id,
+                generation_result=checker._last_result,
+            )
+
+        # Write main generation telemetry row
         self._write_generation_log(
             therapist_id=therapist_id,
             flow_type=FlowType.SESSION_SUMMARY,
             agent=agent,
             session_id=session.id,
             session_summary_id=summary.id,
+            modality_pack_id=modality_pack_id,
         )
 
         self.db.commit()

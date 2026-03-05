@@ -12,6 +12,10 @@ from app.ai.provider import AIProvider, AnthropicProvider
 from app.ai.router import ModelRouter
 from loguru import logger
 
+# Imported lazily to avoid circular imports at module load
+# from app.models.modality import ModalityPack
+# from app.ai.modality import assemble_system_prompt
+
 
 class SessionSummaryResult:
     """Structured result from AI session summary generation."""
@@ -152,15 +156,18 @@ class TherapyAgent:
         self,
         therapist_profile: Optional[TherapistProfile] = None,
         provider: Optional[AIProvider] = None,
+        modality_pack=None,  # Optional[ModalityPack] — typed loosely to avoid circular import
     ):
         """
         Args:
             therapist_profile: personalises prompts.
             provider:          AI provider; defaults to AnthropicProvider from settings.
+            modality_pack:     Active ModalityPack; triggers three-layer prompt assembly.
         """
         from app.core.config import is_placeholder_key
 
         self.profile = therapist_profile
+        self.modality_pack = modality_pack
         self.router = ModelRouter()
         self._last_result: Optional[GenerationResult] = None
 
@@ -172,7 +179,10 @@ class TherapyAgent:
             logger.warning("ANTHROPIC_API_KEY is missing - AI text generation will not work")
             self.provider = None
 
-        self.system_prompt = self._build_system_prompt()
+        base_prompt = self._build_system_prompt()
+        # Phase 2: apply three-layer assembly (modality → quality rule → base)
+        from app.ai.modality import assemble_system_prompt
+        self.system_prompt = assemble_system_prompt(base_prompt, modality_pack)
 
     def _build_system_prompt(self) -> str:
         """
