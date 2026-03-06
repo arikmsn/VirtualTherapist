@@ -369,3 +369,27 @@ class PrepPipeline:
         self._last_render_result = result
         self.agent._last_result = result
         return result.content
+
+    async def extract_only(self, inp: PrepInput) -> dict:
+        """Run extraction call only (Call 1). Used by streaming endpoints."""
+        return await self._extract(inp)
+
+    async def render_stream(self, inp: PrepInput, prep_json: dict):
+        """
+        Stream the render call (Call 2) token by token.
+        Yields raw text chunks. Used by the /prep/stream SSE endpoint.
+        """
+        system_msg = _build_render_system_prompt(inp)
+        user_msg = _build_render_user_prompt(inp, prep_json)
+        model_id, route_reason = self._resolve_model(inp)
+
+        async for chunk in self.agent.provider.generate_stream(
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            model=model_id,
+            flow_type=FlowType.SESSION_PREP,
+            route_reason=route_reason,
+        ):
+            yield chunk

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
+from typing import AsyncIterator
 
 from loguru import logger
 
@@ -100,13 +101,18 @@ class AnthropicProvider(AIProvider):
         if system_text:
             kwargs["system"] = system_text
 
+        estimated_ctx = sum(len(m.get("content", "")) for m in messages) // 4
+        logger.info(
+            f"[{flow_type.value}] model={model} context_tokens≈{estimated_ctx} reason={route_reason}"
+        )
+
         response = await self._client.messages.create(**kwargs)
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
         content = response.content[0].text if response.content else ""
 
-        logger.debug(
-            f"[AnthropicProvider] flow={flow_type.value} model={model} "
+        logger.info(
+            f"[{flow_type.value}] done model={model} "
             f"in={response.usage.input_tokens} out={response.usage.output_tokens} "
             f"ms={elapsed_ms}"
         )
@@ -121,6 +127,48 @@ class AnthropicProvider(AIProvider):
             generation_ms=elapsed_ms,
             route_reason=route_reason,
         )
+
+
+    async def generate_stream(
+        self,
+        messages: list[dict],
+        *,
+        model: str,
+        flow_type: FlowType,
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        route_reason: str = "",
+    ) -> AsyncIterator[str]:
+        """
+        Stream token chunks from Anthropic.  Yields raw text fragments as they arrive.
+        Does NOT write a GenerationResult — callers are responsible for logging if needed.
+        """
+        system_parts: list[str] = []
+        turns: list[dict] = []
+        for msg in messages:
+            if msg["role"] == "system":
+                system_parts.append(msg["content"])
+            else:
+                turns.append({"role": msg["role"], "content": msg["content"]})
+
+        system_text = "\n\n".join(system_parts)
+        kwargs: dict = dict(
+            model=model,
+            messages=turns,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        if system_text:
+            kwargs["system"] = system_text
+
+        estimated_ctx = sum(len(m.get("content", "")) for m in messages) // 4
+        logger.info(
+            f"[{flow_type.value}] STREAM model={model} context_tokens≈{estimated_ctx} reason={route_reason}"
+        )
+
+        async with self._client.messages.stream(**kwargs) as stream:
+            async for text in stream.text_stream:
+                yield text
 
 
 class OpenAIProvider(AIProvider):

@@ -1,6 +1,8 @@
 """Session management routes"""
 
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DBSession
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -659,3 +661,119 @@ async def generate_prep_v2(
     except Exception as e:
         logger.exception(f"generate_prep_v2 session={session_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{session_id}/prep/stream")
+async def stream_prep_v2(
+    session_id: int,
+    request: PrepRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Streaming variant of POST /{session_id}/prep.
+
+    SSE event stream:
+      data: {"phase": "extracting"}          — extraction started (Call 1)
+      data: {"phase": "rendering"}           — rendering started (Call 2, streaming)
+      data: {"chunk": "..."}                 — rendered text fragment
+      data: {"phase": "done", "prep_json": {...}, "sessions_analyzed": N}
+      data: [DONE]                           — stream end sentinel
+
+    The UI can display text progressively while Call 1 is still low-latency.
+    """
+    from app.ai.prep import PrepInput, PrepPipeline
+    from app.ai.signature import SignatureEngine, inject_into_prompt
+    from app.models.session import Session as TherapySession
+    from app.models.patient import Patient
+
+    mode_str = (request.mode or "concise").lower()
+    try:
+        mode = PrepMode(mode_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid prep mode: {mode_str}")
+
+    session_service = SessionService(db)
+    therapist_service = TherapistService(db)
+
+    # Ownership check
+    session = db.query(TherapySession).filter(
+        TherapySession.id == session_id,
+        TherapySession.therapist_id == current_therapist.id,
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+
+    # Build approved summaries (same logic as generate_prep_v2)
+    from app.models.session import Session as TherapySession
+    patient_sessions_q = (
+        db.query(TherapySession)
+        .filter(
+            TherapySession.patient_id == session.patient_id,
+            TherapySession.summary_id.isnot(None),
+        )
+        .order_by(TherapySession.session_date.asc())
+        .all()
+    )
+    from app.models.session import SummaryStatus
+    approved_summaries = []
+    for s in patient_sessions_q:
+        summary = s.summary
+        if summary and summary.approved_by_therapist:
+            approved_summaries.append({
+                "session_date": str(s.session_date),
+                "session_number": s.session_number,
+                "full_summary": summary.full_summary,
+                "topics_discussed": summary.topics_discussed,
+                "homework_assigned": summary.homework_assigned,
+                "next_session_plan": summary.next_session_plan,
+                "risk_assessment": summary.risk_assessment,
+                "mood_observed": summary.mood_observed,
+                "clinical_json": summary.clinical_json,
+            })
+    approved_summaries = approved_summaries[-10:]
+
+    modality_name = "generic_integrative"
+    modality_prompt_module = None
+    if agent.modality_pack:
+        modality_name = agent.modality_pack.name
+        modality_prompt_module = agent.modality_pack.prompt_module
+
+    sig_engine = SignatureEngine(db)
+    sig_profile = await sig_engine.get_active_profile(current_therapist.id)
+    signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
+
+    prep_inp = PrepInput(
+        client_id=session.patient_id,
+        session_id=session_id,
+        therapist_id=current_therapist.id,
+        mode=mode,
+        modality=modality_name,
+        approved_summaries=approved_summaries,
+        modality_prompt_module=modality_prompt_module,
+        therapist_signature=signature_prompt,
+    )
+
+    async def _sse_generator():
+        pipeline = PrepPipeline(agent)
+        try:
+            yield f"data: {json.dumps({'phase': 'extracting'})}\n\n"
+            prep_json = await pipeline.extract_only(prep_inp)
+
+            yield f"data: {json.dumps({'phase': 'rendering'})}\n\n"
+            async for chunk in pipeline.render_stream(prep_inp, prep_json):
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+
+            yield f"data: {json.dumps({'phase': 'done', 'prep_json': prep_json, 'sessions_analyzed': len(approved_summaries)})}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as exc:
+            logger.exception(f"stream_prep_v2 session={session_id} error: {exc!r}")
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        _sse_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

@@ -972,6 +972,7 @@ class SessionService:
                     "patient_progress": summary.patient_progress,
                     "risk_assessment": summary.risk_assessment,
                 })
+        approved_summaries = approved_summaries[-10:]  # last 10 — older sessions add noise
 
         if not approved_summaries:
             raise ValueError("אין סיכומים מאושרים עבור מטופל זה. יש לאשר לפחות סיכום אחד.")
@@ -1146,6 +1147,7 @@ class SessionService:
                     "mood_observed": summary.mood_observed,
                     "clinical_json": summary.clinical_json,
                 })
+        approved_summaries = approved_summaries[-10:]  # last 10 — older sessions add noise
 
         # Resolve modality info from the agent's modality pack
         modality_name = "generic_integrative"
@@ -1195,6 +1197,7 @@ class SessionService:
 
         # Persist to session record
         session.prep_json = result.prep_json
+        session.prep_rendered_text = result.rendered_text
         session.prep_mode = mode.value
         session.prep_completeness_score = result.completeness_score
         session.prep_completeness_data = result.completeness_data
@@ -1235,10 +1238,10 @@ class SessionService:
         }
 
     def _prep_cache_response(self, session: "TherapySession") -> dict:
-        """Build a response dict from cached session.prep_json."""
+        """Build a response dict from cached session data (no LLM call)."""
         prep_json = session.prep_json or {}
         return {
-            "rendered_text": None,   # cached — caller may need to regenerate for text
+            "rendered_text": session.prep_rendered_text,
             "prep_json": prep_json,
             "mode": session.prep_mode,
             "completeness_score": session.prep_completeness_score,
@@ -1282,6 +1285,7 @@ class SessionService:
                     "homework_assigned": summary.homework_assigned,
                     "risk_assessment": summary.risk_assessment,
                 })
+        approved_summaries = approved_summaries[-10:]  # last 10 — older sessions add noise
 
         exercises = (
             self.db.query(Exercise)

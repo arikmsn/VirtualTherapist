@@ -56,6 +56,7 @@ class Session(BaseModel):
     prep_completeness_score = Column(Float, nullable=True)  # 0.0–1.0; -1.0 = checker error
     prep_completeness_data = Column(JSON, nullable=True)    # full CompletenessResult dict
     prep_generated_at = Column(DateTime, nullable=True)     # when prep was last generated
+    prep_rendered_text = Column(Text, nullable=True)        # rendered Hebrew prose (added migration 024)
 
     # Relationships
     therapist = relationship("Therapist", back_populates="sessions")
