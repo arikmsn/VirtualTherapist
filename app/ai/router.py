@@ -22,6 +22,7 @@ Escalation rules (evaluated in priority order)
 from __future__ import annotations
 
 from app.ai.models import FlowType
+from app.ai.model_registry import get_model
 from app.core.config import settings
 
 
@@ -117,8 +118,4 @@ class ModelRouter:
         return model_id, ",".join(reasons)
 
     def _tier_to_model(self, tier: str) -> str:
-        return {
-            "fast":     settings.AI_FAST_MODEL,
-            "standard": settings.AI_STANDARD_MODEL,
-            "deep":     settings.AI_DEEP_MODEL,
-        }[tier]
+        return get_model(tier)

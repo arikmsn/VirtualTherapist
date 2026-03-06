@@ -76,6 +76,11 @@ if settings.ADMIN_SECRET:
 async def startup_event():
     """Startup event handler"""
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+
+    # Auto-resolve latest Anthropic model IDs — falls back to config if API unreachable
+    from app.ai.model_registry import resolve_models
+    await resolve_models(settings.ANTHROPIC_API_KEY)
+
     scheduler.add_job(
         deliver_due_scheduled_messages,
         trigger="interval",
