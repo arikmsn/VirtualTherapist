@@ -123,6 +123,10 @@ class TherapistProfile(BaseModel):
                                                    ondelete="SET NULL"),
                               nullable=True)
 
+    # Professional license (added migration 022)
+    license_number = Column(String(64), nullable=True)  # e.g. "12345"
+    license_type = Column(String(64), nullable=True)    # e.g. "פסיכולוג קליני מורשה"
+
     # Relationship
     therapist = relationship("Therapist", back_populates="profile")
 

@@ -335,6 +335,8 @@ async def test_formal_record_telemetry():
 
     mock_profile = MagicMock()
     mock_profile.certifications = "פסיכולוג"
+    mock_profile.license_type = None      # let certifications fallback work
+    mock_profile.license_number = None
     mock_profile.therapeutic_approach = MagicMock(value="cbt")
     mock_profile.education = "PhD"
 

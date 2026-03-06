@@ -120,5 +120,10 @@ class SessionSummary(BaseModel):
     # Formal Record Support (added migration 018)
     record_notes = Column(Text, nullable=True)         # formal-record-specific therapist notes
 
+    # Edit lifecycle tracking (added migration 022)
+    edit_started_at = Column(DateTime, nullable=True)      # when therapist first opened editor
+    edit_ended_at = Column(DateTime, nullable=True)        # when therapist approved (closed edit)
+    therapist_edit_count = Column(Integer, default=0, nullable=True)  # saves before approval
+
     # Relationship
     session = relationship("Session", back_populates="summary")

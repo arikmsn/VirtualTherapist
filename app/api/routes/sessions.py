@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
 from app.api.deps import get_db, get_current_therapist
+from app.api.errors import AIMeta
 from app.models.therapist import Therapist
 from app.models.session import SessionType
 from app.services.session_service import SessionService
@@ -115,8 +116,14 @@ class SummaryResponse(BaseModel):
     completeness_data: Optional[Dict[str, Any]] = None
     # Session Summary 2.0 (Phase 3)
     clinical_json: Optional[Dict[str, Any]] = None
+    # Edit lifecycle (Phase 9)
+    edit_started_at: Optional[datetime] = None
+    edit_ended_at: Optional[datetime] = None
+    therapist_edit_count: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    # AI metadata block (Phase 9) — populated only on generate endpoints
+    ai_meta: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
@@ -332,6 +339,23 @@ async def update_session(
 # --- Summary endpoints ---
 
 
+def _summary_response_with_meta(summary) -> SummaryResponse:
+    """Build SummaryResponse and attach an AIMeta block from the summary's AI fields."""
+    import dataclasses
+    resp = SummaryResponse.model_validate(summary)
+    if summary.ai_model:
+        meta = AIMeta(
+            model_used=summary.ai_model,
+            tokens_used=0,           # token count not stored on SessionSummary
+            generation_time_ms=0,    # latency not stored on SessionSummary
+            completeness_score=summary.completeness_score,
+            confidence=summary.ai_confidence,
+            signature_applied=False,
+        )
+        resp.ai_meta = dataclasses.asdict(meta)
+    return resp
+
+
 @router.post("/{session_id}/summary/from-text", response_model=SummaryResponse)
 async def generate_summary_from_text(
     session_id: int,
@@ -355,7 +379,7 @@ async def generate_summary_from_text(
             agent=agent,
             therapist_id=current_therapist.id,
         )
-        return SummaryResponse.model_validate(summary)
+        return _summary_response_with_meta(summary)
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -409,7 +433,7 @@ async def generate_summary_from_audio(
             therapist_id=current_therapist.id,
             language=language,
         )
-        return SummaryResponse.model_validate(summary)
+        return _summary_response_with_meta(summary)
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

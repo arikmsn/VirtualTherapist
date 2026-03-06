@@ -81,8 +81,8 @@ class FormalRecordService:
         )
         return {
             "name": therapist.full_name if therapist else "",
-            "license_type": profile.certifications if profile else "",
-            "license_number": "",   # not yet modelled — therapist fills in via edit
+            "license_type": (profile.license_type or profile.certifications or "") if profile else "",
+            "license_number": (profile.license_number or "") if profile else "",
             "modality": profile.therapeutic_approach.value if (profile and profile.therapeutic_approach) else "",
             "education": profile.education if profile else "",
         }
