@@ -46,8 +46,8 @@ class Settings(BaseSettings):
     # Model routing - read from env so model IDs update without code changes.
     # Defaults match the approved IDs from the Phase 1 spec decision.
     AI_FAST_MODEL: str = "claude-haiku-4-5-20251001"
-    AI_STANDARD_MODEL: str = "claude-sonnet-4-6-20250929"
-    AI_DEEP_MODEL: str = "claude-opus-4-6-20251101"
+    AI_STANDARD_MODEL: str = "claude-sonnet-4-5-20250929"
+    AI_DEEP_MODEL: str = "claude-opus-4-5-20251101"
 
     # Generation defaults (apply when not overridden by the router)
     TEMPERATURE: float = 0.7

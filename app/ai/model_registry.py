@@ -35,8 +35,8 @@ TIER_PREFIXES: dict[str, str] = {
 
 _HARDCODED_DEFAULTS: dict[str, str] = {
     "fast":     "claude-haiku-4-5-20251001",
-    "standard": "claude-sonnet-4-6-20250929",
-    "deep":     "claude-opus-4-6-20251101",
+    "standard": "claude-sonnet-4-5-20250929",
+    "deep":     "claude-opus-4-5-20251101",
 }
 
 # Module-level cache populated by resolve_models() at startup.
