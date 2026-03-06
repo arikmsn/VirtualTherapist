@@ -125,5 +125,10 @@ class SessionSummary(BaseModel):
     edit_ended_at = Column(DateTime, nullable=True)        # when therapist approved (closed edit)
     therapist_edit_count = Column(Integer, default=0, nullable=True)  # saves before approval
 
+    # Therapist quality rating (added migration 023)
+    therapist_rating = Column(Integer, nullable=True)              # 1–5 star rating
+    therapist_rating_comment = Column(Text, nullable=True)         # optional free text
+    rated_at = Column(DateTime, nullable=True)
+
     # Relationship
     session = relationship("Session", back_populates="summary")

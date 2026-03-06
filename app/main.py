@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.routes import auth, agent, messages, patients, sessions, therapist, debug, exercises, admin
-from app.api.routes import formal_records, treatment_plans, deep_summaries, ui_affordances
+from app.api.routes import formal_records, treatment_plans, deep_summaries, ui_affordances, eval as eval_routes
 from app.core.scheduler import scheduler
 from app.services.message_service import deliver_due_scheduled_messages
 from loguru import logger
@@ -60,6 +60,7 @@ app.include_router(formal_records.router, prefix="/api/v1", tags=["Formal Record
 app.include_router(treatment_plans.router, prefix="/api/v1", tags=["Treatment Plans"])
 app.include_router(deep_summaries.router, prefix="/api/v1", tags=["Deep Summaries"])
 app.include_router(ui_affordances.router, prefix="/api/v1", tags=["UI Affordances"])
+app.include_router(eval_routes.router, prefix="/api/v1", tags=["Evaluation"])
 
 # Debug routes — only in development / staging (never production)
 if settings.ENVIRONMENT != "production":
@@ -135,11 +136,40 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint — includes last smoke-test result from the eval framework."""
+    from app.core.database import SessionLocal
+    from app.models.eval import AIEvalRun
+
+    ai_layer: dict = {
+        "last_smoke_test_passed": None,
+        "last_smoke_test_at": None,
+        "last_smoke_test_run_id": None,
+    }
+    try:
+        db = SessionLocal()
+        try:
+            last_smoke = (
+                db.query(AIEvalRun)
+                .filter(AIEvalRun.run_type == "smoke_test")
+                .order_by(AIEvalRun.run_at.desc())
+                .first()
+            )
+            if last_smoke:
+                ai_layer["last_smoke_test_passed"] = last_smoke.passed
+                ai_layer["last_smoke_test_at"] = (
+                    last_smoke.run_at.isoformat() if last_smoke.run_at else None
+                )
+                ai_layer["last_smoke_test_run_id"] = last_smoke.id
+        finally:
+            db.close()
+    except Exception:
+        pass  # DB unavailable — return None fields, don't crash health check
+
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
-        "version": settings.APP_VERSION
+        "version": settings.APP_VERSION,
+        "ai_layer": ai_layer,
     }
 
 
