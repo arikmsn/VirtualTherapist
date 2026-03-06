@@ -86,6 +86,17 @@ def upgrade() -> None:
         # SQLite (local dev) skips them silently.
         return
 
+    # Detect whether this is a Supabase database by checking if the auth schema
+    # exists (plain PostgreSQL on Render does not have it).
+    result = bind.execute(sa.text(
+        "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'auth'"
+    ))
+    if result.fetchone() is None:
+        # Plain PostgreSQL (e.g. Render, local Docker) — skip Supabase-specific
+        # RLS policies and functions.  RLS and policy creation require the
+        # auth.uid() Supabase extension which is not available here.
+        return
+
     # ── 2. Enable RLS on every flagged table ──────────────────────────────
     tables_needing_rls = [
         "therapists",

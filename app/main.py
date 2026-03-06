@@ -84,16 +84,13 @@ async def startup_event():
     scheduler.start()
     logger.info("APScheduler started — polling for scheduled messages every 30s")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
-    logger.info(f"AI Provider: {settings.AI_PROVIDER}")
-
-    # Log masked AI key status
-    key_field = "OPENAI_API_KEY"
-    key_value = settings.OPENAI_API_KEY
-    if key_value and len(key_value) > 8:
-        masked = key_value[:4] + "..." + key_value[-4:]
+    # Log AI key status (masked)
+    anthropic_key = settings.ANTHROPIC_API_KEY
+    if anthropic_key and len(anthropic_key) > 8:
+        masked = anthropic_key[:4] + "..." + anthropic_key[-4:]
     else:
         masked = "(not set)"
-    logger.info(f"AI Key ({key_field}): {masked}")
+    logger.info(f"AI (Anthropic): {masked} — models: fast={settings.AI_FAST_MODEL}, standard={settings.AI_STANDARD_MODEL}, deep={settings.AI_DEEP_MODEL}")
 
     # Google OAuth credential status — log presence without printing secrets
     if settings.GOOGLE_CLIENT_ID:

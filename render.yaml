@@ -37,14 +37,21 @@ services:
         sync: false          # REQUIRED — postgresql://user:pass@host:5432/db?sslmode=require
 
       # ── AI ───────────────────────────────────────────────────────────────
-      - key: AI_PROVIDER
-        value: openai
+      # Primary provider: Anthropic Claude (all text generation, summaries, treatment plans)
+      - key: ANTHROPIC_API_KEY
+        sync: false          # REQUIRED — Anthropic API key (claude-haiku/sonnet/opus)
 
-      - key: AI_MODEL
-        value: gpt-4o-mini
-
+      # Optional: OpenAI key for Whisper audio transcription only
       - key: OPENAI_API_KEY
-        sync: false          # REQUIRED — OpenAI API key
+        sync: false          # OPTIONAL — only needed for voice recap / audio upload
+
+      # Model overrides (optional — defaults are set in config.py)
+      # - key: AI_FAST_MODEL
+      #   value: claude-haiku-4-5-20251001
+      # - key: AI_STANDARD_MODEL
+      #   value: claude-sonnet-4-6-20250929
+      # - key: AI_DEEP_MODEL
+      #   value: claude-opus-4-6-20251101
 
       # ── CORS ─────────────────────────────────────────────────────────────
       - key: CORS_ORIGINS
