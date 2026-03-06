@@ -106,6 +106,15 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     setUser(newUser)
     if (completed !== undefined) {
       setOnboardingCompleted(completed)
+    } else {
+      // Callers should always pass `completed`; this fetch is a safety net so
+      // onboardingCompleted never stays null and the UI never gets stuck on a
+      // permanent loading spinner.
+      therapistAPI.getProfile().then((profile) => {
+        setOnboardingCompleted(profile.onboarding_completed ?? true)
+      }).catch(() => {
+        setOnboardingCompleted(true)
+      })
     }
     scheduleRefresh(newToken)
   }, [scheduleRefresh])

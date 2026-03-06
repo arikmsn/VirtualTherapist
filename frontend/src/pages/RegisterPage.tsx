@@ -42,7 +42,7 @@ export default function RegisterPage() {
         formData.fullName,
         formData.phone
       )
-      login(data.access_token, { id: data.therapist_id, email: data.email, fullName: data.full_name })
+      login(data.access_token, { id: data.therapist_id, email: data.email, fullName: data.full_name }, false)
       navigate('/onboarding')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'שגיאה ברישום')
