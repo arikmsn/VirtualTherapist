@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.routes import auth, agent, messages, patients, sessions, therapist, debug, exercises, admin
+from app.api.routes import formal_records
 from app.core.scheduler import scheduler
 from app.services.message_service import deliver_due_scheduled_messages
 from loguru import logger
@@ -55,6 +56,7 @@ app.include_router(patients.router, prefix="/api/v1/patients", tags=["Patients"]
 app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["Sessions"])
 app.include_router(therapist.router, prefix="/api/v1/therapist", tags=["Therapist Profile"])
 app.include_router(exercises.router, prefix="/api/v1/exercises", tags=["Exercises"])
+app.include_router(formal_records.router, prefix="/api/v1", tags=["Formal Records"])
 
 # Debug routes — only in development / staging (never production)
 if settings.ENVIRONMENT != "production":

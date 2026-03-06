@@ -44,6 +44,7 @@ class ModelRouter:
         FlowType.DEEP_SUMMARY:        "deep",
         FlowType.TREATMENT_PLAN:      "deep",
         FlowType.TWIN_PROFILE:        "deep",
+        FlowType.FORMAL_RECORD:       "deep",   # Phase 5: always deep — high-stakes docs
     }
 
     # Escalation thresholds

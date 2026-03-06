@@ -117,5 +117,8 @@ class SessionSummary(BaseModel):
     clinical_json = Column(JSON, nullable=True)        # intermediate extraction artifact (Call 1)
     therapist_edit_distance = Column(Integer, nullable=True)  # chars changed vs ai_draft_text
 
+    # Formal Record Support (added migration 018)
+    record_notes = Column(Text, nullable=True)         # formal-record-specific therapist notes
+
     # Relationship
     session = relationship("Session", back_populates="summary")

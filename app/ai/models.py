@@ -29,6 +29,7 @@ class FlowType(str, Enum):
     DEEP_SUMMARY = "deep_summary"
     TREATMENT_PLAN = "treatment_plan"
     TWIN_PROFILE = "twin_profile"
+    FORMAL_RECORD = "formal_record"  # Phase 5: Israeli formal clinical documentation
 
 
 @dataclass
