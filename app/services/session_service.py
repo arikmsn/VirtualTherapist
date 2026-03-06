@@ -19,6 +19,7 @@ from app.core.agent import (
 from app.ai.models import FlowType
 from app.ai.completeness import CompletenessChecker
 from app.ai.summary_pipeline import SummaryInput, SummaryPipeline, compute_edit_distance
+from app.ai.prep import PrepInput, PrepMode, PrepPipeline, PrepResult
 from app.services.audit_service import AuditService
 from app.security.encryption import decrypt_data
 from loguru import logger
@@ -1033,6 +1034,172 @@ class SessionService:
 
         logger.info(f"Generated prep brief for session {session_id} ({len(recent)} summaries)")
         return result
+
+    # ── Pre-Session Prep 2.0 (Phase 4) ───────────────────────────────────────
+
+    _PREP_CACHE_SECONDS = 600  # 10 minutes
+
+    async def generate_prep_v2(
+        self,
+        session_id: int,
+        therapist_id: int,
+        mode: PrepMode,
+        agent: "TherapyAgent",
+    ) -> dict:
+        """
+        Generate a structured pre-session prep brief using the Phase 4 two-call pipeline.
+
+        SOURCE OF TRUTH RULE: only summaries where approved_by_therapist=True are used.
+        Returns a dict suitable for the PrepResponse schema.
+
+        Cache: if the same mode was generated in the last 10 minutes, returns the
+        cached result from sessions.prep_json without an LLM call.
+        """
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
+        if not session:
+            raise ValueError("Session not found or does not belong to this therapist")
+
+        patient = self.db.query(Patient).filter(Patient.id == session.patient_id).first()
+        if not patient:
+            raise ValueError("Patient not found")
+
+        # Cache check — same mode, generated within last 10 minutes
+        if (
+            session.prep_json is not None
+            and session.prep_mode == mode.value
+            and session.prep_generated_at is not None
+        ):
+            age_seconds = (datetime.utcnow() - session.prep_generated_at).total_seconds()
+            if age_seconds < self._PREP_CACHE_SECONDS:
+                logger.info(
+                    f"[prep_v2] session={session_id} mode={mode.value} — cache hit "
+                    f"(age={age_seconds:.0f}s)"
+                )
+                return self._prep_cache_response(session)
+
+        # Fetch ALL approved summaries for this patient, oldest → newest
+        # SOURCE OF TRUTH: approved_by_therapist=True ONLY — never ai_draft_text
+        patient_sessions_q = (
+            self.db.query(TherapySession)
+            .filter(
+                TherapySession.patient_id == session.patient_id,
+                TherapySession.summary_id.isnot(None),
+            )
+            .order_by(TherapySession.session_date.asc())
+            .all()
+        )
+        approved_summaries = []
+        for s in patient_sessions_q:
+            summary = s.summary
+            if summary and summary.approved_by_therapist:
+                approved_summaries.append({
+                    "session_date": str(s.session_date),
+                    "session_number": s.session_number,
+                    "full_summary": summary.full_summary,
+                    "topics_discussed": summary.topics_discussed,
+                    "homework_assigned": summary.homework_assigned,
+                    "next_session_plan": summary.next_session_plan,
+                    "risk_assessment": summary.risk_assessment,
+                    "mood_observed": summary.mood_observed,
+                    "clinical_json": summary.clinical_json,
+                })
+
+        # Resolve modality info from the agent's modality pack
+        modality_name = "generic_integrative"
+        modality_prompt_module = None
+        if agent.modality_pack:
+            modality_name = agent.modality_pack.name
+            modality_prompt_module = agent.modality_pack.prompt_module
+
+        prep_inp = PrepInput(
+            client_id=session.patient_id,
+            session_id=session_id,
+            therapist_id=therapist_id,
+            mode=mode,
+            modality=modality_name,
+            approved_summaries=approved_summaries,
+            modality_prompt_module=modality_prompt_module,
+            therapist_signature=None,  # Phase 6
+        )
+
+        pipeline = PrepPipeline(agent)
+        result: PrepResult = await pipeline.run(prep_inp)
+
+        # Completeness check on rendered text (fast model, best-effort)
+        modality_pack = agent.modality_pack if hasattr(agent, "modality_pack") else None
+        if agent.provider and result.rendered_text != "" and approved_summaries:
+            checker = CompletenessChecker(agent.provider)
+            completeness = await checker.check(
+                summary_text=result.rendered_text,
+                modality_pack=modality_pack,
+            )
+            result.completeness_score = completeness.score if completeness.score >= 0 else 0.0
+            result.completeness_data = completeness.to_dict()
+            # Log completeness check
+            self._write_generation_log(
+                therapist_id=therapist_id,
+                flow_type=FlowType.COMPLETENESS_CHECK,
+                agent=agent,
+                session_id=session_id,
+                modality_pack_id=modality_pack.id if modality_pack else None,
+                generation_result=checker._last_result,
+            )
+
+        # Persist to session record
+        session.prep_json = result.prep_json
+        session.prep_mode = mode.value
+        session.prep_completeness_score = result.completeness_score
+        session.prep_completeness_data = result.completeness_data
+        session.prep_generated_at = datetime.utcnow()
+        self.db.flush()
+
+        # Log extraction and rendering calls
+        self._write_generation_log(
+            therapist_id=therapist_id,
+            flow_type=FlowType.PRE_SESSION_PREP,
+            agent=agent,
+            session_id=session_id,
+            modality_pack_id=modality_pack.id if modality_pack else None,
+            generation_result=pipeline._last_extraction_result,
+        )
+        self._write_generation_log(
+            therapist_id=therapist_id,
+            flow_type=FlowType.PRE_SESSION_PREP,
+            agent=agent,
+            session_id=session_id,
+            modality_pack_id=modality_pack.id if modality_pack else None,
+            generation_result=pipeline._last_render_result,
+        )
+
+        logger.info(
+            f"[prep_v2] session={session_id} mode={mode.value} "
+            f"approved_summaries={len(approved_summaries)} "
+            f"tokens={result.tokens_used} completeness={result.completeness_score:.2f}"
+        )
+
+        return {
+            "rendered_text": result.rendered_text,
+            "prep_json": result.prep_json,
+            "mode": mode.value,
+            "completeness_score": result.completeness_score,
+            "sessions_analyzed": len(approved_summaries),
+            "generated_at": session.prep_generated_at.isoformat(),
+        }
+
+    def _prep_cache_response(self, session: "TherapySession") -> dict:
+        """Build a response dict from cached session.prep_json."""
+        prep_json = session.prep_json or {}
+        return {
+            "rendered_text": None,   # cached — caller may need to regenerate for text
+            "prep_json": prep_json,
+            "mode": session.prep_mode,
+            "completeness_score": session.prep_completeness_score,
+            "sessions_analyzed": prep_json.get("sessions_analyzed", 0),
+            "generated_at": session.prep_generated_at.isoformat() if session.prep_generated_at else None,
+        }
 
     def _build_patient_summary_context(
         self,

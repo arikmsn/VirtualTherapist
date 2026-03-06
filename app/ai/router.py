@@ -38,6 +38,7 @@ class ModelRouter:
         FlowType.CHAT:                "standard",
         FlowType.SESSION_SUMMARY:     "standard",
         FlowType.SESSION_PREP:        "standard",
+        FlowType.PRE_SESSION_PREP:    "standard",
         FlowType.PATIENT_INSIGHT:     "standard",
         FlowType.MESSAGE_DRAFT:       "standard",
         FlowType.DEEP_SUMMARY:        "deep",

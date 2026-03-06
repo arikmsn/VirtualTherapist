@@ -21,6 +21,7 @@ class FlowType(str, Enum):
     CHAT = "chat"
     SESSION_SUMMARY = "session_summary"
     SESSION_PREP = "session_prep"
+    PRE_SESSION_PREP = "pre_session_prep"   # Phase 4: structured two-call prep pipeline
     PATIENT_INSIGHT = "patient_insight"
     MESSAGE_DRAFT = "message_draft"
 

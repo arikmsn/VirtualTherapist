@@ -10,6 +10,7 @@ from app.models.therapist import Therapist
 from app.models.session import SessionType
 from app.services.session_service import SessionService
 from app.services.therapist_service import TherapistService
+from app.ai.prep import PrepMode
 from loguru import logger
 
 router = APIRouter()
@@ -571,4 +572,66 @@ async def generate_session_prep_brief(
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.exception(f"generate_prep_brief session={session_id} failed: {e!r}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Pre-Session Prep 2.0 (Phase 4) ─────────────────────────────────────────
+
+
+class PrepRequest(BaseModel):
+    mode: str = "concise"  # concise | deep | by_modality | gap_analysis
+
+
+class PrepResponse(BaseModel):
+    rendered_text: Optional[str] = None
+    prep_json: Optional[Dict[str, Any]] = None
+    mode: str
+    completeness_score: Optional[float] = None
+    sessions_analyzed: int = 0
+    generated_at: Optional[str] = None
+
+
+@router.post("/{session_id}/prep", response_model=PrepResponse)
+async def generate_prep_v2(
+    session_id: int,
+    request: PrepRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Generate a structured pre-session prep brief (Phase 4).
+
+    Auth: therapist must own the session.
+    Cache: returns cached result if same mode was generated within the last 10 minutes.
+    Source of truth: only approved summaries (approved_by_therapist=True) are used.
+    """
+    try:
+        mode = PrepMode(request.mode)
+    except ValueError:
+        valid = [m.value for m in PrepMode]
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid mode '{request.mode}'. Must be one of: {valid}",
+        )
+
+    session_service = SessionService(db)
+    therapist_service = TherapistService(db)
+
+    try:
+        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+        result = await session_service.generate_prep_v2(
+            session_id=session_id,
+            therapist_id=current_therapist.id,
+            mode=mode,
+            agent=agent,
+        )
+        return PrepResponse(**result)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        logger.exception(f"generate_prep_v2 session={session_id} RuntimeError: {e!r}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception(f"generate_prep_v2 session={session_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
