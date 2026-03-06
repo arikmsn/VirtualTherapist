@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { agentAPI, therapistAPI } from '@/lib/api'
 import { useAuth } from '@/auth/useAuth'
 import { CheckIcon } from '@heroicons/react/24/solid'
+import AppLogo from '@/components/common/AppLogo'
 
 const STEPS = [
-  { title: 'גישה טיפולית', description: 'ספר לנו על הגישה הטיפולית שלך' },
-  { title: 'סגנון כתיבה', description: 'איך אתה אוהב לכתוב סיכומים?' },
+  { title: 'גישה טיפולית', description: 'מהי הגישה הטיפולית שלך' },
+  { title: 'סגנון כתיבה', description: 'תיאור של הסיכומים הקיימים שלך' },
   { title: 'רקע מקצועי', description: 'פרטים שיעזרו לבינה המלאכותית להבין את הרקע שלך' },
   { title: 'דוגמאות ללמידה', description: 'דוגמאות כדי שהמערכת תלמד את הסגנון האישי שלך (לא חובה)' },
 ]
@@ -24,6 +25,27 @@ const THERAPEUTIC_APPROACHES = [
   { value: 'other', label: 'אחר' },
 ]
 
+const APPROACH_EXAMPLES: Record<string, string> = {
+  CBT: 'לדוגמה: אני עובד בדרך כלל עם CBT ממוקד מטרה, כולל שיעורי בית ותרגול בין מפגשים.',
+  psychodynamic: 'לדוגמה: אני עובד בגישה דינמית, עם דגש על יחסים, דפוסים חוזרים ועולם פנימי.',
+  humanistic: 'לדוגמה: אני מלווה את המטופל בתהליך של גדילה אישית, תוך דגש על הפוטנציאל הקיים.',
+  DBT: 'לדוגמה: אני משלב רגולציה רגשית, מיינדפולנס וכישורי סבילות למצוקה.',
+  ACT: 'לדוגמה: אני עובד על קבלת מחשבות ורגשות תוך מחויבות לפעולה בהתאם לערכים האישיים.',
+  EMDR: 'לדוגמה: אני משתמש ב-EMDR לעיבוד זיכרונות טראומטיים ולהפחתת תגובות פוסט-טראומטיות.',
+  gestalt: 'לדוגמה: אני עובד בגישת גשטלט, עם דגש על מודעות לרגע הנוכחי וניסוי ישיר.',
+  integrative: 'לדוגמה: אני משלב גישות שונות — CBT, פסיכודינמיקה ועבודה גופנית — לפי צרכי המטופל.',
+  psychodrama: 'לדוגמה: אני משתמש בטכניקות פסיכודרמה כדי לחקור ולשנות דפוסים רגשיים.',
+  other: 'תאר בקצרה את הגישה הטיפולית שלך, הטכניקות העיקריות ואופן העבודה שלך...',
+}
+
+const TONE_OPTIONS = [
+  'פורמלי',
+  'מקצועי אך נגיש',
+  'חברי',
+  'ישיר ותכליתי',
+  'אמפתי ורך',
+]
+
 export default function OnboardingPage() {
   const navigate = useNavigate()
   const { markOnboardingComplete } = useAuth()
@@ -34,7 +56,7 @@ export default function OnboardingPage() {
   const [form, setForm] = useState({
     approach: '',
     approachDescription: '',
-    tone: '',
+    toneExtra: '',
     messageLength: 'medium',
     terminology: '',
     education: '',
@@ -44,13 +66,23 @@ export default function OnboardingPage() {
     exampleSummary: '',
     exampleMessage: '',
   })
+  const [selectedTones, setSelectedTones] = useState<string[]>([])
 
   const set = (field: keyof typeof form, value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }))
 
+  const toggleTone = (tone: string) =>
+    setSelectedTones((prev) =>
+      prev.includes(tone) ? prev.filter((t) => t !== tone) : [...prev, tone]
+    )
+
+  // Combines chip selections + free-text extra into a single tone string for the backend
+  const buildToneString = () =>
+    [...selectedTones, form.toneExtra].filter(Boolean).join(', ')
+
   const canAdvance = (): boolean => {
     if (step === 0) return form.approach !== ''
-    if (step === 1) return form.tone.trim() !== ''
+    if (step === 1) return selectedTones.length > 0 || form.toneExtra.trim() !== ''
     return true
   }
 
@@ -67,7 +99,7 @@ export default function OnboardingPage() {
         })
       } else if (step === 1) {
         await agentAPI.completeOnboardingStep(2, {
-          tone: form.tone,
+          tone: buildToneString(),
           messageLength: form.messageLength,
           terminology: form.terminology,
         })
@@ -100,33 +132,12 @@ export default function OnboardingPage() {
     }
   }
 
-  const handleSkip = async () => {
-    // Allow skipping the last (optional) step
-    if (step === 3) {
-      setSaving(true)
-      setError('')
-      try {
-        await therapistAPI.completeOnboarding()
-        markOnboardingComplete()
-        navigate('/dashboard', { replace: true })
-      } catch {
-        setError('אירעה שגיאה. אנא נסה שוב.')
-      } finally {
-        setSaving(false)
-      }
-    }
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex flex-col" dir="rtl">
       {/* Header bar */}
-      <header className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center">
-            <span className="text-white text-xs font-bold">T</span>
-          </div>
-          <span className="font-semibold text-gray-900">TherapyCompanion</span>
-        </div>
+      <header className="bg-white border-b border-gray-100 px-6 py-3.5 flex items-center justify-between">
+        <AppLogo variant="full" size="md" />
         <span className="text-sm text-gray-400">הגדרות ראשוניות — שלב {step + 1} מתוך {STEPS.length}</span>
       </header>
 
@@ -141,8 +152,8 @@ export default function OnboardingPage() {
       {/* Main content */}
       <div className="flex-1 flex items-start justify-center py-12 px-4">
         <div className="w-full max-w-xl">
-          {/* Step indicators */}
-          <div className="flex items-center gap-2 mb-8">
+          {/* Step indicators — centered across the full card width */}
+          <div className="flex items-center justify-center gap-2 mb-8">
             {STEPS.map((_, i) => (
               <div key={i} className="flex items-center gap-2">
                 <div
@@ -195,8 +206,13 @@ export default function OnboardingPage() {
                     onChange={(e) => set('approachDescription', e.target.value)}
                     rows={4}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-                    placeholder="למשל: אני עובד עם CBT, בדגש על חשיפה הדרגתית ועבודה על מחשבות אוטומטיות..."
+                    placeholder="תאר בקצרה את אופן העבודה שלך, הטכניקות העיקריות ומה מייחד את הגישה שלך..."
                   />
+                  {form.approach && APPROACH_EXAMPLES[form.approach] && (
+                    <p className="mt-1.5 text-xs text-gray-400 leading-relaxed">
+                      {APPROACH_EXAMPLES[form.approach]}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -205,20 +221,38 @@ export default function OnboardingPage() {
             {step === 1 && (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     טון כתיבה <span className="text-red-500">*</span>
                   </label>
+                  {/* Tone chips */}
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {TONE_OPTIONS.map((tone) => (
+                      <button
+                        key={tone}
+                        type="button"
+                        onClick={() => toggleTone(tone)}
+                        className={`px-3.5 py-1.5 rounded-full text-sm border transition-colors ${
+                          selectedTones.includes(tone)
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'
+                        }`}
+                      >
+                        {tone}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Free-text extra */}
                   <input
                     type="text"
-                    value={form.tone}
-                    onChange={(e) => set('tone', e.target.value)}
+                    value={form.toneExtra}
+                    onChange={(e) => set('toneExtra', e.target.value)}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    placeholder="למשל: תומך וישיר, חם ומקצועי, אמפתי וממוקד..."
+                    placeholder="הוספות חופשיות, למשל: חם אך גבולות ברורים..."
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    אורך הודעות מועדף
+                    אורך סיכום מועדף
                   </label>
                   <div className="flex gap-3">
                     {[
@@ -243,7 +277,7 @@ export default function OnboardingPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    מינוח מקצועי נפוץ (לא חובה)
+                    האם יש מינוחים מועדפים להשתמש בהם (לא חובה)
                   </label>
                   <input
                     type="text"
@@ -332,7 +366,7 @@ export default function OnboardingPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    דוגמא להודעה שלחת למטופל
+                    דוגמא להודעה ששלחת למטופל
                   </label>
                   <textarea
                     value={form.exampleMessage}
@@ -341,6 +375,9 @@ export default function OnboardingPage() {
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
                     placeholder="הכנס כאן הודעה לדוגמא..."
                   />
+                  <p className="mt-1.5 text-xs text-gray-400 leading-relaxed">
+                    אפשר להדביק כאן הודעה טיפוסית ששלחת למטופל — למשל תזכורת לפגישה, משימה בין מפגשים, הודעת תמיכה קצרה או עדכון חשוב. השדה אופציונלי ומסייע למערכת ללמוד את סגנון התקשורת שלך עם מטופלים.
+                  </p>
                 </div>
               </div>
             )}
@@ -361,16 +398,6 @@ export default function OnboardingPage() {
               חזרה
             </button>
             <div className="flex items-center gap-3">
-              {step === STEPS.length - 1 && (
-                <button
-                  type="button"
-                  onClick={handleSkip}
-                  disabled={saving}
-                  className="px-4 py-2 text-sm text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                >
-                  דלג
-                </button>
-              )}
               <button
                 type="button"
                 onClick={handleNext}
