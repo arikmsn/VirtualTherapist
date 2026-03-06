@@ -62,7 +62,7 @@ export default function GoogleCallbackPage() {
           id: data.therapist_id,
           email: data.email,
           fullName: data.full_name,
-        })
+        }, data.is_onboarding_completed)
         navigate(data.is_onboarding_completed ? '/dashboard' : '/onboarding', { replace: true })
       })
       .catch((err: any) => {

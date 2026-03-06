@@ -10,6 +10,8 @@ import {
   XMarkIcon,
   MicrophoneIcon,
   ClipboardDocumentListIcon,
+  TrashIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI, exercisesAPI } from '@/lib/api'
 import { usePrepStream } from '@/hooks/usePrepStream'
@@ -71,6 +73,15 @@ export default function SessionDetailPage() {
 
   // Transcript toggle (for side-by-side view)
   const [showTranscript, setShowTranscript] = useState(true)
+
+  // Transcript editing + regenerate
+  const [editingTranscript, setEditingTranscript] = useState(false)
+  const [editTranscriptText, setEditTranscriptText] = useState('')
+  const [regenerating, setRegenerating] = useState(false)
+
+  // Delete summary
+  const [confirmDeleteSummary, setConfirmDeleteSummary] = useState(false)
+  const [deletingSummary, setDeletingSummary] = useState(false)
 
   // Prep brief state
   const prepStream = usePrepStream()
@@ -250,6 +261,35 @@ export default function SessionDetailPage() {
       setError(detail)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleRegenerateFromTranscript = async () => {
+    if (!editTranscriptText.trim()) return
+    setRegenerating(true)
+    setError('')
+    try {
+      const result = await sessionsAPI.regenerateFromTranscript(Number(sessionId), editTranscriptText)
+      setSummary(result)
+      setEditingTranscript(false)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'שגיאה בעדכון הסיכום')
+    } finally {
+      setRegenerating(false)
+    }
+  }
+
+  const handleDeleteSummary = async () => {
+    setDeletingSummary(true)
+    setError('')
+    try {
+      await sessionsAPI.deleteSummary(Number(sessionId))
+      setSummary(null)
+      setConfirmDeleteSummary(false)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'שגיאה במחיקת הסיכום')
+    } finally {
+      setDeletingSummary(false)
     }
   }
 
@@ -477,7 +517,7 @@ export default function SessionDetailPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {!editing && (
               <button onClick={startEditing} className="btn-secondary flex items-center gap-2">
                 <PencilSquareIcon className="h-4 w-4" />
@@ -519,41 +559,122 @@ export default function SessionDetailPage() {
                 </button>
               </>
             )}
+            {!editing && (
+              <button
+                onClick={() => setConfirmDeleteSummary(true)}
+                className="mr-auto flex items-center gap-1 text-sm text-red-400 hover:text-red-600"
+              >
+                <TrashIcon className="h-4 w-4" />
+                מחק סיכום
+              </button>
+            )}
           </div>
+
+          {/* Delete summary confirmation */}
+          {confirmDeleteSummary && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <ExclamationTriangleIcon className="h-5 w-5 text-red-500 shrink-0" />
+              <p className="text-sm text-red-700 flex-1">
+                למחוק את הסיכום? הפעולה בלתי הפיכה. הפגישה תישמר ותוכל ליצור סיכום חדש.
+              </p>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() => setConfirmDeleteSummary(false)}
+                  className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg"
+                >
+                  ביטול
+                </button>
+                <button
+                  onClick={handleDeleteSummary}
+                  disabled={deletingSummary}
+                  className="text-sm text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
+                >
+                  {deletingSummary ? 'מוחק...' : 'מחק'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Side-by-side: Transcript + Summary (PRD requirement for audio-generated summaries) */}
           {summary.generated_from === 'audio' && summary.transcript && (
             <div>
-              <button
-                onClick={() => setShowTranscript(!showTranscript)}
-                className="text-sm text-blue-600 hover:text-blue-800 mb-2"
-              >
-                {showTranscript ? 'הסתר תמליל' : 'הצג תמליל מקורי'}
-              </button>
+              <div className="flex items-center gap-3 mb-2">
+                <button
+                  onClick={() => setShowTranscript(!showTranscript)}
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                >
+                  {showTranscript ? 'הסתר תמליל' : 'הצג תמליל מקורי'}
+                </button>
+                {showTranscript && !editingTranscript && (
+                  <button
+                    onClick={() => {
+                      setEditTranscriptText(summary.transcript || '')
+                      setEditingTranscript(true)
+                    }}
+                    className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    <PencilSquareIcon className="h-3.5 w-3.5" />
+                    ערוך תמליל
+                  </button>
+                )}
+                {editingTranscript && (
+                  <button
+                    onClick={() => setEditingTranscript(false)}
+                    className="text-sm text-gray-400 hover:text-gray-600"
+                  >
+                    בטל עריכה
+                  </button>
+                )}
+              </div>
 
               {showTranscript && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Transcript panel */}
+                editingTranscript ? (
                   <div className="card border-blue-200 bg-blue-50">
                     <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
                       <MicrophoneIcon className="h-4 w-4" />
-                      תמליל מקורי
-                      <span className="text-xs font-normal text-blue-500 mr-1">
-                        {formatDatetimeIL(summary.created_at)}
-                      </span>
+                      עריכת תמליל
                     </h3>
-                    <p className="text-blue-700 whitespace-pre-line text-sm leading-relaxed">
-                      {summary.transcript}
-                    </p>
+                    <textarea
+                      value={editTranscriptText}
+                      onChange={(e) => setEditTranscriptText(e.target.value)}
+                      rows={10}
+                      className="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 resize-y"
+                    />
+                    <div className="flex justify-end mt-3">
+                      <button
+                        onClick={handleRegenerateFromTranscript}
+                        disabled={regenerating || !editTranscriptText.trim()}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        <ArrowPathIcon className={`h-4 w-4 ${regenerating ? 'animate-spin' : ''}`} />
+                        {regenerating ? 'מעדכן סיכום...' : 'עדכן סיכום מהתמליל המתוקן'}
+                      </button>
+                    </div>
                   </div>
-                  {/* Summary panel (side-by-side) */}
-                  <div className="card">
-                    <h3 className="font-bold text-gray-800 mb-2">סיכום AI</h3>
-                    <p className="text-gray-700 whitespace-pre-line text-sm leading-relaxed">
-                      {summary.full_summary}
-                    </p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Transcript panel */}
+                    <div className="card border-blue-200 bg-blue-50">
+                      <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
+                        <MicrophoneIcon className="h-4 w-4" />
+                        תמליל מקורי
+                        <span className="text-xs font-normal text-blue-500 mr-1">
+                          {formatDatetimeIL(summary.created_at)}
+                        </span>
+                      </h3>
+                      <p className="text-blue-700 whitespace-pre-line text-sm leading-relaxed">
+                        {summary.transcript}
+                      </p>
+                    </div>
+                    {/* Summary panel (side-by-side) */}
+                    <div className="card">
+                      <h3 className="font-bold text-gray-800 mb-2">סיכום</h3>
+                      <p className="text-gray-700 whitespace-pre-line text-sm leading-relaxed">
+                        {summary.full_summary}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )
               )}
             </div>
           )}

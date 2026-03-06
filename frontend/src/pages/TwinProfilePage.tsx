@@ -159,6 +159,17 @@ export default function TwinProfilePage() {
   const [yearsOfExperience, setYearsOfExperience] = useState('')
   const [areasOfExpertise, setAreasOfExpertise] = useState('')
 
+  // Signature profile ("מה למדנו")
+  const [sigProfile, setSigProfile] = useState<{
+    is_active: boolean
+    approved_sample_count: number
+    min_samples_required: number
+    samples_until_active: number
+    style_summary: string | null
+    style_version: number
+    last_updated_at: string | null
+  } | null>(null)
+
   // Save state
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -180,19 +191,26 @@ export default function TwinProfilePage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const data: TherapistProfile = await therapistAPI.getProfile()
-        setProfile(data)
-        setToneWarmth(data.tone_warmth)
-        setDirectiveness(data.directiveness)
-        setProhibitions(data.prohibitions || [])
-        setCustomRules(data.custom_rules || '')
-        const mods = parseModalities(data)
+        const [data, sig] = await Promise.allSettled([
+          therapistAPI.getProfile() as Promise<TherapistProfile>,
+          therapistAPI.getSignatureProfile(),
+        ])
+        if (sig.status === 'fulfilled') setSigProfile(sig.value)
+        if (data.status === 'rejected') throw data.reason
+        const profileData = (data as PromiseFulfilledResult<TherapistProfile>).value
+        const data2 = profileData
+        setProfile(data2)
+        setToneWarmth(data2.tone_warmth)
+        setDirectiveness(data2.directiveness)
+        setProhibitions(data2.prohibitions || [])
+        setCustomRules(data2.custom_rules || '')
+        const mods = parseModalities(data2)
         setSelectedModalities(mods)
         setInitModalities(mods)
-        setEducation(data.education || '')
-        setCertifications(data.certifications || '')
-        setYearsOfExperience(data.years_of_experience || '')
-        setAreasOfExpertise(data.areas_of_expertise || '')
+        setEducation(data2.education || '')
+        setCertifications(data2.certifications || '')
+        setYearsOfExperience(data2.years_of_experience || '')
+        setAreasOfExpertise(data2.areas_of_expertise || '')
       } catch (err: any) {
         setError(err.response?.data?.detail || 'שגיאה בטעינת הפרופיל')
       } finally {
@@ -283,6 +301,84 @@ export default function TwinProfilePage() {
           <div className="text-lg font-bold text-therapy-calm">v{profile.style_version}</div>
         </div>
       </div>
+
+      {/* ── "מה למדנו" — Signature Learning Overview ── */}
+      {sigProfile && (
+        <div className="card border-indigo-100 bg-indigo-50">
+          <div className="flex items-center gap-2 mb-3">
+            <SparklesIcon className="h-5 w-5 text-indigo-500" />
+            <h2 className="text-base font-bold text-indigo-900">מה למדנו עליך</h2>
+            {sigProfile.is_active ? (
+              <span className="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full mr-auto">
+                מנגנון פעיל
+              </span>
+            ) : (
+              <span className="text-xs bg-gray-300 text-gray-600 px-2 py-0.5 rounded-full mr-auto">
+                לא מספיק דוגמאות עדיין
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div className="bg-white rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-indigo-700">{sigProfile.approved_sample_count}</div>
+              <div className="text-xs text-gray-500 mt-0.5">סיכומים מאושרים</div>
+            </div>
+            <div className="bg-white rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-indigo-700">{sigProfile.min_samples_required}</div>
+              <div className="text-xs text-gray-500 mt-0.5">נדרשים להפעלה</div>
+            </div>
+            <div className="bg-white rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-indigo-700">v{sigProfile.style_version}</div>
+              <div className="text-xs text-gray-500 mt-0.5">גרסת סגנון</div>
+            </div>
+            <div className="bg-white rounded-lg p-3 text-center">
+              <div className={`text-2xl font-bold ${sigProfile.samples_until_active === 0 ? 'text-green-600' : 'text-amber-600'}`}>
+                {sigProfile.samples_until_active === 0 ? '✓' : sigProfile.samples_until_active}
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {sigProfile.samples_until_active === 0 ? 'פעיל' : 'עוד לאישור'}
+              </div>
+            </div>
+          </div>
+
+          {sigProfile.style_summary ? (
+            <div>
+              <div className="text-xs font-medium text-indigo-700 mb-1.5">סיכום הסגנון הנלמד:</div>
+              <p className="text-sm text-indigo-900 leading-relaxed whitespace-pre-line bg-white rounded-lg p-3 border border-indigo-100">
+                {sigProfile.style_summary}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-indigo-600 bg-white rounded-lg p-3 border border-indigo-100">
+              {sigProfile.is_active
+                ? 'הסגנון נלמד — אשר עוד סיכומים כדי לראות סיכום מפורט.'
+                : `אשר ${sigProfile.samples_until_active} סיכומים נוספים כדי להפעיל את מנגנון הלמידה.`}
+            </p>
+          )}
+
+          {/* How it affects */}
+          <div className="mt-4 pt-3 border-t border-indigo-200">
+            <div className="text-xs font-medium text-indigo-700 mb-2">איך זה משפיע על ה-AI:</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {[
+                { label: 'סיכומי פגישות', desc: 'AI כותב בסגנון ובמבנה שלך' },
+                { label: 'הודעות למטופלים', desc: 'טון וניסוח מותאמים אישית' },
+                { label: 'תדריך הכנה לפגישה', desc: 'מוצג במינוח שמוכר לך' },
+                { label: 'תוכנית טיפולית', desc: 'גישה טיפולית ומטרות מותאמות' },
+              ].map((item) => (
+                <div key={item.label} className="flex items-start gap-2 bg-white rounded-lg p-2.5 border border-indigo-100">
+                  <CheckCircleIcon className="h-4 w-4 text-indigo-400 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-xs font-medium text-gray-800">{item.label}</div>
+                    <div className="text-xs text-gray-500">{item.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Section 1: Therapeutic modalities (editable multi-select) ── */}
       <div className="card">

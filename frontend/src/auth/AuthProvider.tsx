@@ -1,5 +1,5 @@
 import { createContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
-import { authAPI } from '@/lib/api'
+import { authAPI, therapistAPI } from '@/lib/api'
 
 const TOKEN_KEY = 'access_token'
 
@@ -24,8 +24,10 @@ export interface AuthContextValue {
   isReady: boolean
   token: string | null
   user: AuthUser | null
-  login: (token: string, user: AuthUser) => void
+  onboardingCompleted: boolean | null  // null = not yet loaded
+  login: (token: string, user: AuthUser, onboardingCompleted?: boolean) => void
   logout: () => void
+  markOnboardingComplete: () => void
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)
@@ -37,6 +39,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null)
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isReady, setIsReady] = useState(false)
+  const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearRefreshTimer = useCallback(() => {
@@ -52,6 +55,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('auth_user')
     setToken(null)
     setUser(null)
+    setOnboardingCompleted(null)
   }, [clearRefreshTimer])
 
   // scheduleRefresh is defined after logout so it can reference it
@@ -95,13 +99,20 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     }, delayMs)
   }, [clearRefreshTimer, logout]) // scheduleRefresh recurses via the ref below
 
-  const login = useCallback((newToken: string, newUser: AuthUser) => {
+  const login = useCallback((newToken: string, newUser: AuthUser, completed?: boolean) => {
     localStorage.setItem(TOKEN_KEY, newToken)
     localStorage.setItem('auth_user', JSON.stringify(newUser))
     setToken(newToken)
     setUser(newUser)
+    if (completed !== undefined) {
+      setOnboardingCompleted(completed)
+    }
     scheduleRefresh(newToken)
   }, [scheduleRefresh])
+
+  const markOnboardingComplete = useCallback(() => {
+    setOnboardingCompleted(true)
+  }, [])
 
   // On mount: restore token from localStorage and schedule refresh if still valid
   useEffect(() => {
@@ -114,6 +125,13 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
           const parsedUser = JSON.parse(storedUser) as AuthUser
           setUser(parsedUser)
           scheduleRefresh(stored)
+          // Fetch onboarding status from profile (non-blocking)
+          therapistAPI.getProfile().then((profile) => {
+            setOnboardingCompleted(profile.onboarding_completed ?? true)
+          }).catch(() => {
+            // If profile fetch fails, assume onboarding done to avoid blocking the UI
+            setOnboardingCompleted(true)
+          })
         } catch {
           localStorage.removeItem('auth_user')
         }
@@ -130,8 +148,10 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     isReady,
     token,
     user,
+    onboardingCompleted,
     login,
     logout,
+    markOnboardingComplete,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

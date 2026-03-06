@@ -1120,6 +1120,39 @@ class SessionService:
                     f"(age={age_seconds:.0f}s)"
                 )
                 return self._prep_cache_response(session)
+            # Content-based fingerprint check — if inputs unchanged, return cache even after timeout
+            # (avoids redundant AI call when therapist repeatedly clicks "generate")
+            if session.prep_input_fingerprint:
+                from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
+                # We need the summaries to compute the fingerprint; fetch them now
+                _sessions_q_fp = (
+                    self.db.query(TherapySession)
+                    .filter(
+                        TherapySession.patient_id == session.patient_id,
+                        TherapySession.summary_id.isnot(None),
+                    )
+                    .order_by(TherapySession.session_date.asc())
+                    .all()
+                )
+                _approved_fp = [
+                    s.summary.full_summary
+                    for s in _sessions_q_fp
+                    if s.summary and s.summary.approved_by_therapist
+                ][-10:]
+                _fp = compute_fingerprint({
+                    "mode": mode.value,
+                    "summaries": _approved_fp,
+                    "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
+                })
+                if (
+                    _fp == session.prep_input_fingerprint
+                    and session.prep_input_fingerprint_version == FINGERPRINT_VERSION
+                ):
+                    logger.info(
+                        f"[prep_v2] session={session_id} mode={mode.value} — fingerprint cache hit "
+                        f"(inputs unchanged, age={age_seconds:.0f}s)"
+                    )
+                    return self._prep_cache_response(session)
 
         # Fetch ALL approved summaries for this patient, oldest → newest
         # SOURCE OF TRUTH: approved_by_therapist=True ONLY — never ai_draft_text
@@ -1202,6 +1235,14 @@ class SessionService:
         session.prep_completeness_score = result.completeness_score
         session.prep_completeness_data = result.completeness_data
         session.prep_generated_at = datetime.utcnow()
+        # Store fingerprint of inputs so future calls can skip regeneration on no-change
+        from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
+        session.prep_input_fingerprint = compute_fingerprint({
+            "mode": mode.value,
+            "summaries": [s["full_summary"] for s in approved_summaries],
+            "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
+        })
+        session.prep_input_fingerprint_version = FINGERPRINT_VERSION
         self.db.flush()
 
         # Log extraction and rendering calls

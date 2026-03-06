@@ -390,6 +390,17 @@ export const sessionsAPI = {
   delete: async (sessionId: number, notifyPatient = false) => {
     await api.delete(`/sessions/${sessionId}`, { params: { notify_patient: notifyPatient } })
   },
+
+  deleteSummary: async (sessionId: number) => {
+    await api.delete(`/sessions/${sessionId}/summary`)
+  },
+
+  regenerateFromTranscript: async (sessionId: number, transcript: string) => {
+    const response = await api.post(`/sessions/${sessionId}/summary/regenerate-from-transcript`, {
+      transcript,
+    })
+    return response.data
+  },
 }
 
 // Patient Summaries API
@@ -417,6 +428,22 @@ export const patientSummariesAPI = {
 }
 
 // Treatment Plan API
+export interface TreatmentPlanVersion {
+  plan_id: number
+  patient_id: number
+  status: string
+  version: number
+  parent_version_id: number | null
+  plan_json: Record<string, unknown> | null
+  rendered_text: string | null
+  drift_score: number | null
+  drift_flags: string[] | null
+  approved_at: string | null
+  created_at: string
+  source: string | null
+  title: string | null
+}
+
 export const treatmentPlanAPI = {
   preview: async (patientId: number) => {
     const response = await api.post(`/patients/${patientId}/treatment-plan/preview`)
@@ -425,6 +452,45 @@ export const treatmentPlanAPI = {
       focus_areas: string[]
       suggested_interventions: string[]
     }
+  },
+
+  get: async (patientId: number) => {
+    const response = await api.get(`/clients/${patientId}/treatment-plan`)
+    return response.data as TreatmentPlanVersion
+  },
+
+  create: async (patientId: number, sessionIds?: number[]) => {
+    const response = await api.post(`/clients/${patientId}/treatment-plan`, {
+      session_ids: sessionIds ?? null,
+    })
+    return response.data as TreatmentPlanVersion
+  },
+
+  update: async (patientId: number, sessionIds?: number[]) => {
+    const response = await api.put(`/clients/${patientId}/treatment-plan`, {
+      session_ids: sessionIds ?? null,
+    })
+    return response.data as TreatmentPlanVersion
+  },
+
+  getHistory: async (patientId: number) => {
+    const response = await api.get(`/clients/${patientId}/treatment-plan/history`)
+    return response.data as Array<{
+      plan_id: number
+      status: string
+      version: number
+      parent_version_id: number | null
+      drift_score: number | null
+      approved_at: string | null
+      created_at: string
+    }>
+  },
+
+  getById: async (planId: number) => {
+    // Re-fetch the active plan — backend doesn't have a direct plan-by-id endpoint,
+    // so callers who need to restore a version use getHistory + get.
+    const response = await api.get(`/treatment-plans/${planId}`)
+    return response.data as TreatmentPlanVersion
   },
 }
 
@@ -503,6 +569,28 @@ export const therapistAPI = {
   resetTwinControls: async () => {
     const response = await api.post('/therapist/profile/reset')
     return response.data
+  },
+
+  completeOnboarding: async () => {
+    const response = await api.post('/therapist/profile/complete-onboarding')
+    return response.data as { onboarding_completed: boolean }
+  },
+
+  getSignatureProfile: async () => {
+    const response = await api.get('/therapist/signature-profile')
+    return response.data as {
+      is_active: boolean
+      approved_sample_count: number
+      min_samples_required: number
+      samples_until_active: number
+      style_summary: string | null
+      style_version: number
+      last_updated_at: string | null
+    }
+  },
+
+  resetSignatureProfile: async () => {
+    await api.delete('/therapist/signature-profile')
   },
 
   getTodayInsights: async () => {

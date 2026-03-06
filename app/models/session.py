@@ -57,6 +57,9 @@ class Session(BaseModel):
     prep_completeness_data = Column(JSON, nullable=True)    # full CompletenessResult dict
     prep_generated_at = Column(DateTime, nullable=True)     # when prep was last generated
     prep_rendered_text = Column(Text, nullable=True)        # rendered Hebrew prose (added migration 024)
+    # Fingerprint caching (added migration 025)
+    prep_input_fingerprint = Column(Text, nullable=True)          # SHA-256 of inputs at last gen
+    prep_input_fingerprint_version = Column(Integer, nullable=True)  # fingerprint schema version
 
     # Relationships
     therapist = relationship("Therapist", back_populates="sessions")
@@ -130,6 +133,10 @@ class SessionSummary(BaseModel):
     therapist_rating = Column(Integer, nullable=True)              # 1–5 star rating
     therapist_rating_comment = Column(Text, nullable=True)         # optional free text
     rated_at = Column(DateTime, nullable=True)
+
+    # Fingerprint caching (added migration 025)
+    ai_input_fingerprint = Column(Text, nullable=True)             # SHA-256 of inputs at generation
+    ai_input_fingerprint_version = Column(Integer, nullable=True)  # fingerprint schema version
 
     # Relationship
     session = relationship("Session", back_populates="summary")

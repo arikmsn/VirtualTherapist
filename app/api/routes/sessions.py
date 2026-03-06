@@ -504,6 +504,93 @@ async def patch_session_summary(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/{session_id}/summary", status_code=204)
+async def delete_session_summary(
+    session_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Delete a session's AI-generated summary (keeps the session record).
+    After deletion the session can receive a new summary via from-text or from-audio.
+    """
+    from app.models.session import Session as SessionModel, SessionSummary
+
+    session = db.query(SessionModel).filter(
+        SessionModel.id == session_id,
+        SessionModel.therapist_id == current_therapist.id,
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if not session.summary_id:
+        raise HTTPException(status_code=404, detail="No summary to delete")
+
+    summary_id = session.summary_id
+    # Unlink FK before deleting the summary row
+    session.summary_id = None
+    db.flush()
+    summary = db.query(SessionSummary).filter(SessionSummary.id == summary_id).first()
+    if summary:
+        db.delete(summary)
+    db.commit()
+
+
+class RegenerateFromTranscriptRequest(BaseModel):
+    transcript: str
+
+
+@router.post("/{session_id}/summary/regenerate-from-transcript", response_model=SummaryResponse)
+async def regenerate_summary_from_transcript(
+    session_id: int,
+    request: RegenerateFromTranscriptRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Regenerate an AI summary from a (potentially edited) transcript.
+
+    The transcript is stored on the existing summary row and used as the input
+    to generate a fresh AI summary. Returns the updated SummaryResponse.
+    """
+    from app.models.session import Session as SessionModel, SessionSummary
+
+    session_service = SessionService(db)
+    therapist_service = TherapistService(db)
+
+    session = db.query(SessionModel).filter(
+        SessionModel.id == session_id,
+        SessionModel.therapist_id == current_therapist.id,
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if not request.transcript.strip():
+        raise HTTPException(status_code=400, detail="Transcript cannot be empty")
+
+    try:
+        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+        summary = await session_service.generate_summary_from_text(
+            session_id=session_id,
+            therapist_notes=request.transcript,
+            agent=agent,
+            therapist_id=current_therapist.id,
+        )
+        # Persist the edited transcript on the summary so it's visible in the UI
+        summary.transcript = request.transcript
+        db.commit()
+        return _summary_response_with_meta(summary)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        logger.exception(f"regenerate_from_transcript session={session_id} RuntimeError: {e!r}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception(f"regenerate_from_transcript session={session_id} failed: {e!r}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/summary/approve", response_model=SummaryResponse)
 async def approve_summary(
     request: ApproveSummaryRequest,

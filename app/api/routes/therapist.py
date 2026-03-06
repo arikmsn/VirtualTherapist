@@ -147,6 +147,27 @@ async def update_twin_controls(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/profile/complete-onboarding", status_code=200)
+async def complete_onboarding(
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Mark onboarding as complete for the current therapist.
+    Called at the end of the onboarding wizard flow.
+    Idempotent — safe to call multiple times.
+    """
+    profile = current_therapist.profile
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    if not profile.onboarding_completed:
+        profile.onboarding_completed = True
+        db.commit()
+
+    return {"onboarding_completed": True}
+
+
 @router.post("/profile/reset", response_model=TherapistProfileResponse)
 async def reset_twin_controls(
     current_therapist: Therapist = Depends(get_current_therapist),

@@ -33,7 +33,7 @@ import {
   ClipboardDocumentListIcon,
   ArrowPathIcon,
 } from '@heroicons/react/24/outline'
-import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI, treatmentPlanAPI } from '@/lib/api'
+import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI, treatmentPlanAPI, type TreatmentPlanVersion } from '@/lib/api'
 import { usePrepStream } from '@/hooks/usePrepStream'
 import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
 
@@ -208,6 +208,12 @@ export default function PatientProfilePage() {
   const [treatmentPlan, setTreatmentPlan] = useState<TreatmentPlan | null>(null)
   const [planLoading, setPlanLoading] = useState(false)
   const [planError, setPlanError] = useState('')
+  // Saved plan versions
+  const [savedPlan, setSavedPlan] = useState<TreatmentPlanVersion | null>(null)
+  const [planHistory, setPlanHistory] = useState<TreatmentPlanVersion[]>([])
+  const [savingPlan, setSavingPlan] = useState(false)
+  const [planHistoryLoading, setPlanHistoryLoading] = useState(false)
+  const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null)
 
   // Prep brief modal
   const [prepModalSession, setPrepModalSession] = useState<PrepModalSession | null>(null)
@@ -293,6 +299,25 @@ export default function PatientProfilePage() {
     }
     loadEx()
   }, [pid])
+
+  // Load treatment plan + history when plan tab is active
+  useEffect(() => {
+    if (tab !== 'plan') return
+    const loadPlan = async () => {
+      setPlanHistoryLoading(true)
+      try {
+        const [active, history] = await Promise.allSettled([
+          treatmentPlanAPI.get(pid),
+          treatmentPlanAPI.getHistory(pid),
+        ])
+        if (active.status === 'fulfilled') setSavedPlan(active.value)
+        if (history.status === 'fulfilled') setPlanHistory(history.value as TreatmentPlanVersion[])
+      } catch { /* not critical */ } finally {
+        setPlanHistoryLoading(false)
+      }
+    }
+    loadPlan()
+  }, [pid, tab])
 
   // Load notebook notes when notes tab is active
   useEffect(() => {
@@ -458,6 +483,40 @@ export default function PatientProfilePage() {
       setPlanError(err.response?.data?.detail || 'שגיאה ביצירת התוכנית הטיפולית')
     } finally {
       setPlanLoading(false)
+    }
+  }
+
+  const handleSavePlan = async () => {
+    setSavingPlan(true)
+    setPlanError('')
+    try {
+      let saved: TreatmentPlanVersion
+      if (savedPlan && savedPlan.status === 'active') {
+        saved = await treatmentPlanAPI.update(pid)
+      } else {
+        saved = await treatmentPlanAPI.create(pid)
+      }
+      setSavedPlan(saved)
+      // Refresh history
+      const history = await treatmentPlanAPI.getHistory(pid)
+      setPlanHistory(history as TreatmentPlanVersion[])
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || ''
+      // 409 = active plan exists → update instead
+      if (err.response?.status === 409) {
+        try {
+          const saved = await treatmentPlanAPI.update(pid)
+          setSavedPlan(saved)
+          const history = await treatmentPlanAPI.getHistory(pid)
+          setPlanHistory(history as TreatmentPlanVersion[])
+        } catch (err2: any) {
+          setPlanError(err2.response?.data?.detail || 'שגיאה בשמירת התוכנית')
+        }
+      } else {
+        setPlanError(msg || 'שגיאה בשמירת התוכנית')
+      }
+    } finally {
+      setSavingPlan(false)
     }
   }
 
@@ -672,6 +731,16 @@ export default function PatientProfilePage() {
         </div>
       </div>
 
+      {/* AI-disabled notice — shown on AI-using tabs when allow_ai_contact is off */}
+      {patient && !patient.allow_ai_contact && (tab === 'summaries' || tab === 'plan') && (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-amber-800">
+          <ExclamationTriangleIcon className="h-4 w-4 text-amber-500 shrink-0" />
+          <span>
+            ניתוח AI מנוטרל עבור מטופל זה. כדי להשתמש בפיצ׳רים AI, הפעל את המתג "ניתוח AI" בראש הדף.
+          </span>
+        </div>
+      )}
+
       {/* Tab navigation + content */}
       <div className="space-y-0">
 
@@ -768,13 +837,16 @@ export default function PatientProfilePage() {
                         </div>
                       )}
                     </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openPrepModal(session) }}
-                      className="flex items-center gap-1 text-xs font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-2.5 py-1.5 transition-colors whitespace-nowrap touch-manipulation flex-shrink-0"
-                    >
-                      <SparklesIcon className="h-3.5 w-3.5" />
-                      הכנה לפגישה
-                    </button>
+                    {/* Prep button — only for upcoming and today's sessions */}
+                    {session.session_date >= new Date().toISOString().split('T')[0] && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openPrepModal(session) }}
+                        className="flex items-center gap-1 text-xs font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-2.5 py-1.5 transition-colors whitespace-nowrap touch-manipulation flex-shrink-0"
+                      >
+                        <SparklesIcon className="h-3.5 w-3.5" />
+                        הכנה לפגישה
+                      </button>
+                    )}
                     <ArrowRightIcon className="h-4 w-4 text-gray-400 flex-shrink-0 rotate-180" />
                   </div>
                 </div>
@@ -1025,10 +1097,11 @@ export default function PatientProfilePage() {
                 )}
                 {treatmentPlan && (
                   <button
-                    onClick={() => { /* TODO: persist plan */ }}
-                    className="flex items-center gap-1.5 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-2 transition-colors min-h-[40px] touch-manipulation"
+                    onClick={handleSavePlan}
+                    disabled={savingPlan}
+                    className="flex items-center gap-1.5 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-2 transition-colors min-h-[40px] touch-manipulation disabled:opacity-50"
                   >
-                    שמור תוכנית
+                    {savingPlan ? 'שומר...' : 'שמור תוכנית'}
                   </button>
                 )}
               </div>
@@ -1132,6 +1205,57 @@ export default function PatientProfilePage() {
               </div>
             )}
           </div>
+
+          {/* Saved plan version history */}
+          {(planHistoryLoading || planHistory.length > 0) && (
+            <div className="card border-gray-200">
+              <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <ClipboardDocumentListIcon className="h-4 w-4 text-gray-400" />
+                היסטוריית גרסאות שמורות
+                {planHistoryLoading && (
+                  <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-gray-400 mr-auto" />
+                )}
+              </h3>
+              {!planHistoryLoading && planHistory.length === 0 && (
+                <p className="text-sm text-gray-400">עדיין אין גרסאות שמורות</p>
+              )}
+              <div className="space-y-2">
+                {planHistory.map((v) => (
+                  <div
+                    key={v.plan_id}
+                    className={`rounded-lg border p-3 ${v.status === 'active' ? 'border-indigo-200 bg-indigo-50' : 'border-gray-100 bg-gray-50'}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-gray-800">
+                          גרסה {v.version}
+                        </span>
+                        {v.status === 'active' && (
+                          <span className="text-xs bg-indigo-600 text-white px-1.5 py-0.5 rounded-full">פעילה</span>
+                        )}
+                        {v.status === 'archived' && (
+                          <span className="text-xs bg-gray-300 text-gray-700 px-1.5 py-0.5 rounded-full">ארכיון</span>
+                        )}
+                        <span className="text-xs text-gray-400">{formatDateIL(v.created_at)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedHistoryId(expandedHistoryId === v.plan_id ? null : v.plan_id)}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 shrink-0"
+                      >
+                        {expandedHistoryId === v.plan_id ? 'סגור' : 'הצג'}
+                      </button>
+                    </div>
+                    {expandedHistoryId === v.plan_id && v.rendered_text && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{v.rendered_text}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

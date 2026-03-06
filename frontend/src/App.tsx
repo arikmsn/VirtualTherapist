@@ -17,7 +17,7 @@ import GoogleCallbackPage from './pages/GoogleCallbackPage'
 import Layout from './components/Layout'
 
 function AppRoutes() {
-  const { isAuthenticated, isReady } = useAuth()
+  const { isAuthenticated, isReady, onboardingCompleted } = useAuth()
 
   // Wait for auth to initialize from localStorage before rendering routes.
   // Without this, the initial isAuthenticated=false triggers a redirect
@@ -30,6 +30,21 @@ function AppRoutes() {
     )
   }
 
+  // Onboarding gate: if authenticated but profile not yet loaded, show spinner.
+  // Once loaded, if not completed redirect to /onboarding (handled inside ProtectedRoute).
+  const onboardingLoading = isAuthenticated && onboardingCompleted === null
+
+  if (onboardingLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+      </div>
+    )
+  }
+
+  // If authenticated but onboarding not done, force /onboarding (full-screen, no Layout)
+  const needsOnboarding = isAuthenticated && onboardingCompleted === false
+
   return (
     <Router>
       <Routes>
@@ -39,11 +54,15 @@ function AppRoutes() {
         {/* Google OAuth callback — always public, handles its own auth state */}
         <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
 
-        {/* Protected routes — ProtectedRoute redirects to /login if not authenticated */}
+        {/* Onboarding — full-screen, no sidebar/nav, inside ProtectedRoute but outside Layout */}
         <Route element={<ProtectedRoute />}>
-          <Route element={<Layout />}>
+          <Route path="/onboarding" element={<OnboardingPage />} />
+        </Route>
+
+        {/* Protected routes — redirect to /onboarding if not completed */}
+        <Route element={<ProtectedRoute />}>
+          <Route element={needsOnboarding ? <Navigate to="/onboarding" replace /> : <Layout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/messages" element={<MessagesPage />} />
             <Route path="/patients" element={<PatientsPage />} />
             <Route path="/patients/:patientId" element={<PatientProfilePage />} />

@@ -66,6 +66,10 @@ class TreatmentPlan(Base):
     # Approval
     approved_at = Column(DateTime, nullable=True)
 
+    # Version metadata
+    source = Column(String(64), nullable=True)   # "ai_generated" | "manual"
+    title = Column(String(255), nullable=True)    # optional display label
+
     # AI metadata
     model_used = Column(String(128), nullable=True)
     tokens_used = Column(Integer, nullable=True)
