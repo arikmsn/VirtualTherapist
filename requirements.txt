@@ -9,7 +9,10 @@ annotated-types==0.7.0
 anyio==4.12.1
 APScheduler==3.11.2
 attrs==25.4.0
-bcrypt==4.3.0
+# bcrypt 4.0.1 is the last version compatible with passlib 1.7.4.
+# passlib accesses bcrypt.__about__.__version__ which was removed in bcrypt 4.1+.
+# Do NOT upgrade bcrypt past 4.0.1 unless passlib is also upgraded/replaced.
+bcrypt==4.0.1
 certifi==2026.1.4
 cffi==2.0.0
 charset-normalizer==3.4.4

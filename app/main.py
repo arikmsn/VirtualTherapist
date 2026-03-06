@@ -3,6 +3,22 @@ Main FastAPI application
 TherapyCompanion.AI - Virtual Therapist Assistant
 """
 
+# ---------------------------------------------------------------------------
+# Compatibility shim: passlib 1.7.4 reads bcrypt.__about__.__version__ at
+# import time. bcrypt >= 4.1 removed the __about__ module. This shim injects
+# a minimal stub so passlib's version-detection code doesn't raise
+# AttributeError even if someone accidentally upgrades bcrypt past 4.0.1.
+# The pin in requirements.txt (bcrypt==4.0.1) is the primary safeguard;
+# this shim is a belt-and-suspenders fallback for deployed environments.
+# ---------------------------------------------------------------------------
+import types
+import bcrypt as _bcrypt
+if not hasattr(_bcrypt, "__about__"):
+    _about = types.ModuleType("bcrypt.__about__")
+    _about.__version__ = getattr(_bcrypt, "__version__", "0.0.0")
+    _bcrypt.__about__ = _about  # type: ignore[attr-defined]
+del _bcrypt, _about, types
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings

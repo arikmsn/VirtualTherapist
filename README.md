@@ -65,6 +65,13 @@ python -m app.main
 
 The API will be available at: **http://localhost:8000**
 
+> **Dependency note — bcrypt/passlib:**
+> `passlib==1.7.4` (last official release) reads `bcrypt.__about__.__version__` internally.
+> This attribute was removed in `bcrypt>=4.1`. The project pins `bcrypt==4.0.1` to keep the
+> two libraries compatible. Do **not** upgrade bcrypt past `4.0.1` without replacing passlib
+> (e.g. with `bcrypt` directly or `argon2-cffi`). A startup shim in `app/main.py` also
+> injects a stub `__about__` module as a belt-and-suspenders fallback.
+
 ### Frontend Installation
 
 ```bash
