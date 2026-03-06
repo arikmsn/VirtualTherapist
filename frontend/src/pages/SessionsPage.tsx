@@ -10,15 +10,8 @@ import {
   LightBulbIcon,
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI } from '@/lib/api'
+import { usePrepStream } from '@/hooks/usePrepStream'
 import { formatDateIL } from '@/lib/dateUtils'
-
-interface PrepBrief {
-  history_summary: string[]    // מה היה עד עכשיו
-  last_session: string[]       // מה היה בפגישה האחרונה
-  tasks_to_check: string[]     // משימות לבדיקה היום
-  focus_for_today: string[]    // על מה כדאי להתמקד
-  watch_out_for: string[]      // שים לב
-}
 
 interface Session {
   id: number
@@ -68,9 +61,7 @@ export default function SessionsPage() {
 
   // Prep brief modal state
   const [prepSession, setPrepSession] = useState<Session | null>(null)
-  const [prepBrief, setPrepBrief] = useState<PrepBrief | null>(null)
-  const [prepLoading, setPrepLoading] = useState(false)
-  const [prepError, setPrepError] = useState('')
+  const prepStream = usePrepStream()
 
   // Create session modal state
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -196,25 +187,14 @@ export default function SessionsPage() {
     return () => { document.body.style.overflow = '' }
   }, [deleteTarget, showCreateModal, prepSession])
 
-  const openPrepModal = async (session: Session) => {
+  const openPrepModal = (session: Session) => {
     setPrepSession(session)
-    setPrepBrief(null)
-    setPrepError('')
-    setPrepLoading(true)
-    try {
-      const data = await sessionsAPI.getPrepBrief(session.id)
-      setPrepBrief(data)
-    } catch (err: any) {
-      setPrepError(err.response?.data?.detail || 'שגיאה ביצירת תדריך ההכנה')
-    } finally {
-      setPrepLoading(false)
-    }
+    prepStream.start(session.id)
   }
 
   const closePrepModal = () => {
     setPrepSession(null)
-    setPrepBrief(null)
-    setPrepError('')
+    prepStream.reset()
   }
 
   const filteredSessions = sessions.filter((session) => {
@@ -504,23 +484,31 @@ export default function SessionsPage() {
 
             {/* Body */}
             <div className="overflow-y-auto flex-1 px-5 py-4">
-              {prepLoading ? (
+              {prepStream.phase === 'extracting' ? (
                 <div className="flex flex-col items-center justify-center py-10 gap-3">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
-                  <p className="text-sm text-amber-700">מכין תדריך...</p>
+                  <p className="text-sm text-amber-700">מחלץ נתונים מהסיכומים...</p>
                 </div>
-              ) : prepError ? (
+              ) : prepStream.phase === 'rendering' || prepStream.phase === 'done' ? (
+                <div>
+                  {prepStream.phase === 'rendering' && !prepStream.text && (
+                    <div className="flex items-center gap-2 text-amber-700 text-sm mb-3">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
+                      <span>מייצר תדריך...</span>
+                    </div>
+                  )}
+                  <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{prepStream.text}</p>
+                </div>
+              ) : prepStream.phase === 'error' ? (
                 <div className="text-amber-800 text-sm space-y-2">
-                  <p>{prepError}</p>
+                  <p>{prepStream.error}</p>
                   <button
-                    onClick={() => openPrepModal(prepSession)}
+                    onClick={() => openPrepModal(prepSession!)}
                     className="text-sm px-3 py-1 bg-amber-200 rounded-lg hover:bg-amber-300 transition-colors"
                   >
                     נסה שוב
                   </button>
                 </div>
-              ) : prepBrief ? (
-                <PrepBriefContent brief={prepBrief} />
               ) : null}
             </div>
 
@@ -729,58 +717,3 @@ export default function SessionsPage() {
   )
 }
 
-function PrepBriefContent({ brief }: { brief: PrepBrief }) {
-  return (
-    <div className="space-y-4 text-sm">
-      {/* מה היה עד עכשיו */}
-      {brief.history_summary.length > 0 && (
-        <div>
-          <h3 className="font-semibold text-amber-900 mb-1.5">📖 מה היה עד עכשיו</h3>
-          <ul className="list-disc list-inside text-gray-700 space-y-1 leading-relaxed">
-            {brief.history_summary.map((item, i) => <li key={i}>{item}</li>)}
-          </ul>
-        </div>
-      )}
-
-      {/* מה היה בפגישה האחרונה */}
-      {brief.last_session.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <h3 className="font-semibold text-blue-900 mb-1.5">🕐 מה היה בפגישה האחרונה</h3>
-          <ul className="list-disc list-inside text-blue-800 space-y-1 leading-relaxed">
-            {brief.last_session.map((item, i) => <li key={i}>{item}</li>)}
-          </ul>
-        </div>
-      )}
-
-      {/* משימות לבדיקה היום */}
-      {brief.tasks_to_check.length > 0 && (
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-          <h3 className="font-semibold text-orange-900 mb-1.5">✅ משימות לבדיקה היום</h3>
-          <ul className="list-disc list-inside text-orange-800 space-y-1 leading-relaxed">
-            {brief.tasks_to_check.map((item, i) => <li key={i}>{item}</li>)}
-          </ul>
-        </div>
-      )}
-
-      {/* על מה כדאי להתמקד */}
-      {brief.focus_for_today.length > 0 && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-          <h3 className="font-semibold text-green-900 mb-1.5">🎯 על מה כדאי להתמקד היום</h3>
-          <ul className="list-disc list-inside text-green-800 space-y-1 leading-relaxed">
-            {brief.focus_for_today.map((item, i) => <li key={i}>{item}</li>)}
-          </ul>
-        </div>
-      )}
-
-      {/* שים לב */}
-      {brief.watch_out_for.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-          <h3 className="font-semibold text-red-800 mb-1.5">⚠️ שים לב</h3>
-          <ul className="list-disc list-inside text-red-700 space-y-1 leading-relaxed">
-            {brief.watch_out_for.map((item, i) => <li key={i}>{item}</li>)}
-          </ul>
-        </div>
-      )}
-    </div>
-  )
-}

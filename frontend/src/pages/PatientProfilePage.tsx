@@ -34,6 +34,7 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline'
 import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI, treatmentPlanAPI } from '@/lib/api'
+import { usePrepStream } from '@/hooks/usePrepStream'
 import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
 
 const SESSION_TYPES = [
@@ -128,14 +129,6 @@ interface NoteItem {
   created_at: string
 }
 
-interface PrepBrief {
-  history_summary: string[]    // מה היה עד עכשיו
-  last_session: string[]       // מה היה בפגישה האחרונה
-  tasks_to_check: string[]     // משימות לבדיקה היום
-  focus_for_today: string[]    // על מה כדאי להתמקד
-  watch_out_for: string[]      // שים לב
-}
-
 interface PrepModalSession {
   id: number
   session_date: string
@@ -218,9 +211,7 @@ export default function PatientProfilePage() {
 
   // Prep brief modal
   const [prepModalSession, setPrepModalSession] = useState<PrepModalSession | null>(null)
-  const [prepBrief, setPrepBrief] = useState<PrepBrief | null>(null)
-  const [prepLoading, setPrepLoading] = useState(false)
-  const [prepError, setPrepError] = useState('')
+  const prepStream = usePrepStream()
 
   const approvedCount = summaries.filter(
     (s) => s.summary.status === 'approved' || s.summary.approved_by_therapist
@@ -318,25 +309,14 @@ export default function PatientProfilePage() {
     loadNotes()
   }, [pid, tab])
 
-  const openPrepModal = async (session: PrepModalSession) => {
+  const openPrepModal = (session: PrepModalSession) => {
     setPrepModalSession(session)
-    setPrepBrief(null)
-    setPrepError('')
-    setPrepLoading(true)
-    try {
-      const data = await sessionsAPI.getPrepBrief(session.id)
-      setPrepBrief(data)
-    } catch (err: any) {
-      setPrepError(err.response?.data?.detail || 'שגיאה ביצירת תדריך ההכנה')
-    } finally {
-      setPrepLoading(false)
-    }
+    prepStream.start(session.id)
   }
 
   const closePrepModal = () => {
     setPrepModalSession(null)
-    setPrepBrief(null)
-    setPrepError('')
+    prepStream.reset()
   }
 
   const handleToggleAiContact = async () => {
@@ -1272,63 +1252,30 @@ export default function PatientProfilePage() {
               </button>
             </div>
             <div className="overflow-y-auto flex-1 p-4 sm:p-5">
-              {prepLoading ? (
-                <div className="flex items-center justify-center py-12">
+              {prepStream.phase === 'extracting' ? (
+                <div className="flex items-center justify-center py-12 gap-3">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
-                  <span className="mr-3 text-amber-700 text-sm">מכין תדריך...</span>
+                  <span className="text-amber-700 text-sm">מחלץ נתונים מהסיכומים...</span>
                 </div>
-              ) : prepError ? (
+              ) : prepStream.phase === 'rendering' || prepStream.phase === 'done' ? (
+                <div>
+                  {prepStream.phase === 'rendering' && !prepStream.text && (
+                    <div className="flex items-center gap-2 text-amber-700 text-sm mb-3">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-500"></div>
+                      <span>מייצר תדריך...</span>
+                    </div>
+                  )}
+                  <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{prepStream.text}</p>
+                </div>
+              ) : prepStream.phase === 'error' ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
-                  <p className="text-sm">{prepError}</p>
+                  <p className="text-sm">{prepStream.error}</p>
                   <button
-                    onClick={() => openPrepModal(prepModalSession)}
+                    onClick={() => openPrepModal(prepModalSession!)}
                     className="mt-2 text-sm px-3 py-1 bg-amber-200 rounded-lg hover:bg-amber-300 transition-colors"
                   >
                     נסה שוב
                   </button>
-                </div>
-              ) : prepBrief ? (
-                <div className="space-y-4 text-sm">
-                  {(prepBrief.history_summary || []).length > 0 && (
-                    <div>
-                      <h3 className="font-semibold text-amber-900 mb-1.5">📖 מה היה עד עכשיו</h3>
-                      <ul className="list-disc list-inside text-gray-700 space-y-1 leading-relaxed">
-                        {(prepBrief.history_summary || []).map((item, i) => <li key={i}>{item}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                  {(prepBrief.last_session || []).length > 0 && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <h3 className="font-semibold text-blue-900 mb-1.5">🕐 מה היה בפגישה האחרונה</h3>
-                      <ul className="list-disc list-inside text-blue-800 space-y-1 leading-relaxed">
-                        {(prepBrief.last_session || []).map((item, i) => <li key={i}>{item}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                  {(prepBrief.tasks_to_check || []).length > 0 && (
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                      <h3 className="font-semibold text-orange-900 mb-1.5">✅ משימות לבדיקה היום</h3>
-                      <ul className="list-disc list-inside text-orange-800 space-y-1 leading-relaxed">
-                        {(prepBrief.tasks_to_check || []).map((item, i) => <li key={i}>{item}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                  {(prepBrief.focus_for_today || []).length > 0 && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                      <h3 className="font-semibold text-green-900 mb-1.5">🎯 על מה כדאי להתמקד היום</h3>
-                      <ul className="list-disc list-inside text-green-800 space-y-1 leading-relaxed">
-                        {(prepBrief.focus_for_today || []).map((item, i) => <li key={i}>{item}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                  {(prepBrief.watch_out_for || []).length > 0 && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                      <h3 className="font-semibold text-red-800 mb-1.5">⚠️ שים לב</h3>
-                      <ul className="list-disc list-inside text-red-700 space-y-1 leading-relaxed">
-                        {(prepBrief.watch_out_for || []).map((item, i) => <li key={i}>{item}</li>)}
-                      </ul>
-                    </div>
-                  )}
                 </div>
               ) : null}
             </div>

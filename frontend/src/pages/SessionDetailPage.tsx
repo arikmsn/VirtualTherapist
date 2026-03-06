@@ -12,6 +12,7 @@ import {
   ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI, exercisesAPI } from '@/lib/api'
+import { usePrepStream } from '@/hooks/usePrepStream'
 import AudioRecorder from '@/components/AudioRecorder'
 import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
 
@@ -31,14 +32,6 @@ interface SessionSummary {
   approved_by_therapist: boolean
   status: string
   created_at: string
-}
-
-interface PrepBrief {
-  history_summary: string[]
-  last_session: string[]
-  tasks_to_check: string[]
-  focus_for_today: string[]
-  watch_out_for: string[]
 }
 
 interface Session {
@@ -80,9 +73,7 @@ export default function SessionDetailPage() {
   const [showTranscript, setShowTranscript] = useState(true)
 
   // Prep brief state
-  const [prepBrief, setPrepBrief] = useState<PrepBrief | null>(null)
-  const [prepLoading, setPrepLoading] = useState(false)
-  const [prepError, setPrepError] = useState('')
+  const prepStream = usePrepStream()
   const [showPrepPanel, setShowPrepPanel] = useState(searchParams.get('prep') === '1')
 
   // Exercise tracking (this session's summary)
@@ -151,25 +142,11 @@ export default function SessionDetailPage() {
 
   // Auto-load prep brief when ?prep=1
   useEffect(() => {
-    if (showPrepPanel && !prepBrief && !prepLoading && sessionId) {
-      loadPrepBrief()
+    if (showPrepPanel && prepStream.phase === 'idle' && sessionId) {
+      prepStream.start(Number(sessionId))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPrepPanel, sessionId])
-
-  const loadPrepBrief = async () => {
-    setPrepLoading(true)
-    setPrepError('')
-    try {
-      const data = await sessionsAPI.getPrepBrief(Number(sessionId))
-      setPrepBrief(data)
-    } catch (err: any) {
-      const detail = err.response?.data?.detail || 'שגיאה ביצירת תדריך ההכנה'
-      setPrepError(detail)
-    } finally {
-      setPrepLoading(false)
-    }
-  }
 
   // --- Text-based summary generation ---
   const handleGenerateSummary = async () => {
@@ -354,72 +331,39 @@ export default function SessionDetailPage() {
               הכנה לפגישה
             </h2>
             <button
-              onClick={() => setShowPrepPanel(false)}
+              onClick={() => { setShowPrepPanel(false); prepStream.reset() }}
               className="text-amber-600 hover:text-amber-800"
             >
               <XMarkIcon className="h-5 w-5" />
             </button>
           </div>
 
-          {prepLoading ? (
+          {prepStream.phase === 'extracting' ? (
             <div className="flex justify-center py-6">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600 mx-auto mb-2"></div>
-                <p className="text-sm text-amber-700">מכין תדריך...</p>
+                <p className="text-sm text-amber-700">מחלץ נתונים מהסיכומים...</p>
               </div>
             </div>
-          ) : prepError ? (
+          ) : prepStream.phase === 'rendering' || prepStream.phase === 'done' ? (
+            <div>
+              {prepStream.phase === 'rendering' && !prepStream.text && (
+                <div className="flex items-center gap-2 text-amber-700 text-sm mb-3">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
+                  <span>מייצר תדריך...</span>
+                </div>
+              )}
+              <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{prepStream.text}</p>
+            </div>
+          ) : prepStream.phase === 'error' ? (
             <div className="text-amber-800 text-sm">
-              <p>{prepError}</p>
+              <p>{prepStream.error}</p>
               <button
-                onClick={loadPrepBrief}
+                onClick={() => prepStream.start(Number(sessionId))}
                 className="mt-2 text-sm px-3 py-1 bg-amber-200 rounded-lg hover:bg-amber-300 transition-colors"
               >
                 נסה שוב
               </button>
-            </div>
-          ) : prepBrief ? (
-            <div className="space-y-3 text-sm">
-              {(prepBrief.history_summary || []).length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-amber-900 mb-1">רקע היסטורי</h3>
-                  <ul className="list-disc list-inside text-amber-800 space-y-0.5">
-                    {(prepBrief.history_summary || []).map((p, i) => <li key={i}>{p}</li>)}
-                  </ul>
-                </div>
-              )}
-              {(prepBrief.last_session || []).length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-amber-900 mb-1">הפגישה האחרונה</h3>
-                  <ul className="list-disc list-inside text-amber-800 space-y-0.5">
-                    {(prepBrief.last_session || []).map((p, i) => <li key={i}>{p}</li>)}
-                  </ul>
-                </div>
-              )}
-              {(prepBrief.tasks_to_check || []).length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-amber-900 mb-1">משימות לבדיקה</h3>
-                  <ul className="list-disc list-inside text-amber-800 space-y-0.5">
-                    {(prepBrief.tasks_to_check || []).map((p, i) => <li key={i}>{p}</li>)}
-                  </ul>
-                </div>
-              )}
-              {(prepBrief.focus_for_today || []).length > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-2">
-                  <h3 className="font-semibold text-green-800 mb-1">מיקוד לפגישה זו</h3>
-                  <ul className="list-disc list-inside text-green-700 space-y-0.5">
-                    {(prepBrief.focus_for_today || []).map((p, i) => <li key={i}>{p}</li>)}
-                  </ul>
-                </div>
-              )}
-              {(prepBrief.watch_out_for || []).length > 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-2">
-                  <h3 className="font-semibold text-red-800 mb-1">שים לב</h3>
-                  <ul className="list-disc list-inside text-red-700 space-y-0.5">
-                    {(prepBrief.watch_out_for || []).map((w, i) => <li key={i}>{w}</li>)}
-                  </ul>
-                </div>
-              )}
             </div>
           ) : null}
         </div>
