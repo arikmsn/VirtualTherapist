@@ -126,8 +126,8 @@ export default function PatientSummariesPage() {
           >
             {insightLoading ? (
               <>
-                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                מייצר...
+                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white flex-shrink-0"></span>
+                מייצר סיכום מלא. זה עשוי לקחת דקה
               </>
             ) : (
               'צור סיכום עומק'

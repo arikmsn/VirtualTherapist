@@ -802,8 +802,8 @@ export default function PatientProfilePage() {
               >
                 {insightLoading ? (
                   <>
-                    <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                    מייצר...
+                    <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white flex-shrink-0"></span>
+                    מייצר סיכום מלא. זה עשוי לקחת דקה
                   </>
                 ) : (
                   'צור סיכום עומק'
@@ -1054,7 +1054,7 @@ export default function PatientProfilePage() {
             {planLoading && (
               <div className="flex items-center justify-center py-12 gap-3">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-                <span className="text-indigo-700 text-sm">מייצר תוכנית טיפולית...</span>
+                <span className="text-indigo-700 text-sm">מייצר סיכום מלא. זה עשוי לקחת דקה</span>
               </div>
             )}
 
