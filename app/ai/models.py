@@ -31,6 +31,7 @@ class FlowType(str, Enum):
     TWIN_PROFILE = "twin_profile"
     FORMAL_RECORD = "formal_record"  # Phase 5: Israeli formal clinical documentation
     PLAN_DRIFT_CHECK = "plan_drift_check"  # Phase 7: drift detection (fast model)
+    VAULT_EXTRACTION = "vault_extraction"  # Phase 8: vault entry extraction (standard model)
 
 
 @dataclass

@@ -42,7 +42,7 @@ class TestFlowType:
             "EXTRACTION", "COMPLETENESS_CHECK", "CHAT", "SESSION_SUMMARY",
             "SESSION_PREP", "PRE_SESSION_PREP", "PATIENT_INSIGHT", "MESSAGE_DRAFT",
             "DEEP_SUMMARY", "TREATMENT_PLAN", "TWIN_PROFILE",
-            "FORMAL_RECORD", "PLAN_DRIFT_CHECK",
+            "FORMAL_RECORD", "PLAN_DRIFT_CHECK", "VAULT_EXTRACTION",
         }
         actual = {f.name for f in FlowType}
         assert expected == actual
