@@ -203,8 +203,7 @@ def _build_render_system_prompt(inp: PrepInput) -> str:
     ]
     if inp.therapist_signature:
         lines.append("")
-        lines.append("## Therapist style signature:")
-        lines.append(json.dumps(inp.therapist_signature, ensure_ascii=False, indent=2))
+        lines.append(str(inp.therapist_signature))
     return "\n".join(lines)
 
 

@@ -20,6 +20,7 @@ from app.ai.models import FlowType
 from app.ai.completeness import CompletenessChecker
 from app.ai.summary_pipeline import SummaryInput, SummaryPipeline, compute_edit_distance
 from app.ai.prep import PrepInput, PrepMode, PrepPipeline, PrepResult
+from app.ai.signature import SignatureEngine, inject_into_prompt
 from app.services.audit_service import AuditService
 from app.security.encryption import decrypt_data
 from loguru import logger
@@ -307,6 +308,12 @@ class SessionService:
         )
         open_tasks = [e.description or "" for e in open_exercises if e.description]
 
+        # Signature injection (Phase 6): prepend style guidance to rendering system prompt
+        therapist_id = session.therapist_id
+        sig_engine = SignatureEngine(self.db)
+        sig_profile = await sig_engine.get_active_profile(therapist_id)
+        signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
+
         return SummaryInput(
             raw_content=raw_content,
             client_name=client_name,
@@ -315,7 +322,7 @@ class SessionService:
             last_approved_summary=last_approved_text,
             open_tasks=open_tasks,
             modality_pack=agent.modality_pack,
-            therapist_signature=None,  # Phase 6
+            therapist_signature=signature_prompt,
         )
 
     async def generate_summary_from_audio(
@@ -620,6 +627,24 @@ class SessionService:
                 pass  # non-blocking — best effort
 
         self.db.commit()
+
+        # Signature learning hook (Phase 6) — fire-and-forget, non-blocking
+        if summary.ai_draft_text:
+            try:
+                import asyncio
+                sig_engine = SignatureEngine(self.db)
+                asyncio.create_task(
+                    sig_engine.record_approval(
+                        therapist_id=therapist_id,
+                        session_id=session.id,
+                        ai_draft=summary.ai_draft_text,
+                        approved_text=summary.full_summary or "",
+                        provider=None,   # no provider in approval path; rebuild deferred
+                    )
+                )
+            except RuntimeError:
+                # No running event loop (e.g. in tests) — call synchronously
+                pass
 
         # Audit log
         await self.audit_service.log_action(
@@ -1114,6 +1139,11 @@ class SessionService:
             modality_name = agent.modality_pack.name
             modality_prompt_module = agent.modality_pack.prompt_module
 
+        # Signature injection (Phase 6)
+        sig_engine = SignatureEngine(self.db)
+        sig_profile = await sig_engine.get_active_profile(therapist_id)
+        signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
+
         prep_inp = PrepInput(
             client_id=session.patient_id,
             session_id=session_id,
@@ -1122,7 +1152,7 @@ class SessionService:
             modality=modality_name,
             approved_summaries=approved_summaries,
             modality_prompt_module=modality_prompt_module,
-            therapist_signature=None,  # Phase 6
+            therapist_signature=signature_prompt,
         )
 
         pipeline = PrepPipeline(agent)

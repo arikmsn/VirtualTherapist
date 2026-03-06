@@ -1,6 +1,6 @@
 """Therapist signature profile — learned style model built from approved summaries."""
 
-from sqlalchemy import Column, String, Text, JSON, Boolean, Integer, Float, ForeignKey
+from sqlalchemy import Column, String, Text, JSON, Boolean, Integer, Float, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 
@@ -54,6 +54,24 @@ class TherapistSignatureProfile(BaseModel):
     # How many approved summaries this version is based on
     approved_summary_count = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
+
+    # ── Signature Engine 2.0 (added migration 019) ────────────────────────────
+    # Sample storage: array of {ai_draft, approved_text, edit_distance, session_id, created_at}
+    # Capped at 20 most recent. Used as input to rebuild_profile().
+    raw_samples = Column(JSON, nullable=True)
+    approved_sample_count = Column(Integer, nullable=False, default=0)
+    min_samples_required = Column(Integer, nullable=False, default=5)
+
+    # Rebuild metadata
+    last_updated_at = Column(DateTime, nullable=True)
+    style_version = Column(Integer, nullable=False, default=1)
+
+    # LLM-derived style fields (populated by rebuild_profile)
+    style_summary = Column(Text, nullable=True)              # 2–3 sentence Hebrew description
+    style_examples = Column(JSON, nullable=True)             # list of 3 short excerpts
+    preferred_sentence_length = Column(String(20), nullable=True)  # short|medium|long
+    preferred_voice = Column(String(20), nullable=True)      # active|passive|mixed
+    uses_clinical_jargon = Column(Boolean, nullable=True)
 
     # ── Relationships ─────────────────────────────────────────────────────────
     therapist = relationship("Therapist", foreign_keys=[therapist_id])

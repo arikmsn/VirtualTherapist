@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.completeness import CompletenessChecker
 from app.ai.formal_record import FormalRecordInput, FormalRecordPipeline, FormalRecordResult, RecordType
+from app.ai.signature import SignatureEngine, inject_into_prompt
 from app.ai.models import FlowType
 from app.models.ai_log import AIGenerationLog
 from app.models.formal_record import FormalRecord, RecordStatus
@@ -152,6 +153,11 @@ class FormalRecordService:
         )
         therapist_profile = self._build_therapist_profile_dict(therapist_id)
 
+        # Signature injection (Phase 6)
+        sig_engine = SignatureEngine(self.db)
+        sig_profile = await sig_engine.get_active_profile(therapist_id)
+        signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
+
         inp = FormalRecordInput(
             client_id=patient_id,
             therapist_id=therapist_id,
@@ -160,6 +166,7 @@ class FormalRecordService:
             approved_summaries=approved_summaries,
             therapist_profile=therapist_profile,
             additional_context=additional_context,
+            therapist_signature=signature_prompt,
         )
 
         pipeline = FormalRecordPipeline(provider)

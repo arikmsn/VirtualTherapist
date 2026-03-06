@@ -447,3 +447,64 @@ async def delete_side_note(
     db.delete(note)
     db.commit()
     return {"message": "Note deleted"}
+
+
+# ── Signature Profile (Phase 6) ──────────────────────────────────────────────
+
+
+class SignatureProfileResponse(BaseModel):
+    is_active: bool
+    approved_sample_count: int
+    min_samples_required: int
+    samples_until_active: int
+    style_summary: Optional[str] = None
+    style_version: int
+    last_updated_at: Optional[datetime] = None
+
+
+@router.get("/signature-profile", response_model=SignatureProfileResponse)
+async def get_signature_profile(
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Return the current therapist signature profile status.
+    Includes sample count, activation threshold, and learned style summary.
+    """
+    from app.ai.signature import SignatureEngine
+    from app.models.signature import TherapistSignatureProfile
+
+    row = (
+        db.query(TherapistSignatureProfile)
+        .filter(TherapistSignatureProfile.therapist_id == current_therapist.id)
+        .first()
+    )
+    count = row.approved_sample_count if row else 0
+    min_req = row.min_samples_required if row else 5
+    return SignatureProfileResponse(
+        is_active=bool(row.is_active) if row else False,
+        approved_sample_count=count,
+        min_samples_required=min_req,
+        samples_until_active=max(0, min_req - count),
+        style_summary=row.style_summary if row else None,
+        style_version=row.style_version if row else 1,
+        last_updated_at=row.last_updated_at if row else None,
+    )
+
+
+@router.delete("/signature-profile", status_code=200)
+async def reset_signature_profile(
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Reset the therapist's learned signature profile.
+    Clears raw_samples, sets is_active=False, resets approved_sample_count to 0.
+    The therapist can start fresh if they don't like the learned style.
+    """
+    from app.ai.signature import SignatureEngine
+
+    engine = SignatureEngine(db)
+    engine.reset_profile(current_therapist.id)
+    db.commit()
+    return {"message": "Signature profile reset successfully"}

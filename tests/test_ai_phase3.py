@@ -494,7 +494,9 @@ class TestAssembleSummaryInput:
         service = SessionService.__new__(SessionService)
         service.db = db
 
-        result = await service._assemble_summary_input(session, "Notes", agent)
+        with patch("app.services.session_service.SignatureEngine") as MockSig:
+            MockSig.return_value.get_active_profile = AsyncMock(return_value=None)
+            result = await service._assemble_summary_input(session, "Notes", agent)
 
         # Should have populated last_approved_summary from the approved row
         assert result.last_approved_summary == "Previously approved text"
@@ -529,7 +531,9 @@ class TestAssembleSummaryInput:
         service = SessionService.__new__(SessionService)
         service.db = db
 
-        result = await service._assemble_summary_input(session, "Notes", agent)
+        with patch("app.services.session_service.SignatureEngine") as MockSig:
+            MockSig.return_value.get_active_profile = AsyncMock(return_value=None)
+            result = await service._assemble_summary_input(session, "Notes", agent)
 
         assert result.last_approved_summary is None
 
@@ -570,7 +574,9 @@ class TestAssembleSummaryInput:
         service = SessionService.__new__(SessionService)
         service.db = db
 
-        result = await service._assemble_summary_input(session, "Notes", agent)
+        with patch("app.services.session_service.SignatureEngine") as MockSig:
+            MockSig.return_value.get_active_profile = AsyncMock(return_value=None)
+            result = await service._assemble_summary_input(session, "Notes", agent)
 
         assert "לנהל יומן מחשבות" in result.open_tasks
         assert "תרגול נשימה" in result.open_tasks

@@ -364,19 +364,21 @@ async def test_prep_telemetry():
 
     with patch.object(service, "_write_generation_log") as mock_log:
         with patch("app.services.session_service.CompletenessChecker") as MockChecker:
-            checker_instance = MagicMock()
-            checker_instance.check = AsyncMock(
-                return_value=MagicMock(score=0.8, to_dict=lambda: {"score": 0.8})
-            )
-            checker_instance._last_result = _make_generation_result("ok")
-            MockChecker.return_value = checker_instance
+            with patch("app.services.session_service.SignatureEngine") as MockSig:
+                MockSig.return_value.get_active_profile = AsyncMock(return_value=None)
+                checker_instance = MagicMock()
+                checker_instance.check = AsyncMock(
+                    return_value=MagicMock(score=0.8, to_dict=lambda: {"score": 0.8})
+                )
+                checker_instance._last_result = _make_generation_result("ok")
+                MockChecker.return_value = checker_instance
 
-            await service.generate_prep_v2(
-                session_id=10,
-                therapist_id=2,
-                mode=PrepMode.CONCISE,
-                agent=agent,
-            )
+                await service.generate_prep_v2(
+                    session_id=10,
+                    therapist_id=2,
+                    mode=PrepMode.CONCISE,
+                    agent=agent,
+                )
 
     # Expect 2 calls with PRE_SESSION_PREP flow type (extraction + render)
     prep_calls = [

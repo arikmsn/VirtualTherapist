@@ -62,6 +62,7 @@ class FormalRecordInput:
     approved_summaries: list[dict]     # approved_by_therapist=True only
     therapist_profile: dict            # name, license_type, license_number, modality, etc.
     additional_context: Optional[str] = None   # free text from therapist
+    therapist_signature: Optional[str] = None  # Phase 6: inject_into_prompt() string
 
 
 @dataclass
@@ -378,6 +379,9 @@ class FormalRecordPipeline:
     async def _render(self, inp: FormalRecordInput, record_json: dict) -> str:
         """Call 2: render record_json into formal Hebrew prose (deep model)."""
         system_msg = _build_render_system_prompt(inp)
+        # Prepend therapist signature style guidance if active (Phase 6)
+        if inp.therapist_signature:
+            system_msg = inp.therapist_signature + "\n\n" + system_msg
         user_msg = _build_render_user_prompt(inp, record_json)
 
         model_id, route_reason = self._router.resolve(FlowType.FORMAL_RECORD)

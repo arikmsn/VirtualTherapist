@@ -365,33 +365,35 @@ async def test_formal_record_telemetry():
     service = FormalRecordService(db)
 
     with patch.object(service, "_write_generation_log") as mock_log:
-        with patch("app.services.formal_record_service.CompletenessChecker") as MockChecker:
-            checker_instance = MagicMock()
-            checker_instance.check = AsyncMock(
-                return_value=MagicMock(score=0.9, to_dict=lambda: {"score": 0.9})
-            )
-            from app.ai.models import GenerationResult
-            checker_instance._last_result = GenerationResult(
-                content="ok", model_used="test", provider="test",
-                flow_type=FlowType.COMPLETENESS_CHECK,
-            )
-            MockChecker.return_value = checker_instance
-
-            # Also patch FormalRecord to avoid DB insert issues
-            with patch("app.services.formal_record_service.FormalRecord") as MockFR:
-                mock_fr_instance = MagicMock()
-                mock_fr_instance.id = 1
-                mock_fr_instance.rendered_text = "rendered"
-                MockFR.return_value = mock_fr_instance
-
-                await service.create_formal_record(
-                    patient_id=1,
-                    therapist_id=2,
-                    record_type=RecordType.PROGRESS_NOTE,
-                    session_ids=None,
-                    additional_context=None,
-                    provider=provider,
+        with patch("app.services.formal_record_service.SignatureEngine") as MockSig:
+            MockSig.return_value.get_active_profile = AsyncMock(return_value=None)
+            with patch("app.services.formal_record_service.CompletenessChecker") as MockChecker:
+                checker_instance = MagicMock()
+                checker_instance.check = AsyncMock(
+                    return_value=MagicMock(score=0.9, to_dict=lambda: {"score": 0.9})
                 )
+                from app.ai.models import GenerationResult
+                checker_instance._last_result = GenerationResult(
+                    content="ok", model_used="test", provider="test",
+                    flow_type=FlowType.COMPLETENESS_CHECK,
+                )
+                MockChecker.return_value = checker_instance
+
+                # Also patch FormalRecord to avoid DB insert issues
+                with patch("app.services.formal_record_service.FormalRecord") as MockFR:
+                    mock_fr_instance = MagicMock()
+                    mock_fr_instance.id = 1
+                    mock_fr_instance.rendered_text = "rendered"
+                    MockFR.return_value = mock_fr_instance
+
+                    await service.create_formal_record(
+                        patient_id=1,
+                        therapist_id=2,
+                        record_type=RecordType.PROGRESS_NOTE,
+                        session_ids=None,
+                        additional_context=None,
+                        provider=provider,
+                    )
 
     formal_calls = [
         c for c in mock_log.call_args_list

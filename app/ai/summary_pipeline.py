@@ -45,7 +45,7 @@ class SummaryInput:
     last_approved_summary: Optional[str]        # full_summary from most recent APPROVED row
     open_tasks: list[str]                       # unresolved homework from prior sessions
     modality_pack: Optional["ModalityPack"]
-    therapist_signature: Optional["TherapistSignatureProfile"]  # Phase 6 — None for now
+    therapist_signature: Optional[str] = None  # Phase 6: inject_into_prompt() string
     flow_type: FlowType = FlowType.SESSION_SUMMARY
 
 
@@ -258,10 +258,15 @@ class SummaryPipeline:
         """Call 2: render clinical_json into Hebrew prose using the agent's system prompt."""
         render_prompt = _build_render_prompt(inp, clinical_json)
 
+        # Prepend therapist signature style guidance if active (Phase 6)
+        system_prompt = self.agent.system_prompt
+        if inp.therapist_signature:
+            system_prompt = inp.therapist_signature + "\n\n" + system_prompt
+
         model_id, route_reason = self._router.resolve(inp.flow_type)
         result = await self.agent.provider.generate(
             messages=[
-                {"role": "system", "content": self.agent.system_prompt},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": render_prompt},
             ],
             model=model_id,
