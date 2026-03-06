@@ -21,6 +21,7 @@ from app.ai.completeness import CompletenessChecker
 from app.ai.summary_pipeline import SummaryInput, SummaryPipeline, compute_edit_distance
 from app.ai.prep import PrepInput, PrepMode, PrepPipeline, PrepResult
 from app.ai.signature import SignatureEngine, inject_into_prompt
+from app.services.treatment_plan_service import TreatmentPlanService
 from app.services.audit_service import AuditService
 from app.security.encryption import decrypt_data
 from loguru import logger
@@ -645,6 +646,20 @@ class SessionService:
             except RuntimeError:
                 # No running event loop (e.g. in tests) — call synchronously
                 pass
+
+        # Plan drift check hook (Phase 7) — fire-and-forget, non-blocking
+        try:
+            plan_service = TreatmentPlanService(self.db)
+            asyncio.create_task(
+                plan_service.run_drift_check(
+                    patient_id=session.patient_id,
+                    therapist_id=therapist_id,
+                    session_id=session.id,
+                    provider=None,  # no provider — no-op when provider=None
+                )
+            )
+        except RuntimeError:
+            pass  # no event loop in tests — skip silently
 
         # Audit log
         await self.audit_service.log_action(

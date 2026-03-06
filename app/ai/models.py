@@ -30,6 +30,7 @@ class FlowType(str, Enum):
     TREATMENT_PLAN = "treatment_plan"
     TWIN_PROFILE = "twin_profile"
     FORMAL_RECORD = "formal_record"  # Phase 5: Israeli formal clinical documentation
+    PLAN_DRIFT_CHECK = "plan_drift_check"  # Phase 7: drift detection (fast model)
 
 
 @dataclass

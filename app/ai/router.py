@@ -45,6 +45,7 @@ class ModelRouter:
         FlowType.TREATMENT_PLAN:      "deep",
         FlowType.TWIN_PROFILE:        "deep",
         FlowType.FORMAL_RECORD:       "deep",   # Phase 5: always deep — high-stakes docs
+        FlowType.PLAN_DRIFT_CHECK:    "fast",   # Phase 7: drift detection — fast, best-effort
     }
 
     # Escalation thresholds

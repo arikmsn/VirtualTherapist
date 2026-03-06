@@ -40,8 +40,9 @@ class TestFlowType:
     def test_all_flows_defined(self):
         expected = {
             "EXTRACTION", "COMPLETENESS_CHECK", "CHAT", "SESSION_SUMMARY",
-            "SESSION_PREP", "PATIENT_INSIGHT", "MESSAGE_DRAFT",
+            "SESSION_PREP", "PRE_SESSION_PREP", "PATIENT_INSIGHT", "MESSAGE_DRAFT",
             "DEEP_SUMMARY", "TREATMENT_PLAN", "TWIN_PROFILE",
+            "FORMAL_RECORD", "PLAN_DRIFT_CHECK",
         }
         actual = {f.name for f in FlowType}
         assert expected == actual
