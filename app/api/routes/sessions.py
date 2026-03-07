@@ -913,16 +913,33 @@ async def stream_prep_v2(
 
     async def _sse_generator():
         pipeline = PrepPipeline(agent)
+        full_text_chunks: list = []
         try:
             yield f"data: {json.dumps({'phase': 'extracting'})}\n\n"
             prep_json = await pipeline.extract_only(prep_inp)
 
             yield f"data: {json.dumps({'phase': 'rendering'})}\n\n"
             async for chunk in pipeline.render_stream(prep_inp, prep_json):
+                full_text_chunks.append(chunk)
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
 
             yield f"data: {json.dumps({'phase': 'done', 'prep_json': prep_json, 'sessions_analyzed': len(approved_summaries)})}\n\n"
             yield "data: [DONE]\n\n"
+
+            # Persist rendered text so subsequent requests hit the cache
+            from datetime import datetime as _dt
+            session.prep_json = prep_json
+            session.prep_mode = mode.value
+            session.prep_rendered_text = "".join(full_text_chunks)
+            session.prep_generated_at = _dt.utcnow()
+            session.prep_input_fingerprint = compute_fingerprint({
+                "mode": mode.value,
+                "summaries": [s.get("full_summary") for s in approved_summaries],
+                "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
+            })
+            session.prep_input_fingerprint_version = FINGERPRINT_VERSION
+            db.add(session)
+            db.commit()
         except Exception as exc:
             logger.exception(f"stream_prep_v2 session={session_id} error: {exc!r}")
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
@@ -1110,6 +1127,11 @@ async def delete_clip(
     db.commit()
 
 
+class FinalizeClipsRequest(BaseModel):
+    """Optional transcript override — when provided, skip merge and use this text directly."""
+    transcript_override: Optional[str] = None
+
+
 @router.post(
     "/{session_id}/clips/finalize",
     response_model=SummaryResponse,
@@ -1117,6 +1139,7 @@ async def delete_clip(
 )
 async def finalize_clips(
     session_id: int,
+    body: Optional[FinalizeClipsRequest] = None,
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
@@ -1144,18 +1167,22 @@ async def finalize_clips(
         .all()
     )
 
-    transcribed = [c for c in clips if c.status == "transcribed" and c.transcript]
-    if not transcribed:
-        raise HTTPException(
-            status_code=400,
-            detail="No transcribed clips found. Upload and transcribe clips first.",
-        )
+    if body and body.transcript_override:
+        # Use the caller-supplied (possibly edited) transcript directly
+        merged_transcript = body.transcript_override.strip()
+    else:
+        transcribed = [c for c in clips if c.status == "transcribed" and c.transcript]
+        if not transcribed:
+            raise HTTPException(
+                status_code=400,
+                detail="No transcribed clips found. Upload and transcribe clips first.",
+            )
 
-    # Merge: include a header per clip so the AI knows segment boundaries
-    parts = []
-    for c in transcribed:
-        parts.append(f"[קטע {c.clip_index}]\n{c.transcript.strip()}")
-    merged_transcript = "\n\n".join(parts)
+        # Merge: include a header per clip so the AI knows segment boundaries
+        parts = []
+        for c in transcribed:
+            parts.append(f"[קטע {c.clip_index}]\n{c.transcript.strip()}")
+        merged_transcript = "\n\n".join(parts)
 
     session_service = SessionService(db)
     therapist_service = TherapistService(db)

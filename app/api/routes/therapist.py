@@ -53,6 +53,8 @@ class UpdateTwinControlsRequest(BaseModel):
     directiveness: Optional[int] = Field(default=None, ge=1, le=5)
     prohibitions: Optional[List[str]] = None
     custom_rules: Optional[str] = None
+    # Onboarding-collected style field — now editable from Twin profile page
+    tone: Optional[str] = None
     # Therapeutic modalities (stored as comma-separated values in approach_description)
     approach_description: Optional[str] = None
     # Professional credentials
@@ -497,13 +499,24 @@ async def get_signature_profile(
     """
     from app.ai.signature import SignatureEngine
     from app.models.signature import TherapistSignatureProfile
+    from app.models.session import SessionSummary as _SessionSummary, Session as _TherapySession
 
     row = (
         db.query(TherapistSignatureProfile)
         .filter(TherapistSignatureProfile.therapist_id == current_therapist.id)
         .first()
     )
-    count = row.approved_sample_count if row else 0
+    # Use real approved summary count (the engine's internal counter only increments
+    # when a batch is processed, so it lags behind the actual approved count)
+    count = (
+        db.query(_SessionSummary)
+        .join(_TherapySession, _TherapySession.summary_id == _SessionSummary.id)
+        .filter(
+            _TherapySession.therapist_id == current_therapist.id,
+            _SessionSummary.approved_by_therapist == True,
+        )
+        .count()
+    )
     min_req = row.min_samples_required if row else 5
     return SignatureProfileResponse(
         is_active=bool(row.is_active) if row else False,

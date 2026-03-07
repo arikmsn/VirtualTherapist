@@ -406,12 +406,6 @@ export default function PatientProfilePage() {
     }
   }
 
-  const handleEditOpen = () => {
-    if (!patient) return
-    setEditForm({ full_name: patient.full_name, phone: patient.phone || '', email: patient.email || '' })
-    setEditError('')
-    setShowEditPatient(true)
-  }
 
   const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -534,9 +528,18 @@ export default function PatientProfilePage() {
         saved = await treatmentPlanAPI.create(pid)
       }
       setSavedPlan(saved)
-      // Refresh history
-      const history = await treatmentPlanAPI.getHistory(pid)
-      setPlanHistory(history as TreatmentPlanVersion[])
+      // Optimistic update: show the new version immediately
+      setPlanHistory((prev) => {
+        const without = prev.filter((p) => p.plan_id !== saved.plan_id)
+        return [saved, ...without].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
+      })
+      // Background refresh to get server-canonical order + rendered_text
+      try {
+        const history = await treatmentPlanAPI.getHistory(pid)
+        setPlanHistory(history as TreatmentPlanVersion[])
+      } catch { /* non-critical — optimistic state is accurate */ }
     } catch (err: any) {
       const msg = err.response?.data?.detail || ''
       // 409 = active plan exists → update instead
@@ -544,8 +547,16 @@ export default function PatientProfilePage() {
         try {
           const saved = await treatmentPlanAPI.update(pid)
           setSavedPlan(saved)
-          const history = await treatmentPlanAPI.getHistory(pid)
-          setPlanHistory(history as TreatmentPlanVersion[])
+          setPlanHistory((prev) => {
+            const without = prev.filter((p) => p.plan_id !== saved.plan_id)
+            return [saved, ...without].sort(
+              (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            )
+          })
+          try {
+            const history = await treatmentPlanAPI.getHistory(pid)
+            setPlanHistory(history as TreatmentPlanVersion[])
+          } catch { /* non-critical */ }
         } catch (err2: any) {
           setPlanError(err2.response?.data?.detail || 'שגיאה בשמירת התוכנית')
         }
@@ -685,24 +696,17 @@ export default function PatientProfilePage() {
                 {statusLabel(patient.status)}
               </span>
             </div>
-            {/* Action buttons — edit only (inactive action moved to Danger Zone) */}
-            <div className="flex items-center gap-2 flex-wrap mt-2">
-              <button
-                onClick={handleEditOpen}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-therapy-calm border border-gray-200 rounded-lg px-2 py-1.5 hover:border-therapy-calm transition-colors min-h-[32px] touch-manipulation"
-              >
-                <PencilSquareIcon className="h-3.5 w-3.5" />
-                ערוך פרטים
-              </button>
-              {patient.status === 'inactive' && (
+            {/* Action buttons — reactivate only (edit moved to Settings tab) */}
+            {patient.status === 'inactive' && (
+              <div className="flex items-center gap-2 flex-wrap mt-2">
                 <button
                   onClick={handleReactivate}
                   className="text-xs text-green-600 hover:text-green-800 border border-green-200 rounded-lg px-2 py-1.5 hover:border-green-400 transition-colors min-h-[32px] touch-manipulation"
                 >
                   הפעל מחדש
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Contact info — single column on mobile to prevent overlap */}
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-1.5 gap-x-6 text-sm text-gray-600">
@@ -1044,7 +1048,9 @@ export default function PatientProfilePage() {
                       </button>
                     </div>
                     {item.rendered_text && (
-                      <p className="text-xs text-gray-600 mt-1 line-clamp-2 leading-relaxed">{item.rendered_text}</p>
+                      <p className="text-xs text-gray-600 mt-1 line-clamp-2 leading-relaxed">
+                        {item.rendered_text.replace(/^```(?:json)?\s*[\s\S]*?```\s*/g, '').trim()}
+                      </p>
                     )}
                   </div>
                 ))}
@@ -1669,8 +1675,19 @@ export default function PatientProfilePage() {
                 <p className="text-gray-400 text-sm">אין תוכן שמור</p>
               )}
             </div>
-            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
-              <button onClick={() => setViewingDeepSummary(null)} className="btn-secondary w-full">סגור</button>
+            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex gap-3">
+              {viewingDeepSummary.summary_json && (
+                <button
+                  onClick={() => {
+                    setInsight(viewingDeepSummary.summary_json as unknown as DeepSummary)
+                    setViewingDeepSummary(null)
+                  }}
+                  className="btn-primary flex-1"
+                >
+                  טען לתצוגה הנוכחית
+                </button>
+              )}
+              <button onClick={() => setViewingDeepSummary(null)} className="btn-secondary flex-1">סגור</button>
             </div>
           </div>
         </div>

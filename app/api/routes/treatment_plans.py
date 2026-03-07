@@ -51,6 +51,7 @@ class TreatmentPlanListItem(BaseModel):
     drift_score: Optional[float] = None
     approved_at: Optional[datetime] = None
     created_at: datetime
+    rendered_text: Optional[str] = None
 
 
 class DriftCheckResponse(BaseModel):
@@ -212,6 +213,7 @@ async def get_treatment_plan_history(
                 drift_score=p.drift_score,
                 approved_at=p.approved_at,
                 created_at=p.created_at,
+                rendered_text=p.rendered_text,
             )
             for p in plans
         ]

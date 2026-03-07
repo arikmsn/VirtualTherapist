@@ -149,11 +149,13 @@ export default function TwinProfilePage() {
   const [directiveness, setDirectiveness] = useState(3)
   const [prohibitions, setProhibitions] = useState<string[]>([])
   const [customRules, setCustomRules] = useState('')
+  const [tone, setTone] = useState('')
   const [newProhibition, setNewProhibition] = useState('')
 
   // Therapeutic modalities (multi-select for approach_description)
   const [selectedModalities, setSelectedModalities] = useState<string[]>([])
   const [initModalities, setInitModalities] = useState<string[]>([])
+  const [editingModalities, setEditingModalities] = useState(false)
 
   // Professional credentials
   const [education, setEducation] = useState('')
@@ -182,6 +184,7 @@ export default function TwinProfilePage() {
       toneWarmth !== profile.tone_warmth ||
       directiveness !== profile.directiveness ||
       customRules !== (profile.custom_rules || '') ||
+      tone !== (profile.tone || '') ||
       JSON.stringify(prohibitions) !== JSON.stringify(profile.prohibitions || []) ||
       JSON.stringify([...selectedModalities].sort()) !== JSON.stringify([...initModalities].sort()) ||
       education !== (profile.education || '') ||
@@ -206,6 +209,7 @@ export default function TwinProfilePage() {
         setDirectiveness(data2.directiveness)
         setProhibitions(data2.prohibitions || [])
         setCustomRules(data2.custom_rules || '')
+        setTone(data2.tone || '')
         const mods = parseModalities(data2)
         setSelectedModalities(mods)
         setInitModalities(mods)
@@ -232,6 +236,7 @@ export default function TwinProfilePage() {
         directiveness,
         prohibitions,
         custom_rules: customRules || null,
+        tone: tone || null,
         approach_description: selectedModalities.length > 0 ? selectedModalities.join(', ') : null,
         education: education || null,
         certifications: certifications || null,
@@ -372,69 +377,96 @@ export default function TwinProfilePage() {
         </div>
       )}
 
-      {/* ── Section 1: Therapeutic modalities (editable multi-select) ── */}
+      {/* ── Section 1: Therapeutic modalities (chips view / editable grid) ── */}
       <div className="card">
-        <h2 className="text-lg font-bold text-gray-800 mb-1">גישות טיפוליות</h2>
-        <p className="text-sm text-gray-500 mb-4">בחר את כל השיטות הטיפוליות בהן אתה עובד</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {MODALITIES.map((m) => {
-            const checked = selectedModalities.includes(m.value)
-            return (
-              <label
-                key={m.value}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors text-sm ${
-                  checked
-                    ? 'border-therapy-calm bg-blue-50 text-therapy-calm font-medium'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => {
-                    setSelectedModalities((prev) =>
-                      prev.includes(m.value)
-                        ? prev.filter((v) => v !== m.value)
-                        : [...prev, m.value]
-                    )
-                  }}
-                  className="accent-therapy-calm"
-                />
-                {m.label}
-              </label>
-            )
-          })}
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold text-gray-800">גישות טיפוליות</h2>
+          <button
+            onClick={() => setEditingModalities((v) => !v)}
+            className="text-xs text-therapy-calm hover:underline"
+          >
+            {editingModalities ? 'סגור עריכה' : 'ערוך גישות'}
+          </button>
         </div>
 
-        {/* Other onboarding-collected fields — read-only */}
-        {(profile.tone || profile.message_length_preference || profile.follow_up_frequency ||
-          (profile.common_terminology && profile.common_terminology.length > 0) ||
-          (profile.preferred_exercises && profile.preferred_exercises.length > 0)) && (
-          <div className="mt-4 pt-4 border-t border-gray-100 space-y-2 text-sm">
-            {profile.tone && (
-              <div className="flex gap-3">
-                <span className="text-gray-500 w-32 flex-shrink-0">סגנון:</span>
-                <span className="text-gray-700">{profile.tone}</span>
-              </div>
-            )}
-            {profile.message_length_preference && (
-              <div className="flex gap-3">
-                <span className="text-gray-500 w-32 flex-shrink-0">אורך הודעות:</span>
-                <span className="text-gray-700">{profile.message_length_preference}</span>
-              </div>
-            )}
-            {profile.common_terminology && profile.common_terminology.length > 0 && (
-              <div className="flex gap-3">
-                <span className="text-gray-500 w-32 flex-shrink-0">מושגים:</span>
-                <div className="flex flex-wrap gap-1">
-                  {profile.common_terminology.map((t, i) => (
-                    <span key={i} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">{t}</span>
-                  ))}
-                </div>
-              </div>
+        {editingModalities ? (
+          <>
+            <p className="text-sm text-gray-500 mb-4">בחר את כל השיטות הטיפוליות בהן אתה עובד</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {MODALITIES.map((m) => {
+                const checked = selectedModalities.includes(m.value)
+                return (
+                  <label
+                    key={m.value}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors text-sm ${
+                      checked
+                        ? 'border-therapy-calm bg-blue-50 text-therapy-calm font-medium'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        setSelectedModalities((prev) =>
+                          prev.includes(m.value)
+                            ? prev.filter((v) => v !== m.value)
+                            : [...prev, m.value]
+                        )
+                      }}
+                      className="accent-therapy-calm"
+                    />
+                    {m.label}
+                  </label>
+                )
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {selectedModalities.length > 0 ? selectedModalities.map((v) => {
+              const m = MODALITIES.find((x) => x.value === v)
+              return m ? (
+                <span key={v} className="px-3 py-1 bg-blue-50 border border-blue-200 text-therapy-calm text-sm rounded-full font-medium">
+                  {m.label}
+                </span>
+              ) : null
+            }) : (
+              <span className="text-sm text-gray-400">לא נבחרו גישות טיפוליות — לחץ "ערוך גישות" להוסיף</span>
             )}
           </div>
         )}
+
+        {/* Other onboarding-collected fields */}
+        <div className="mt-4 pt-4 border-t border-gray-100 space-y-3 text-sm">
+          {/* Tone — editable */}
+          <div className="flex gap-3 items-center">
+            <span className="text-gray-500 w-32 flex-shrink-0">סגנון:</span>
+            <input
+              type="text"
+              value={tone}
+              onChange={(e) => setTone(e.target.value)}
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-therapy-calm/30 text-gray-700"
+              placeholder="לדוגמה: חמה ותומכת"
+            />
+          </div>
+          {profile.message_length_preference && (
+            <div className="flex gap-3">
+              <span className="text-gray-500 w-32 flex-shrink-0">אורך הודעות:</span>
+              <span className="text-gray-700">{profile.message_length_preference}</span>
+            </div>
+          )}
+          {profile.common_terminology && profile.common_terminology.length > 0 && (
+            <div className="flex gap-3">
+              <span className="text-gray-500 w-32 flex-shrink-0">מושגים:</span>
+              <div className="flex flex-wrap gap-1">
+                {profile.common_terminology.map((t, i) => (
+                  <span key={i} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Section 2: Twin Controls (editable) ── */}

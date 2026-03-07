@@ -429,8 +429,10 @@ export const sessionsAPI = {
     await api.delete(`/sessions/${sessionId}/clips/${clipId}`)
   },
 
-  finalizeClips: async (sessionId: number) => {
-    const response = await api.post(`/sessions/${sessionId}/clips/finalize`)
+  finalizeClips: async (sessionId: number, transcriptOverride?: string) => {
+    const response = await api.post(`/sessions/${sessionId}/clips/finalize`, {
+      transcript_override: transcriptOverride ?? null,
+    })
     return response.data
   },
 }
@@ -527,6 +529,7 @@ export const treatmentPlanAPI = {
       drift_score: number | null
       approved_at: string | null
       created_at: string
+      rendered_text: string | null
     }>
   },
 
@@ -600,6 +603,7 @@ export const therapistAPI = {
     directiveness?: number
     prohibitions?: string[]
     custom_rules?: string | null
+    tone?: string | null
     approach_description?: string | null
     education?: string | null
     certifications?: string | null

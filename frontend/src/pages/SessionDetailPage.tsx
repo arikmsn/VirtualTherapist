@@ -79,6 +79,11 @@ export default function SessionDetailPage() {
   const [editTranscriptText, setEditTranscriptText] = useState('')
   const [regenerating, setRegenerating] = useState(false)
 
+  // Transcript review modal (shown after multi-clip recording before AI summary)
+  const [pendingTranscript, setPendingTranscript] = useState('')
+  const [showTranscriptReview, setShowTranscriptReview] = useState(false)
+  const [finalizing, setFinalizing] = useState(false)
+
   // Delete summary
   const [confirmDeleteSummary, setConfirmDeleteSummary] = useState(false)
   const [deletingSummary, setDeletingSummary] = useState(false)
@@ -192,6 +197,46 @@ export default function SessionDetailPage() {
 
   const splitLines = (val: string): string[] =>
     val.split('\n').map((s) => s.trim()).filter(Boolean)
+
+  const sessionTypeLabel = (t?: string) => {
+    const map: Record<string, string> = {
+      individual: 'טיפול אישי',
+      couples: 'טיפול זוגי',
+      group: 'טיפול קבוצתי',
+      family: 'טיפול משפחתי',
+    }
+    return map[t || ''] || t || ''
+  }
+
+  /** Strip common AI output artifacts: markdown field headers, JSON fences */
+  const stripAiArtifacts = (text: string | null): string => {
+    if (!text) return ''
+    return text
+      // Remove ```json ... ``` code blocks entirely
+      .replace(/```(?:json)?\s*[\s\S]*?```/g, '')
+      // Remove **field_name**: or **field_name** at line start
+      .replace(/^\*\*[a-zA-Z_\u0590-\u05FF ]+\*\*:?\s*\n?/gm, '')
+      // Remove bare snake_case English key lines like "full_summary:" or "full_summary"
+      .replace(/^[a-z][a-zA-Z_]+:?\s*\n/gm, '')
+      .trim()
+  }
+
+  /** Call finalize endpoint with transcript from review modal */
+  const handleFinalizeWithTranscript = async () => {
+    setFinalizing(true)
+    setError('')
+    try {
+      const result = await sessionsAPI.finalizeClips(Number(sessionId), pendingTranscript)
+      setSummary(result as SessionSummary)
+      setSession((prev) => prev ? { ...prev, summary_id: (result as SessionSummary).id } : prev)
+      setShowTranscriptReview(false)
+      setPendingTranscript('')
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'שגיאה ביצירת הסיכום')
+    } finally {
+      setFinalizing(false)
+    }
+  }
 
   const handleSaveDraft = async () => {
     setSaving(true)
@@ -325,7 +370,7 @@ export default function SessionDetailPage() {
               {session.duration_minutes && <span>{session.duration_minutes} דקות</span>}
               {session.session_type && (
                 <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">
-                  {session.session_type}
+                  {sessionTypeLabel(session.session_type)}
                 </span>
               )}
             </div>
@@ -434,11 +479,11 @@ export default function SessionDetailPage() {
           {inputMode === 'voice' && (
             <MultiClipRecorder
               sessionId={Number(sessionId)}
-              onFinalized={(result) => {
-                setSummary(result as SessionSummary)
-                setSession((prev) => prev ? { ...prev, summary_id: (result as SessionSummary).id } : prev)
+              onTranscriptReady={(transcript) => {
+                setPendingTranscript(transcript)
+                setShowTranscriptReview(true)
               }}
-              processing={generating}
+              processing={finalizing}
             />
           )}
 
@@ -675,7 +720,7 @@ export default function SessionDetailPage() {
                         </>
                       ) : (
                         <p className="text-gray-700 whitespace-pre-line text-sm leading-relaxed">
-                          {summary.full_summary}
+                          {stripAiArtifacts(summary.full_summary)}
                         </p>
                       )}
                     </div>
@@ -703,7 +748,7 @@ export default function SessionDetailPage() {
                 summary.full_summary && (
                   <div className="card">
                     <h3 className="font-bold text-gray-800 mb-2">סיכום כללי</h3>
-                    <p className="text-gray-700 whitespace-pre-line">{summary.full_summary}</p>
+                    <p className="text-gray-700 whitespace-pre-line">{stripAiArtifacts(summary.full_summary)}</p>
                   </div>
                 )
               )}
@@ -778,6 +823,62 @@ export default function SessionDetailPage() {
               onExercisesChange={setExercises}
             />
           )}
+        </div>
+      )}
+
+      {/* Transcript Review Modal — shown after multi-clip recording before AI summarization */}
+      {showTranscriptReview && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-blue-100 flex-shrink-0 bg-blue-50 rounded-t-2xl">
+              <div className="flex items-center gap-2">
+                <MicrophoneIcon className="h-5 w-5 text-blue-600" />
+                <h2 className="text-base font-bold text-blue-900">בדיקת תמליל לפני יצירת סיכום</h2>
+              </div>
+              <button
+                onClick={() => { setShowTranscriptReview(false); setPendingTranscript('') }}
+                className="text-gray-400 hover:text-gray-700 p-1"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-5">
+              <p className="text-sm text-gray-500 mb-3">
+                זהו המיזוג של כל הקטעים שהוקלטו. ניתן לערוך לפני יצירת הסיכום.
+              </p>
+              <textarea
+                value={pendingTranscript}
+                onChange={(e) => setPendingTranscript(e.target.value)}
+                rows={14}
+                className="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 resize-y"
+              />
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex gap-3 justify-end">
+              <button
+                onClick={() => { setShowTranscriptReview(false); setPendingTranscript('') }}
+                className="btn-secondary"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={handleFinalizeWithTranscript}
+                disabled={finalizing || !pendingTranscript.trim()}
+                className="btn-primary flex items-center gap-2 disabled:opacity-50"
+              >
+                {finalizing ? (
+                  <>
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                    יוצר סיכום...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircleIcon className="h-4 w-4" />
+                    צור סיכום מהתמליל
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

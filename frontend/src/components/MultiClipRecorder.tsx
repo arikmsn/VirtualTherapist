@@ -25,18 +25,25 @@ interface Clip {
   status: string // pending | transcribed | error
 }
 
+const HEBREW_ORDINALS: Record<number, string> = {
+  1: 'ראשון', 2: 'שני', 3: 'שלישי', 4: 'רביעי', 5: 'חמישי',
+  6: 'שישי', 7: 'שביעי', 8: 'שמיני', 9: 'תשיעי', 10: 'עשירי',
+}
+
+const clipOrdinal = (n: number) => HEBREW_ORDINALS[n] || `#${n}`
+
 interface MultiClipRecorderProps {
   sessionId: number
-  /** Called with the full summary response once finalize completes */
-  onFinalized: (summary: unknown) => void
-  /** Whether the parent is processing (finalizing) */
+  /** Called with merged transcript text — parent shows review modal before finalizing */
+  onTranscriptReady: (mergedTranscript: string) => void
+  /** Whether the parent is processing (finalizing in progress) */
   processing?: boolean
   disabled?: boolean
 }
 
 export default function MultiClipRecorder({
   sessionId,
-  onFinalized,
+  onTranscriptReady,
   processing = false,
   disabled = false,
 }: MultiClipRecorderProps) {
@@ -44,7 +51,6 @@ export default function MultiClipRecorder({
   const [recording, setRecording] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [uploading, setUploading] = useState(false)
-  const [finalizing, setFinalizing] = useState(false)
   const [permissionError, setPermissionError] = useState('')
   const [uploadError, setUploadError] = useState('')
 
@@ -146,18 +152,14 @@ export default function MultiClipRecorder({
     }
   }
 
-  const handleFinalize = async () => {
-    setFinalizing(true)
-    setUploadError('')
-    try {
-      const summary = await sessionsAPI.finalizeClips(sessionId)
-      onFinalized(summary)
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setUploadError(detail || 'שגיאה ביצירת הסיכום')
-    } finally {
-      setFinalizing(false)
-    }
+  const handleFinalize = () => {
+    // Build merged transcript client-side so the parent can show a review modal
+    const transcribed = clips.filter((c) => c.status === 'transcribed' && c.transcript)
+    if (transcribed.length === 0) return
+    const merged = transcribed
+      .map((c) => `[קטע ${c.clip_index}]\n${c.transcript!.trim()}`)
+      .join('\n\n')
+    onTranscriptReady(merged)
   }
 
   const transcribedCount = clips.filter((c) => c.status === 'transcribed').length
@@ -248,7 +250,7 @@ export default function MultiClipRecorder({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
             </span>
-            <span className="text-red-700 font-medium text-sm">מקליט קטע #{clips.length + 1}...</span>
+            <span className="text-red-700 font-medium text-sm">מקליט קטע {clipOrdinal(clips.length + 1)}...</span>
           </div>
           <span className="text-red-600 font-mono">{formatTime(elapsed)}</span>
           <div className="flex-1" />
@@ -276,7 +278,7 @@ export default function MultiClipRecorder({
         {!recording && !uploading && (
           <button
             onClick={startRecording}
-            disabled={processing || finalizing}
+            disabled={processing}
             className="inline-flex items-center gap-2 px-4 py-2 bg-therapy-calm text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
           >
             <MicrophoneIcon className="h-4 w-4" />
@@ -284,14 +286,14 @@ export default function MultiClipRecorder({
           </button>
         )}
 
-        {/* Finalize */}
+        {/* Finalize — triggers transcript review modal in parent */}
         {canFinalize && (
           <button
             onClick={handleFinalize}
-            disabled={finalizing || processing}
+            disabled={processing}
             className="inline-flex items-center gap-2 px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm font-medium"
           >
-            {finalizing || processing ? (
+            {processing ? (
               <>
                 <ArrowPathIcon className="h-4 w-4 animate-spin" />
                 יוצר סיכום...
