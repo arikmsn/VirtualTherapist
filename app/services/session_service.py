@@ -475,8 +475,15 @@ class SessionService:
         therapist_id: int,
     ) -> SessionSummary:
         """
-        Generate session summary from therapist's text notes.
-        Uses AI agent to produce a structured JSON summary.
+        PRD Golden Path (text variant): Notes → AI Structured Summary → Review → Approve.
+
+        Uses the Summary 2.0 two-call pipeline:
+          1. Extraction call  — structured JSON (clinical_json)
+          2. Rendering call   — therapist-style Hebrew prose (full_summary)
+
+        Completeness check runs after generation (fast model, best-effort).
+        Updates or creates the SessionSummary row and links it to the session.
+        Raises ValueError if the session is not found or not owned by this therapist.
         """
 
         session = self.db.query(TherapySession).filter(
@@ -604,7 +611,14 @@ class SessionService:
         return session.summary
 
     async def approve_summary(self, session_id: int, therapist_id: int) -> SessionSummary:
-        """Therapist approves the generated summary"""
+        """
+        Approve a session summary.
+
+        Sets approved_by_therapist=True and status=APPROVED.
+        Approved summaries become the source of truth for prep briefs, deep summaries,
+        treatment plans, and the patient insight report.
+        Raises ValueError if the session or summary is not found.
+        """
 
         session = self.db.query(TherapySession).filter(
             TherapySession.id == session_id,
@@ -1183,32 +1197,7 @@ class SessionService:
 
         # Fetch ALL approved summaries for this patient, oldest → newest
         # SOURCE OF TRUTH: approved_by_therapist=True ONLY — never ai_draft_text
-        patient_sessions_q = (
-            self.db.query(TherapySession)
-            .options(joinedload(TherapySession.summary))
-            .filter(
-                TherapySession.patient_id == session.patient_id,
-                TherapySession.summary_id.isnot(None),
-            )
-            .order_by(TherapySession.session_date.asc())
-            .all()
-        )
-        approved_summaries = []
-        for s in patient_sessions_q:
-            summary = s.summary
-            if summary and summary.approved_by_therapist:
-                approved_summaries.append({
-                    "session_date": str(s.session_date),
-                    "session_number": s.session_number,
-                    "full_summary": summary.full_summary,
-                    "topics_discussed": summary.topics_discussed,
-                    "homework_assigned": summary.homework_assigned,
-                    "next_session_plan": summary.next_session_plan,
-                    "risk_assessment": summary.risk_assessment,
-                    "mood_observed": summary.mood_observed,
-                    "clinical_json": summary.clinical_json,
-                })
-        approved_summaries = approved_summaries[-10:]  # last 10 — older sessions add noise
+        approved_summaries = self._load_approved_summaries_for_prep(session.patient_id)
 
         # Resolve modality info from the agent's modality pack
         modality_name = "generic_integrative"
@@ -1317,6 +1306,166 @@ class SessionService:
             "sessions_analyzed": prep_json.get("sessions_analyzed", 0),
             "generated_at": session.prep_generated_at.isoformat() if session.prep_generated_at else None,
         }
+
+    def _load_approved_summaries_for_prep(
+        self,
+        patient_id: int,
+        limit: int = 10,
+    ) -> List[dict]:
+        """
+        Return the last *limit* approved summaries for *patient_id*, oldest → newest.
+
+        SOURCE OF TRUTH: only rows where approved_by_therapist=True are included.
+        Uses joinedload to avoid N+1 queries on the summary relationship.
+
+        Shared by generate_prep_v2 (non-streaming) and stream_prep_v2 (streaming).
+        """
+        patient_sessions = (
+            self.db.query(TherapySession)
+            .options(joinedload(TherapySession.summary))
+            .filter(
+                TherapySession.patient_id == patient_id,
+                TherapySession.summary_id.isnot(None),
+            )
+            .order_by(TherapySession.session_date.asc())
+            .all()
+        )
+        result = []
+        for s in patient_sessions:
+            summary = s.summary
+            if summary and summary.approved_by_therapist:
+                result.append({
+                    "session_date": str(s.session_date),
+                    "session_number": s.session_number,
+                    "full_summary": summary.full_summary,
+                    "topics_discussed": summary.topics_discussed,
+                    "homework_assigned": summary.homework_assigned,
+                    "next_session_plan": summary.next_session_plan,
+                    "risk_assessment": summary.risk_assessment,
+                    "mood_observed": summary.mood_observed,
+                    "clinical_json": summary.clinical_json,
+                })
+        return result[-limit:]
+
+    async def delete_session(self, session_id: int, therapist_id: int) -> None:
+        """
+        Delete a session and its associated summary (if any).
+
+        FK order: delete the session row first (drops the FK reference on sessions.summary_id),
+        then delete the now-orphaned summary row.
+        Raises ValueError if the session is not found or not owned by this therapist.
+        """
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
+        if not session:
+            raise ValueError("Session not found")
+
+        summary_id = session.summary_id
+        self.db.delete(session)
+        self.db.flush()
+
+        if summary_id:
+            summary = self.db.query(SessionSummary).filter(
+                SessionSummary.id == summary_id,
+            ).first()
+            if summary:
+                self.db.delete(summary)
+
+        self.db.commit()
+
+        await self.audit_service.log_action(
+            user_id=therapist_id,
+            user_type="therapist",
+            action="delete",
+            resource_type="session",
+            resource_id=session_id,
+        )
+        logger.info(f"Deleted session {session_id}")
+
+    async def delete_session_summary(self, session_id: int, therapist_id: int) -> None:
+        """
+        Delete a session's AI-generated summary while keeping the session record.
+
+        After deletion the session can receive a new summary via from-text or from-audio.
+        Raises ValueError if the session or summary is not found.
+        """
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
+        if not session:
+            raise ValueError("Session not found")
+        if not session.summary_id:
+            raise ValueError("No summary to delete")
+
+        summary_id = session.summary_id
+        # Unlink FK before deleting the summary row
+        session.summary_id = None
+        self.db.flush()
+        summary = self.db.query(SessionSummary).filter(
+            SessionSummary.id == summary_id,
+        ).first()
+        if summary:
+            self.db.delete(summary)
+        self.db.commit()
+
+        logger.info(f"Deleted summary for session {session_id}")
+
+    def list_clips_for_session(self, session_id: int, therapist_id: int) -> list:
+        """
+        Return audio clips for a session, ordered by clip_index.
+        Raises ValueError if the session is not found or not owned by this therapist.
+        """
+        from app.models.audio_clip import AudioClip
+
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
+        if not session:
+            raise ValueError("Session not found")
+
+        return (
+            self.db.query(AudioClip)
+            .filter(AudioClip.session_id == session_id)
+            .order_by(AudioClip.clip_index.asc())
+            .all()
+        )
+
+    def delete_clip(self, clip_id: int, session_id: int, therapist_id: int) -> None:
+        """
+        Delete a single audio clip and renumber subsequent clips to fill the gap.
+        Raises ValueError if the clip is not found.
+        """
+        from app.models.audio_clip import AudioClip
+
+        clip = self.db.query(AudioClip).filter(
+            AudioClip.id == clip_id,
+            AudioClip.session_id == session_id,
+            AudioClip.therapist_id == therapist_id,
+        ).first()
+        if not clip:
+            raise ValueError("Clip not found")
+
+        deleted_index = clip.clip_index
+        self.db.delete(clip)
+        self.db.flush()
+
+        # Re-number subsequent clips to fill the gap
+        subsequent = (
+            self.db.query(AudioClip)
+            .filter(
+                AudioClip.session_id == session_id,
+                AudioClip.clip_index > deleted_index,
+            )
+            .all()
+        )
+        for c in subsequent:
+            c.clip_index -= 1
+
+        self.db.commit()
 
     def _build_patient_summary_context(
         self,

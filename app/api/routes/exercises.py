@@ -165,6 +165,6 @@ async def delete_exercise(
     ex = _owned_exercise(exercise_id, current_therapist.id, db)
     patient_id = ex.patient_id
     db.delete(ex)
-    db.commit()
+    db.flush()
     _sync_completed_count(patient_id, db)
     db.commit()

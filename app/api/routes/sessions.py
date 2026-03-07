@@ -19,6 +19,18 @@ from loguru import logger
 router = APIRouter()
 
 
+def _require_session(db: "DBSession", session_id: int, therapist_id: int):
+    """Load a session owned by *therapist_id* or raise HTTP 404."""
+    from app.models.session import Session as _TherapySession
+    session = db.query(_TherapySession).filter(
+        _TherapySession.id == session_id,
+        _TherapySession.therapist_id == therapist_id,
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
 # --- Request / Response models ---
 
 
@@ -323,36 +335,25 @@ async def delete_session(
     Delete a session and its associated summary.
     notify_patient flag is accepted and logged; no message is sent yet.
     """
-    from app.models.session import Session as SessionModel, SessionSummary
-    from loguru import logger
+    service = SessionService(db)
 
-    session = db.query(SessionModel).filter(
-        SessionModel.id == session_id,
-        SessionModel.therapist_id == current_therapist.id,
-    ).first()
-
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    if notify_patient:
-        logger.info(
-            f"[session_delete] therapist={current_therapist.id} "
-            f"session={session_id} patient={session.patient_id} "
-            f"notify_patient=True - notification queued (not yet implemented)"
-        )
-
-    # sessions.summary_id → session_summaries.id  (FK is on sessions side)
-    # Delete the session first to drop the FK reference, then delete the orphaned summary.
-    summary_id = session.summary_id
-    db.delete(session)
-    db.flush()
-
-    if summary_id:
-        summary = db.query(SessionSummary).filter(SessionSummary.id == summary_id).first()
-        if summary:
-            db.delete(summary)
-
-    db.commit()
+    try:
+        # Log notify intent before deleting (need patient_id from the session)
+        if notify_patient:
+            from app.models.session import Session as _SessionModel
+            s = db.query(_SessionModel).filter(
+                _SessionModel.id == session_id,
+                _SessionModel.therapist_id == current_therapist.id,
+            ).first()
+            if s:
+                logger.info(
+                    f"[session_delete] therapist={current_therapist.id} "
+                    f"session={session_id} patient={s.patient_id} "
+                    f"notify_patient=True - notification queued (not yet implemented)"
+                )
+        await service.delete_session(session_id, current_therapist.id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.put("/{session_id}", response_model=SessionResponse)
@@ -558,26 +559,11 @@ async def delete_session_summary(
     Delete a session's AI-generated summary (keeps the session record).
     After deletion the session can receive a new summary via from-text or from-audio.
     """
-    from app.models.session import Session as SessionModel, SessionSummary
-
-    session = db.query(SessionModel).filter(
-        SessionModel.id == session_id,
-        SessionModel.therapist_id == current_therapist.id,
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    if not session.summary_id:
-        raise HTTPException(status_code=404, detail="No summary to delete")
-
-    summary_id = session.summary_id
-    # Unlink FK before deleting the summary row
-    session.summary_id = None
-    db.flush()
-    summary = db.query(SessionSummary).filter(SessionSummary.id == summary_id).first()
-    if summary:
-        db.delete(summary)
-    db.commit()
+    service = SessionService(db)
+    try:
+        await service.delete_session_summary(session_id, current_therapist.id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 class RegenerateFromTranscriptRequest(BaseModel):
@@ -597,17 +583,10 @@ async def regenerate_summary_from_transcript(
     The transcript is stored on the existing summary row and used as the input
     to generate a fresh AI summary. Returns the updated SummaryResponse.
     """
-    from app.models.session import Session as SessionModel, SessionSummary
-
     session_service = SessionService(db)
     therapist_service = TherapistService(db)
 
-    session = db.query(SessionModel).filter(
-        SessionModel.id == session_id,
-        SessionModel.therapist_id == current_therapist.id,
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    _require_session(db, session_id, current_therapist.id)
 
     if not request.transcript.strip():
         raise HTTPException(status_code=400, detail="Transcript cannot be empty")
@@ -815,8 +794,6 @@ async def stream_prep_v2(
     """
     from app.ai.prep import PrepInput, PrepPipeline
     from app.ai.signature import SignatureEngine, inject_into_prompt
-    from app.models.session import Session as TherapySession
-    from app.models.patient import Patient
 
     mode_str = (request.mode or "concise").lower()
     try:
@@ -827,13 +804,7 @@ async def stream_prep_v2(
     session_service = SessionService(db)
     therapist_service = TherapistService(db)
 
-    # Ownership check
-    session = db.query(TherapySession).filter(
-        TherapySession.id == session_id,
-        TherapySession.therapist_id == current_therapist.id,
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    session = _require_session(db, session_id, current_therapist.id)
 
     agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
 
@@ -858,23 +829,10 @@ async def stream_prep_v2(
         elif session.prep_input_fingerprint:
             # Outside time window — do fingerprint check
             from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
-            _fp_sessions = (
-                db.query(TherapySession)
-                .filter(
-                    TherapySession.patient_id == session.patient_id,
-                    TherapySession.summary_id.isnot(None),
-                )
-                .order_by(TherapySession.session_date.asc())
-                .all()
-            )
-            _fp_summaries = [
-                s.summary.full_summary
-                for s in _fp_sessions
-                if s.summary and s.summary.approved_by_therapist
-            ][-10:]
+            _fp_summaries = session_service._load_approved_summaries_for_prep(session.patient_id)
             _fp = compute_fingerprint({
                 "mode": mode.value,
-                "summaries": _fp_summaries,
+                "summaries": [s["full_summary"] for s in _fp_summaries],
                 "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
             })
             if (
@@ -905,34 +863,8 @@ async def stream_prep_v2(
             )
     # ── End cache check ───────────────────────────────────────────────────────
 
-    # Build approved summaries (same logic as generate_prep_v2)
-    from app.models.session import Session as TherapySession
-    patient_sessions_q = (
-        db.query(TherapySession)
-        .filter(
-            TherapySession.patient_id == session.patient_id,
-            TherapySession.summary_id.isnot(None),
-        )
-        .order_by(TherapySession.session_date.asc())
-        .all()
-    )
-    from app.models.session import SummaryStatus
-    approved_summaries = []
-    for s in patient_sessions_q:
-        summary = s.summary
-        if summary and summary.approved_by_therapist:
-            approved_summaries.append({
-                "session_date": str(s.session_date),
-                "session_number": s.session_number,
-                "full_summary": summary.full_summary,
-                "topics_discussed": summary.topics_discussed,
-                "homework_assigned": summary.homework_assigned,
-                "next_session_plan": summary.next_session_plan,
-                "risk_assessment": summary.risk_assessment,
-                "mood_observed": summary.mood_observed,
-                "clinical_json": summary.clinical_json,
-            })
-    approved_summaries = approved_summaries[-10:]
+    # Build approved summaries via service helper (joinedload, same logic as generate_prep_v2)
+    approved_summaries = session_service._load_approved_summaries_for_prep(session.patient_id)
 
     modality_name = "generic_integrative"
     modality_prompt_module = None
@@ -972,6 +904,7 @@ async def stream_prep_v2(
 
             # Persist rendered text so subsequent requests hit the cache
             from datetime import datetime as _dt
+            from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
             session.prep_json = prep_json
             session.prep_mode = mode.value
             session.prep_rendered_text = "".join(full_text_chunks)
@@ -1027,18 +960,11 @@ async def upload_clip(
     Returns the clip with status='transcribed' and transcript text on success,
     or status='error' if transcription failed (allowing the UI to show a warning).
     """
-    from app.models.session import Session as TherapySession
     from app.models.audio_clip import AudioClip
     from app.services.audio_service import AudioService
     from app.core.config import settings as app_settings
 
-    # Ownership check
-    session = db.query(TherapySession).filter(
-        TherapySession.id == session_id,
-        TherapySession.therapist_id == current_therapist.id,
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    session = _require_session(db, session_id, current_therapist.id)
 
     audio_bytes = await audio.read()
     if not audio_bytes:
@@ -1105,22 +1031,12 @@ async def list_clips(
     db: DBSession = Depends(get_db),
 ):
     """List all audio clips for a session, ordered by clip_index."""
-    from app.models.session import Session as TherapySession
-    from app.models.audio_clip import AudioClip
+    service = SessionService(db)
+    try:
+        clips = service.list_clips_for_session(session_id, current_therapist.id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
-    session = db.query(TherapySession).filter(
-        TherapySession.id == session_id,
-        TherapySession.therapist_id == current_therapist.id,
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    clips = (
-        db.query(AudioClip)
-        .filter(AudioClip.session_id == session_id)
-        .order_by(AudioClip.clip_index.asc())
-        .all()
-    )
     return [
         ClipResponse(
             id=c.id,
@@ -1142,33 +1058,11 @@ async def delete_clip(
     db: DBSession = Depends(get_db),
 ):
     """Delete a single clip. Reorders remaining clips to fill the gap."""
-    from app.models.audio_clip import AudioClip
-
-    clip = db.query(AudioClip).filter(
-        AudioClip.id == clip_id,
-        AudioClip.session_id == session_id,
-        AudioClip.therapist_id == current_therapist.id,
-    ).first()
-    if not clip:
-        raise HTTPException(status_code=404, detail="Clip not found")
-
-    deleted_index = clip.clip_index
-    db.delete(clip)
-    db.flush()
-
-    # Re-number subsequent clips
-    subsequent = (
-        db.query(AudioClip)
-        .filter(
-            AudioClip.session_id == session_id,
-            AudioClip.clip_index > deleted_index,
-        )
-        .all()
-    )
-    for c in subsequent:
-        c.clip_index -= 1
-
-    db.commit()
+    service = SessionService(db)
+    try:
+        service.delete_clip(clip_id, session_id, current_therapist.id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 class FinalizeClipsRequest(BaseModel):
@@ -1194,15 +1088,9 @@ async def finalize_clips(
     skipped (their absence noted in the merged transcript). Requires at least
     one transcribed clip.
     """
-    from app.models.session import Session as TherapySession
     from app.models.audio_clip import AudioClip
 
-    session = db.query(TherapySession).filter(
-        TherapySession.id == session_id,
-        TherapySession.therapist_id == current_therapist.id,
-    ).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    _require_session(db, session_id, current_therapist.id)
 
     clips = (
         db.query(AudioClip)
