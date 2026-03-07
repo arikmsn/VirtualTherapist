@@ -52,6 +52,7 @@ class SessionResponse(BaseModel):
     session_number: Optional[int] = None
     has_recording: bool
     summary_id: Optional[int] = None
+    summary_status: Optional[str] = None   # "draft" | "approved" | None (no summary)
     created_at: datetime
 
     class Config:
@@ -68,6 +69,7 @@ class DailySessionItem(BaseModel):
     session_type: Optional[SessionType] = None
     session_number: Optional[int] = None
     has_summary: bool
+    summary_status: Optional[str] = None   # "draft" | "approved" | None
 
 
 class GenerateSummaryFromTextRequest(BaseModel):
@@ -259,7 +261,28 @@ async def get_patient_sessions(
             patient_id=patient_id,
             therapist_id=current_therapist.id,
         )
-        return [SessionResponse.model_validate(s) for s in sessions]
+
+        # Batch-load summary statuses in one query
+        from app.models.session import SessionSummary as _SessionSummary
+        summary_ids = [s.summary_id for s in sessions if s.summary_id]
+        status_map: dict = {}
+        if summary_ids:
+            rows = db.query(
+                _SessionSummary.id,
+                _SessionSummary.status,
+                _SessionSummary.approved_by_therapist,
+            ).filter(_SessionSummary.id.in_(summary_ids)).all()
+            for row in rows:
+                status_map[row.id] = (
+                    "approved" if row.approved_by_therapist else (row.status or "draft")
+                )
+
+        result = []
+        for s in sessions:
+            d = SessionResponse.model_validate(s).model_dump()
+            d["summary_status"] = status_map.get(s.summary_id) if s.summary_id else None
+            result.append(d)
+        return result
 
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

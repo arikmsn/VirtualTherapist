@@ -79,6 +79,7 @@ interface Session {
   session_number?: number
   has_recording: boolean
   summary_id?: number
+  summary_status?: string | null   // "draft" | "approved" | null
   created_at: string
 }
 
@@ -282,9 +283,9 @@ export default function PatientProfilePage() {
     }
   }
 
-  // Load sessions when sessions tab is active
+  // Load sessions when sessions or tasks tab is active
   useEffect(() => {
-    if (tab !== 'sessions') return
+    if (tab !== 'sessions' && tab !== 'tasks') return
     reloadSessions()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pid, tab])
@@ -730,17 +731,8 @@ export default function PatientProfilePage() {
         </div>
       </div>
 
-      {/* AI-disabled notice — shown on AI-using tabs when allow_ai_contact is off */}
-      {patient && !patient.allow_ai_contact && (tab === 'summaries' || tab === 'plan') && (
-        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-amber-800">
-          <ExclamationTriangleIcon className="h-4 w-4 text-amber-500 shrink-0" />
-          <span>
-            ניתוח AI מנוטרל עבור מטופל זה. כדי להשתמש בפיצ׳רים AI, הפעל את המתג "ניתוח AI" בלשונית הגדרות.
-          </span>
-        </div>
-      )}
 
-      {/* Tab navigation + content */}
+{/* Tab navigation + content */}
       <div className="space-y-0">
 
       {/* Tab navigation — horizontally scrollable on mobile */}
@@ -822,13 +814,19 @@ export default function PatientProfilePage() {
                             {sessionTypeLabel(session.session_type)}
                           </span>
                         )}
-                        {session.summary_id ? (
+                        {session.summary_status === 'approved' ? (
                           <span className="badge badge-approved text-xs">
                             <CheckCircleIcon className="h-3 w-3 inline ml-1" />
-                            יש סיכום
+                            סיכום מאושר
                           </span>
+                        ) : session.summary_status === 'draft' ? (
+                          <span className="badge badge-draft text-xs">
+                            טיוטת סיכום
+                          </span>
+                        ) : session.summary_id ? (
+                          <span className="badge badge-draft text-xs">טיוטת סיכום</span>
                         ) : (
-                          <span className="badge badge-draft text-xs">ללא סיכום</span>
+                          <span className="badge text-xs bg-gray-100 text-gray-500">ללא סיכום</span>
                         )}
                       </div>
                       {session.duration_minutes && (
@@ -1083,50 +1081,74 @@ export default function PatientProfilePage() {
       )}
 
       {/* ── Tasks Tab ── */}
-      {tab === 'tasks' && (
-        <div className="space-y-4">
-          {exercises.length === 0 ? (
-            <div className="card text-center py-12">
-              <CheckCircleIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-              <h3 className="font-bold text-gray-700 mb-1">אין משימות עדיין</h3>
-              <p className="text-sm text-gray-500">משימות נוצרות אוטומטית מסיכומי פגישות שאושרו</p>
-            </div>
-          ) : (
-            <div className="card border-green-200">
-              <h3 className="font-bold text-gray-800 mb-3">
-                משימות ({exercises.filter((e) => e.completed).length}/{exercises.length} הושלמו)
-              </h3>
-              <ul className="space-y-2">
-                {exercises.map((ex) => (
-                  <li key={ex.id} className="flex items-start gap-3">
-                    <button
-                      onClick={() => handleToggleExercise(ex)}
-                      className="mt-0.5 flex-shrink-0"
-                      aria-label={ex.completed ? 'בטל השלמה' : 'סמן כהושלם'}
-                    >
-                      {ex.completed
-                        ? <CheckCircleIcon className="h-5 w-5 text-green-600" />
-                        : <span className="w-5 h-5 rounded-full border-2 border-gray-400 inline-block" />
-                      }
-                    </button>
-                    <span className={`text-sm flex-1 ${ex.completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                      {ex.description}
-                    </span>
-                    <button
-                      onClick={() => handleDeleteExercise(ex)}
-                      className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors"
-                      aria-label="הסר משימה"
-                      title="הסר משימה"
-                    >
-                      <XMarkIcon className="h-4 w-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
+      {tab === 'tasks' && (() => {
+        // Build summary_id → session lookup from already-loaded sessions list
+        const summaryToSession = sessions.reduce<Record<number, Session>>((acc, s) => {
+          if (s.summary_id) acc[s.summary_id] = s
+          return acc
+        }, {})
+        return (
+          <div className="space-y-4">
+            {exercises.length === 0 ? (
+              <div className="card text-center py-12">
+                <CheckCircleIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                <h3 className="font-bold text-gray-700 mb-1">אין משימות עדיין</h3>
+                <p className="text-sm text-gray-500">משימות נוצרות אוטומטית מסיכומי פגישות שאושרו</p>
+              </div>
+            ) : (
+              <div className="card border-green-200">
+                <h3 className="font-bold text-gray-800 mb-3">
+                  משימות ({exercises.filter((e) => e.completed).length}/{exercises.length} הושלמו)
+                </h3>
+                <ul className="space-y-3">
+                  {exercises.map((ex) => {
+                    const originSession = ex.session_summary_id
+                      ? summaryToSession[ex.session_summary_id]
+                      : null
+                    return (
+                      <li key={ex.id} className="flex items-start gap-3">
+                        <button
+                          onClick={() => handleToggleExercise(ex)}
+                          className="mt-0.5 flex-shrink-0"
+                          aria-label={ex.completed ? 'בטל השלמה' : 'סמן כהושלם'}
+                        >
+                          {ex.completed
+                            ? <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                            : <span className="w-5 h-5 rounded-full border-2 border-gray-400 inline-block" />
+                          }
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <span className={`text-sm ${ex.completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                            {ex.description}
+                          </span>
+                          {originSession && (
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/sessions/${originSession.id}`)}
+                              className="block text-xs text-gray-400 hover:text-therapy-calm mt-0.5 text-right"
+                            >
+                              נוצר בפגישה: {formatDateIL(originSession.session_date)}
+                              {originSession.session_number ? ` (#${originSession.session_number})` : ''}
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleDeleteExercise(ex)}
+                          className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors"
+                          aria-label="הסר משימה"
+                          title="הסר משימה"
+                        >
+                          <XMarkIcon className="h-4 w-4" />
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ── Treatment Planner Tab ── */}
       {tab === 'plan' && (
@@ -1503,34 +1525,7 @@ export default function PatientProfilePage() {
             )}
           </div>
 
-          {/* AI toggle */}
-          <div className="card">
-            <h3 className="font-semibold text-gray-800 mb-3">ניתוח AI</h3>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!patient) return
-                  const newVal = !patient.allow_ai_contact
-                  try {
-                    await patientsAPI.update(pid, { allow_ai_contact: newVal })
-                    setPatient((prev) => prev ? { ...prev, allow_ai_contact: newVal } : prev)
-                  } catch { /* ignore */ }
-                }}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${patient.allow_ai_contact ? 'bg-indigo-600' : 'bg-gray-200'}`}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${patient.allow_ai_contact ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-              <span className="text-sm text-gray-700">
-                {patient.allow_ai_contact ? 'ניתוח AI פעיל למטופל זה' : 'ניתוח AI כבוי למטופל זה'}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-              כאשר AI פעיל, המערכת יכולה לעזור לך בסיכומים, רעיונות לפגישות ומשימות בין-מפגשים עבור מטופל זה.
-            </p>
-          </div>
-
-          {/* Danger Zone */}
+{/* Danger Zone */}
           {patient.status !== 'inactive' && (
             <div className="border border-red-200 rounded-xl p-4">
               <h3 className="text-sm font-semibold text-red-700 mb-1">⚠️ אזור מסוכן</h3>

@@ -34,6 +34,7 @@ interface DailySession {
   session_type: string
   session_number: number
   has_summary: boolean
+  summary_status?: string | null   // "draft" | "approved" | null
 }
 
 const SESSION_TYPE_LABELS: Record<string, string> = {
@@ -408,11 +409,16 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Summary badge — hidden on mobile to save space */}
-                    <span className="hidden sm:inline text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                      {session.has_summary ? 'יש סיכום' : ''}
-                    </span>
-                    {!session.has_summary && (
-                      <span className="hidden sm:inline text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
+                    {session.summary_status === 'approved' ? (
+                      <span className="hidden sm:inline text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                        סיכום מאושר
+                      </span>
+                    ) : session.has_summary ? (
+                      <span className="hidden sm:inline text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                        טיוטת סיכום
+                      </span>
+                    ) : (
+                      <span className="hidden sm:inline text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full">
                         ללא סיכום
                       </span>
                     )}

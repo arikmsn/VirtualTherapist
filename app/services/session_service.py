@@ -769,6 +769,20 @@ class SessionService:
             .all()
         )
 
+        # Batch-load summary statuses in one query
+        summary_ids = [s.summary_id for s in sessions if s.summary_id]
+        status_map: dict = {}
+        if summary_ids:
+            rows = self.db.query(
+                SessionSummary.id,
+                SessionSummary.status,
+                SessionSummary.approved_by_therapist,
+            ).filter(SessionSummary.id.in_(summary_ids)).all()
+            for row in rows:
+                status_map[row.id] = (
+                    "approved" if row.approved_by_therapist else (row.status or "draft")
+                )
+
         results = []
         for s in sessions:
             patient = self.db.query(Patient).filter(Patient.id == s.patient_id).first()
@@ -795,6 +809,7 @@ class SessionService:
                 "session_type": session_type_value,
                 "session_number": s.session_number,
                 "has_summary": s.summary_id is not None,
+                "summary_status": status_map.get(s.summary_id) if s.summary_id else None,
             })
 
         return results
