@@ -29,7 +29,6 @@ import {
   EnvelopeIcon,
   TrashIcon,
   BookOpenIcon,
-  InformationCircleIcon,
   ClipboardDocumentListIcon,
   ArrowPathIcon,
   Cog6ToothIcon,
@@ -164,8 +163,6 @@ export default function PatientProfilePage() {
   const [viewingNote, setViewingNote] = useState<NoteItem | null>(null)
 
   // AI toggle saving state + mobile info popover
-  const [toggleAiSaving, setToggleAiSaving] = useState(false)
-  const [showAiInfo, setShowAiInfo] = useState(false)
 
   // Edit patient modal
   const [showEditPatient, setShowEditPatient] = useState(false)
@@ -370,18 +367,6 @@ export default function PatientProfilePage() {
     prepStream.reset()
   }
 
-  const handleToggleAiContact = async () => {
-    if (!patient) return
-    setToggleAiSaving(true)
-    try {
-      const updated = await patientsAPI.update(pid, { allow_ai_contact: !patient.allow_ai_contact })
-      setPatient((prev) => prev ? { ...prev, allow_ai_contact: updated.allow_ai_contact } : prev)
-    } catch (err) {
-      console.error('Toggle AI error:', err)
-    } finally {
-      setToggleAiSaving(false)
-    }
-  }
 
   const handleSaveNote = async () => {
     if (!notebookText.trim()) return
@@ -734,40 +719,6 @@ export default function PatientProfilePage() {
               </div>
             </div>
 
-            {/* AI toggle */}
-            <div className="mt-3 flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-              <button
-                onClick={handleToggleAiContact}
-                disabled={toggleAiSaving}
-                aria-label={patient.allow_ai_contact ? 'כבה AI' : 'הפעל AI'}
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out disabled:opacity-50 ${
-                  patient.allow_ai_contact ? 'bg-therapy-calm' : 'bg-gray-300'
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    patient.allow_ai_contact ? '-translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-              <div className="flex-1">
-                <div className="flex items-center gap-1">
-                  <span className="text-sm font-medium text-gray-900">ניתוח AI</span>
-                  {/* Info icon — mobile only; tapping reveals description */}
-                  <button
-                    type="button"
-                    className="sm:hidden text-gray-400 hover:text-gray-600 touch-manipulation"
-                    onClick={() => setShowAiInfo((v) => !v)}
-                    aria-label="מידע על ניתוח AI"
-                  >
-                    <InformationCircleIcon className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className={`text-xs text-gray-500 mt-0.5 leading-relaxed ${showAiInfo ? 'block' : 'hidden sm:block'}`}>
-                  כאשר AI פעיל, המערכת יכולה לעזור לך בסיכומים, רעיונות לפגישות ומשימות בין-מפגשים עבור מטופל זה.
-                </div>
-              </div>
-            </div>
 
             {patient.primary_concerns && (
               <div className="mt-3 text-sm text-gray-700 bg-gray-50 rounded-lg p-3">
@@ -784,7 +735,7 @@ export default function PatientProfilePage() {
         <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-amber-800">
           <ExclamationTriangleIcon className="h-4 w-4 text-amber-500 shrink-0" />
           <span>
-            ניתוח AI מנוטרל עבור מטופל זה. כדי להשתמש בפיצ׳רים AI, הפעל את המתג "ניתוח AI" בראש הדף.
+            ניתוח AI מנוטרל עבור מטופל זה. כדי להשתמש בפיצ׳רים AI, הפעל את המתג "ניתוח AI" בלשונית הגדרות.
           </span>
         </div>
       )}
@@ -914,7 +865,7 @@ export default function PatientProfilePage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <SparklesIcon className="h-5 w-5 text-purple-600" />
                 <h2 className="text-lg font-bold text-purple-900">סיכום עומק AI</h2>
-                <span className="text-xs text-purple-600">({approvedCount} סיכומים מאושרים)</span>
+                {deepHistory.length > 0 && <span className="text-xs text-purple-600">({deepHistory.length} סיכומים)</span>}
               </div>
               <button
                 onClick={handleGenerateInsight}
@@ -1059,6 +1010,13 @@ export default function PatientProfilePage() {
           )}
 
           {/* Summaries list */}
+          <div className="flex items-center gap-2">
+            <DocumentTextIcon className="h-4 w-4 text-gray-400" />
+            <h3 className="font-semibold text-gray-700 text-sm">
+              סיכומי פגישות
+              {approvedCount > 0 && <span className="text-gray-400 font-normal"> ({approvedCount} מאושרים)</span>}
+            </h3>
+          </div>
           {summariesLoading ? (
             <div className="flex items-center justify-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-therapy-calm"></div>
@@ -1329,7 +1287,16 @@ export default function PatientProfilePage() {
                     </div>
                     {expandedHistoryId === v.plan_id && v.rendered_text && (
                       <div className="mt-3 pt-3 border-t border-gray-200">
-                        <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{v.rendered_text}</p>
+                        <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+                          {v.rendered_text
+                            .replace(/```(?:json)?\s*[\s\S]*?```/g, '')
+                            .replace(/<[^>]+>/g, '')
+                            .replace(/^\|.+\|.*$/gm, '')
+                            .replace(/^[-|: ]+$/gm, '')
+                            .replace(/^[a-zA-Z_]+:\s*$/gm, '')
+                            .replace(/\n{3,}/g, '\n\n')
+                            .trim()}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -1543,6 +1510,9 @@ export default function PatientProfilePage() {
                 {patient.allow_ai_contact ? 'ניתוח AI פעיל למטופל זה' : 'ניתוח AI כבוי למטופל זה'}
               </span>
             </div>
+            <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+              כאשר AI פעיל, המערכת יכולה לעזור לך בסיכומים, רעיונות לפגישות ומשימות בין-מפגשים עבור מטופל זה.
+            </p>
           </div>
 
           {/* Danger Zone */}

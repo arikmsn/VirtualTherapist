@@ -184,7 +184,7 @@ export default function SessionDetailPage() {
 
   const startEditing = () => {
     if (!summary) return
-    setEditFullSummary(summary.full_summary || '')
+    setEditFullSummary(stripAiArtifacts(summary.full_summary))
     setEditTopics((summary.topics_discussed || []).join('\n'))
     setEditInterventions((summary.interventions_used || []).join('\n'))
     setEditHomework((summary.homework_assigned || []).join('\n'))
@@ -739,7 +739,7 @@ export default function SessionDetailPage() {
                   <textarea
                     value={editFullSummary}
                     onChange={(e) => setEditFullSummary(e.target.value)}
-                    className="input-field h-32 resize-none"
+                    className="input-field h-64 resize-y"
                     maxLength={3000}
                   />
                   <p className="text-right text-xs text-gray-400 mt-1">{editFullSummary.length}/3000</p>

@@ -301,7 +301,7 @@ export default function MultiClipRecorder({
             ) : (
               <>
                 <CheckCircleIcon className="h-4 w-4" />
-                סיים ושלח לתמלול ({transcribedCount} קטעים)
+                צפייה ואישור ({transcribedCount} קטעים)
               </>
             )}
           </button>
