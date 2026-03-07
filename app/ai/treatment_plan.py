@@ -315,6 +315,7 @@ class TreatmentPlanPipeline:
             model=model_id,
             flow_type=FlowType.TREATMENT_PLAN,
             route_reason=route_reason,
+            max_tokens=4096,
         )
         self._last_extraction_result = result
         return _parse_plan_json(result.content)
@@ -335,6 +336,7 @@ class TreatmentPlanPipeline:
             model=model_id,
             flow_type=FlowType.TREATMENT_PLAN,
             route_reason=route_reason,
+            max_tokens=4096,
         )
         self._last_render_result = result
         return result.content

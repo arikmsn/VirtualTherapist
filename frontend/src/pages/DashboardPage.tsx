@@ -382,7 +382,13 @@ export default function DashboardPage() {
 
                     {/* Patient name + session info + last reminder */}
                     <div>
-                      <div className="font-medium text-gray-900">{session.patient_name}</div>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/patients/${session.patient_id}`, { state: { initialTab: 'summaries' } }) }}
+                        className="font-medium text-gray-900 hover:text-therapy-calm hover:underline cursor-pointer text-right"
+                      >
+                        {session.patient_name}
+                      </button>
                       <div className="text-xs text-gray-500">
                         {session.session_number ? `פגישה #${session.session_number}` : ''}
                         {session.session_number && session.session_type ? ' · ' : ''}

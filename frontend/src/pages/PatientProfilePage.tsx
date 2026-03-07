@@ -136,7 +136,7 @@ interface PrepModalSession {
   session_number?: number
 }
 
-type Tab = 'sessions' | 'summaries' | 'inbetween' | 'notes' | 'plan' | 'settings'
+type Tab = 'sessions' | 'summaries' | 'inbetween' | 'notes' | 'plan' | 'tasks' | 'settings'
 
 // --- Component ---
 
@@ -752,6 +752,7 @@ export default function PatientProfilePage() {
             { key: 'plan', label: 'תוכנית טיפולית', icon: ClipboardDocumentListIcon },
             { key: 'inbetween', label: 'הודעות ותזכורות', icon: ChatBubbleLeftRightIcon },
             { key: 'notes', label: 'הערות', icon: BookOpenIcon },
+            { key: 'tasks', label: 'משימות', icon: CheckCircleIcon },
             { key: 'settings', label: 'הגדרות', icon: Cog6ToothIcon },
           ] as const).map(({ key, label, icon: Icon }) => (
             <button
@@ -865,7 +866,6 @@ export default function PatientProfilePage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <SparklesIcon className="h-5 w-5 text-purple-600" />
                 <h2 className="text-lg font-bold text-purple-900">סיכום עומק AI</h2>
-                {deepHistory.length > 0 && <span className="text-xs text-purple-600">({deepHistory.length} סיכומים)</span>}
               </div>
               <button
                 onClick={handleGenerateInsight}
@@ -882,6 +882,10 @@ export default function PatientProfilePage() {
                 )}
               </button>
             </div>
+
+            <p className="text-xs text-purple-600 mt-0.5 mb-2 leading-relaxed">
+              סיכום עומק AI הוא סיכום מרוכז של דפוסים מרכזיים, תהליך הטיפול ושינויים לאורך זמן, על בסיס סיכומי פגישות שאושרו.
+            </p>
 
             {approvedCount === 0 && !insight && (
               <p className="text-sm text-purple-700">
@@ -983,6 +987,7 @@ export default function PatientProfilePage() {
               <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
                 <SparklesIcon className="h-4 w-4 text-purple-400" />
                 היסטוריית סיכומי עומק
+                <span className="text-xs font-normal text-purple-500">({deepHistory.length})</span>
                 {deepHistoryLoading && <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-purple-400 mr-auto" />}
               </h3>
               <div className="space-y-2">
@@ -1077,39 +1082,49 @@ export default function PatientProfilePage() {
         </div>
       )}
 
-      {/* ── Exercises Section (shown in sessions tab if any exercises exist) ── */}
-      {tab === 'sessions' && exercises.length > 0 && (
-        <div className="card border-green-200">
-          <h3 className="font-bold text-gray-800 mb-3">
-            משימות ({exercises.filter((e) => e.completed).length}/{exercises.length} הושלמו)
-          </h3>
-          <ul className="space-y-2">
-            {exercises.map((ex) => (
-              <li key={ex.id} className="flex items-start gap-3">
-                <button
-                  onClick={() => handleToggleExercise(ex)}
-                  className="mt-0.5 flex-shrink-0"
-                  aria-label={ex.completed ? 'בטל השלמה' : 'סמן כהושלם'}
-                >
-                  {ex.completed
-                    ? <CheckCircleIcon className="h-5 w-5 text-green-600" />
-                    : <span className="w-5 h-5 rounded-full border-2 border-gray-400 inline-block" />
-                  }
-                </button>
-                <span className={`text-sm flex-1 ${ex.completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                  {ex.description}
-                </span>
-                <button
-                  onClick={() => handleDeleteExercise(ex)}
-                  className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors"
-                  aria-label="הסר משימה"
-                  title="הסר משימה"
-                >
-                  <XMarkIcon className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
+      {/* ── Tasks Tab ── */}
+      {tab === 'tasks' && (
+        <div className="space-y-4">
+          {exercises.length === 0 ? (
+            <div className="card text-center py-12">
+              <CheckCircleIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <h3 className="font-bold text-gray-700 mb-1">אין משימות עדיין</h3>
+              <p className="text-sm text-gray-500">משימות נוצרות אוטומטית מסיכומי פגישות שאושרו</p>
+            </div>
+          ) : (
+            <div className="card border-green-200">
+              <h3 className="font-bold text-gray-800 mb-3">
+                משימות ({exercises.filter((e) => e.completed).length}/{exercises.length} הושלמו)
+              </h3>
+              <ul className="space-y-2">
+                {exercises.map((ex) => (
+                  <li key={ex.id} className="flex items-start gap-3">
+                    <button
+                      onClick={() => handleToggleExercise(ex)}
+                      className="mt-0.5 flex-shrink-0"
+                      aria-label={ex.completed ? 'בטל השלמה' : 'סמן כהושלם'}
+                    >
+                      {ex.completed
+                        ? <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                        : <span className="w-5 h-5 rounded-full border-2 border-gray-400 inline-block" />
+                      }
+                    </button>
+                    <span className={`text-sm flex-1 ${ex.completed ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                      {ex.description}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteExercise(ex)}
+                      className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors"
+                      aria-label="הסר משימה"
+                      title="הסר משימה"
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

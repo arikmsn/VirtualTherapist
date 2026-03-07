@@ -55,6 +55,16 @@ interface Exercise {
 
 type InputMode = 'text' | 'voice'
 
+/** Strip common AI output artifacts: markdown field headers, JSON fences */
+function stripAiArtifacts(text: string | null): string {
+  if (!text) return ''
+  return text
+    .replace(/```(?:json)?\s*[\s\S]*?```/g, '')
+    .replace(/^\*\*[a-zA-Z_\u0590-\u05FF ]+\*\*:?\s*\n?/gm, '')
+    .replace(/^[a-z][a-zA-Z_]+:?\s*\n/gm, '')
+    .trim()
+}
+
 export default function SessionDetailPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
@@ -80,8 +90,21 @@ export default function SessionDetailPage() {
   const [regenerating, setRegenerating] = useState(false)
 
   // Transcript review modal (shown after multi-clip recording before AI summary)
-  const [pendingTranscript, setPendingTranscript] = useState('')
-  const [showTranscriptReview, setShowTranscriptReview] = useState(false)
+  // pendingTranscript is also persisted to localStorage so it survives navigation/refresh
+  const transcriptKey = `pending_transcript_${sessionId}`
+  const [pendingTranscript, setPendingTranscriptRaw] = useState(() => {
+    try { return localStorage.getItem(`pending_transcript_${sessionId}`) ?? '' } catch { return '' }
+  })
+  const setPendingTranscript = (t: string) => {
+    setPendingTranscriptRaw(t)
+    try {
+      if (t) localStorage.setItem(transcriptKey, t)
+      else localStorage.removeItem(transcriptKey)
+    } catch { /* ignore */ }
+  }
+  const [showTranscriptReview, setShowTranscriptReview] = useState(() => {
+    try { return !!localStorage.getItem(`pending_transcript_${sessionId}`) } catch { return false }
+  })
   const [finalizing, setFinalizing] = useState(false)
 
   // Delete summary
@@ -130,6 +153,18 @@ export default function SessionDetailPage() {
             try {
               const summaryData = await sessionsAPI.getSummary(Number(sessionId))
               setSummary(summaryData)
+              // Auto-open edit mode for draft summaries so they are immediately editable on return
+              if (summaryData.status === 'draft' && !summaryData.approved_by_therapist) {
+                setEditFullSummary(stripAiArtifacts(summaryData.full_summary))
+                setEditTopics((summaryData.topics_discussed || []).join('\n'))
+                setEditInterventions((summaryData.interventions_used || []).join('\n'))
+                setEditHomework((summaryData.homework_assigned || []).join('\n'))
+                setEditProgress(summaryData.patient_progress || '')
+                setEditNextPlan(summaryData.next_session_plan || '')
+                setEditMood(summaryData.mood_observed || '')
+                setEditRisk(summaryData.risk_assessment || '')
+                setEditing(true)
+              }
               setExercises(allExData.filter((e: Exercise & { session_summary_id?: number }) =>
                 e.session_summary_id === summaryData.id
               ))
@@ -143,6 +178,17 @@ export default function SessionDetailPage() {
             try {
               const summaryData = await sessionsAPI.getSummary(Number(sessionId))
               setSummary(summaryData)
+              if (summaryData.status === 'draft' && !summaryData.approved_by_therapist) {
+                setEditFullSummary(stripAiArtifacts(summaryData.full_summary))
+                setEditTopics((summaryData.topics_discussed || []).join('\n'))
+                setEditInterventions((summaryData.interventions_used || []).join('\n'))
+                setEditHomework((summaryData.homework_assigned || []).join('\n'))
+                setEditProgress(summaryData.patient_progress || '')
+                setEditNextPlan(summaryData.next_session_plan || '')
+                setEditMood(summaryData.mood_observed || '')
+                setEditRisk(summaryData.risk_assessment || '')
+                setEditing(true)
+              }
             } catch { /* no summary */ }
           }
         }
@@ -208,18 +254,6 @@ export default function SessionDetailPage() {
     return map[t || ''] || t || ''
   }
 
-  /** Strip common AI output artifacts: markdown field headers, JSON fences */
-  const stripAiArtifacts = (text: string | null): string => {
-    if (!text) return ''
-    return text
-      // Remove ```json ... ``` code blocks entirely
-      .replace(/```(?:json)?\s*[\s\S]*?```/g, '')
-      // Remove **field_name**: or **field_name** at line start
-      .replace(/^\*\*[a-zA-Z_\u0590-\u05FF ]+\*\*:?\s*\n?/gm, '')
-      // Remove bare snake_case English key lines like "full_summary:" or "full_summary"
-      .replace(/^[a-z][a-zA-Z_]+:?\s*\n/gm, '')
-      .trim()
-  }
 
   /** Call finalize endpoint with transcript from review modal */
   const handleFinalizeWithTranscript = async () => {
@@ -231,6 +265,7 @@ export default function SessionDetailPage() {
       setSession((prev) => prev ? { ...prev, summary_id: (result as SessionSummary).id } : prev)
       setShowTranscriptReview(false)
       setPendingTranscript('')
+      try { localStorage.removeItem(transcriptKey) } catch { /* ignore */ }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'שגיאה ביצירת הסיכום')
     } finally {
@@ -284,6 +319,7 @@ export default function SessionDetailPage() {
       const result = await sessionsAPI.patchSummary(Number(sessionId), updates)
       setSummary(result)
       setEditing(false)
+      try { localStorage.removeItem(transcriptKey) } catch { /* ignore */ }
     } catch (err: any) {
       const detail = err.response?.data?.detail || 'שגיאה באישור הסיכום'
       setError(detail)
@@ -363,7 +399,13 @@ export default function SessionDetailPage() {
             <DocumentTextIcon className="h-7 w-7" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">{patientName}</h1>
+            <button
+              type="button"
+              onClick={() => navigate(`/patients/${session.patient_id}`, { state: { initialTab: 'summaries' } })}
+              className="text-2xl font-bold hover:text-therapy-calm hover:underline text-right cursor-pointer"
+            >
+              {patientName}
+            </button>
             <div className="flex items-center gap-3 text-sm text-gray-600 mt-1">
               <span>{formatDateIL(session.session_date)}</span>
               {session.session_number && <span>פגישה #{session.session_number}</span>}
@@ -734,12 +776,12 @@ export default function SessionDetailPage() {
           {!(summary.generated_from === 'audio' && summary.transcript && showTranscript) && (
             <>
               {editing ? (
-                <div className="card">
+                <div className="card flex flex-col">
                   <h3 className="font-bold text-gray-800 mb-2">סיכום כללי</h3>
                   <textarea
                     value={editFullSummary}
                     onChange={(e) => setEditFullSummary(e.target.value)}
-                    className="input-field h-64 resize-y"
+                    className="input-field flex-1 min-h-[16rem] resize-y"
                     maxLength={3000}
                   />
                   <p className="text-right text-xs text-gray-400 mt-1">{editFullSummary.length}/3000</p>
