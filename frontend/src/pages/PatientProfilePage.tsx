@@ -283,9 +283,10 @@ export default function PatientProfilePage() {
     }
   }
 
-  // Load sessions when sessions or tasks tab is active
+  // Load sessions when sessions or tasks tab is active — skip if already loaded for this patient
   useEffect(() => {
     if (tab !== 'sessions' && tab !== 'tasks') return
+    if (sessions.length > 0) return  // already loaded; reloadSessions() called explicitly on create/delete
     reloadSessions()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pid, tab])

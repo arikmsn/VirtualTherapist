@@ -3,7 +3,7 @@
 import asyncio
 from typing import Optional, Dict, Any, List
 from datetime import date, datetime, timedelta
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.models.session import Session as TherapySession, SessionSummary, SessionType, SummaryStatus
 from app.models.patient import Patient
 from app.models.exercise import Exercise
@@ -783,16 +783,24 @@ class SessionService:
                     "approved" if row.approved_by_therapist else (row.status or "draft")
                 )
 
+        # Batch-load all patient names in one query (avoids N+1 per session)
+        patient_ids = list({s.patient_id for s in sessions})
+        patient_name_map: dict = {}
+        if patient_ids:
+            patient_rows = (
+                self.db.query(Patient.id, Patient.full_name_encrypted)
+                .filter(Patient.id.in_(patient_ids))
+                .all()
+            )
+            for row in patient_rows:
+                try:
+                    patient_name_map[row.id] = decrypt_data(row.full_name_encrypted)
+                except Exception:
+                    patient_name_map[row.id] = row.full_name_encrypted or f"מטופל #{row.id}"
+
         results = []
         for s in sessions:
-            patient = self.db.query(Patient).filter(Patient.id == s.patient_id).first()
-            if patient:
-                try:
-                    patient_name = decrypt_data(patient.full_name_encrypted)
-                except Exception:
-                    patient_name = patient.full_name_encrypted
-            else:
-                patient_name = f"מטופל #{s.patient_id}"
+            patient_name = patient_name_map.get(s.patient_id, f"מטופל #{s.patient_id}")
 
             # Convert session_type enum to its string value for JSON serialisation
             session_type_value = (
@@ -927,6 +935,7 @@ class SessionService:
 
         sessions = (
             self.db.query(TherapySession)
+            .options(joinedload(TherapySession.summary))
             .filter(
                 TherapySession.patient_id == patient_id,
                 TherapySession.summary_id.isnot(None),
@@ -967,6 +976,7 @@ class SessionService:
         # Fetch only approved summaries, ordered chronologically
         sessions = (
             self.db.query(TherapySession)
+            .options(joinedload(TherapySession.summary))
             .filter(
                 TherapySession.patient_id == patient_id,
                 TherapySession.summary_id.isnot(None),
@@ -1033,6 +1043,7 @@ class SessionService:
         # Fetch approved summaries for this patient, most recent last, limited
         patient_sessions = (
             self.db.query(TherapySession)
+            .options(joinedload(TherapySession.summary))
             .filter(
                 TherapySession.patient_id == session.patient_id,
                 TherapySession.summary_id.isnot(None),
@@ -1142,6 +1153,7 @@ class SessionService:
                 # We need the summaries to compute the fingerprint; fetch them now
                 _sessions_q_fp = (
                     self.db.query(TherapySession)
+                    .options(joinedload(TherapySession.summary))
                     .filter(
                         TherapySession.patient_id == session.patient_id,
                         TherapySession.summary_id.isnot(None),
@@ -1173,6 +1185,7 @@ class SessionService:
         # SOURCE OF TRUTH: approved_by_therapist=True ONLY — never ai_draft_text
         patient_sessions_q = (
             self.db.query(TherapySession)
+            .options(joinedload(TherapySession.summary))
             .filter(
                 TherapySession.patient_id == session.patient_id,
                 TherapySession.summary_id.isnot(None),
@@ -1323,6 +1336,7 @@ class SessionService:
 
         all_sessions = (
             self.db.query(TherapySession)
+            .options(joinedload(TherapySession.summary))
             .filter(TherapySession.patient_id == patient_id)
             .order_by(TherapySession.session_date.asc())
             .all()
@@ -1397,6 +1411,42 @@ class SessionService:
 
         if not approved_summaries:
             raise ValueError("אין סיכומים מאושרים עבור מטופל זה. יש לאשר לפחות סיכום אחד.")
+
+        # Fingerprint-based cache: if inputs unchanged since last generation, skip AI call
+        from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
+        from app.models.deep_summary import DeepSummary as _DeepSummary
+        _fp = compute_fingerprint({
+            "summaries": [s["full_summary"] for s in approved_summaries],
+            "tasks": sorted(t["description"] for t in all_tasks),
+        })
+        # Expose fingerprint so the route can store it on the new DeepSummary row
+        self._last_deep_summary_fingerprint = (_fp, FINGERPRINT_VERSION)
+        _latest_ds = (
+            self.db.query(_DeepSummary)
+            .filter(
+                _DeepSummary.patient_id == patient_id,
+                _DeepSummary.therapist_id == therapist_id,
+            )
+            .order_by(_DeepSummary.created_at.desc())
+            .first()
+        )
+        if (
+            _latest_ds
+            and _latest_ds.input_fingerprint == _fp
+            and _latest_ds.input_fingerprint_version == FINGERPRINT_VERSION
+            and _latest_ds.summary_json
+        ):
+            logger.info(
+                f"[deep_summary] patient={patient_id} — fingerprint cache hit, skipping AI call"
+            )
+            sj = _latest_ds.summary_json
+            return DeepSummaryResult(
+                overall_treatment_picture=sj.get("overall_treatment_picture", ""),
+                timeline_highlights=sj.get("timeline_highlights", []),
+                goals_and_tasks=sj.get("goals_and_tasks", ""),
+                measurable_progress=sj.get("measurable_progress", ""),
+                directions_for_next_phase=sj.get("directions_for_next_phase", ""),
+            )
 
         therapist_locale = (agent.profile.language if agent.profile else None) or "he"
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.ai.deep_summary import (
     DeepSummaryInput,
@@ -45,6 +45,7 @@ class DeepSummaryService:
         """Return ALL approved summary dicts for a patient, oldest → newest."""
         query = (
             self.db.query(TherapySession)
+            .options(joinedload(TherapySession.summary))
             .filter(
                 TherapySession.patient_id == patient_id,
                 TherapySession.therapist_id == therapist_id,

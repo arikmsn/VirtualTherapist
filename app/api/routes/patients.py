@@ -421,12 +421,16 @@ async def generate_deep_summary(
             result.measurable_progress,
             result.directions_for_next_phase,
         ]))
+        # Retrieve fingerprint computed inside generate_deep_summary (avoids re-querying)
+        _fp_data = getattr(session_service, "_last_deep_summary_fingerprint", (None, None))
         db_row = DeepSummary(
             patient_id=patient_id,
             therapist_id=current_therapist.id,
             summary_json=summary_json,
             rendered_text=rendered or None,
             status=DeepSummaryStatus.APPROVED.value,
+            input_fingerprint=_fp_data[0],
+            input_fingerprint_version=_fp_data[1],
         )
         db.add(db_row)
         db.commit()

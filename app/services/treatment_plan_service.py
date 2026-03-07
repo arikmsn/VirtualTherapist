@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.ai.models import FlowType
 from app.ai.treatment_plan import (
@@ -47,6 +47,7 @@ class TreatmentPlanService:
         """
         query = (
             self.db.query(TherapySession)
+            .options(joinedload(TherapySession.summary))
             .filter(
                 TherapySession.patient_id == patient_id,
                 TherapySession.therapist_id == therapist_id,
@@ -82,6 +83,7 @@ class TreatmentPlanService:
         """Return the most recent `limit` approved summaries (newest → oldest), reversed to oldest→newest."""
         query = (
             self.db.query(TherapySession)
+            .options(joinedload(TherapySession.summary))
             .filter(
                 TherapySession.patient_id == patient_id,
                 TherapySession.therapist_id == therapist_id,

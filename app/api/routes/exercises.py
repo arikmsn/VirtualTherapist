@@ -134,12 +134,10 @@ async def patch_exercise(
         ex.completed = request.completed
         ex.completed_at = datetime.utcnow() if request.completed else None
 
-    db.commit()
-    db.refresh(ex)
-
-    # Keep patient counter in sync
+    # Sync patient counter before the single commit (avoids double commit)
     _sync_completed_count(ex.patient_id, db)
     db.commit()
+    db.refresh(ex)
 
     return ExerciseResponse.model_validate(ex)
 

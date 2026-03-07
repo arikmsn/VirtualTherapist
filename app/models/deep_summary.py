@@ -53,6 +53,10 @@ class DeepSummary(Base):
     model_used = Column(String(128), nullable=True)
     tokens_used = Column(Integer, nullable=True)
 
+    # Fingerprint caching (added migration 028)
+    input_fingerprint = Column(Text, nullable=True)             # SHA-256 of inputs at generation
+    input_fingerprint_version = Column(Integer, nullable=True)  # fingerprint schema version
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
