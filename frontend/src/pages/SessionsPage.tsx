@@ -23,6 +23,7 @@ interface Session {
   session_number?: number
   has_recording: boolean
   summary_id?: number
+  summary_status?: string | null
   created_at: string
 }
 
@@ -203,8 +204,9 @@ export default function SessionsPage() {
     return true
   })
 
-  const withSummaryCount = sessions.filter((s) => s.summary_id != null).length
   const noSummaryCount = sessions.filter((s) => s.summary_id == null).length
+  const approvedCount = sessions.filter((s) => s.summary_status === 'approved').length
+  const draftCount = sessions.filter((s) => s.summary_id != null && s.summary_status !== 'approved').length
 
   if (loading) {
     return (
@@ -255,7 +257,7 @@ export default function SessionsPage() {
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            עם סיכום ({withSummaryCount})
+            עם סיכום ({approvedCount} מאושר{approvedCount !== 1 ? 'ים' : ''} · {draftCount} טיוטה)
           </button>
           <button
             onClick={() => setFilter('no_summary')}
@@ -307,14 +309,18 @@ export default function SessionsPage() {
                       <h3 className="text-lg font-bold">
                         {patientMap[session.patient_id] || `מטופל #${session.patient_id}`}
                       </h3>
-                      {session.summary_id != null ? (
-                        <span className="badge badge-approved">
-                          <CheckCircleIcon className="h-4 w-4 inline ml-1" />
-                          יש סיכום
+                      {session.summary_status === 'approved' ? (
+                        <span className="badge badge-approved text-xs">
+                          <CheckCircleIcon className="h-3 w-3 inline ml-1" />
+                          סיכום מאושר
+                        </span>
+                      ) : session.summary_id != null ? (
+                        <span className="badge badge-draft text-xs">
+                          טיוטת סיכום
                         </span>
                       ) : (
-                        <span className="badge badge-draft">
-                          אין סיכום
+                        <span className="badge text-xs bg-gray-100 text-gray-500">
+                          ללא סיכום
                         </span>
                       )}
                     </div>
@@ -357,12 +363,20 @@ export default function SessionsPage() {
                       צור סיכום
                     </button>
                   )}
-                  {session.summary_id != null && (
+                  {session.summary_status === 'approved' && (
                     <button
                       onClick={() => navigate(`/sessions/${session.id}`)}
                       className="btn-success flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
                     >
                       צפה בסיכום
+                    </button>
+                  )}
+                  {session.summary_id != null && session.summary_status !== 'approved' && (
+                    <button
+                      onClick={() => navigate(`/sessions/${session.id}`)}
+                      className="btn-primary flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
+                    >
+                      ערוך טיוטה
                     </button>
                   )}
                   <button
