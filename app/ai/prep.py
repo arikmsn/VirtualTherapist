@@ -158,6 +158,25 @@ def _build_extraction_system_prompt(inp: PrepInput) -> str:
     return "\n".join(lines)
 
 
+_CBT_EXTRACTION_ADDON = """\
+## CBT-specific extraction rules (active — therapist uses CBT):
+- upcoming_session_focus.modality_checklist must include at least 3 CBT-specific items, e.g.:
+    • בדיקת מטלת בית קוגניטיבית (שאלון מחשבות, יומן רגשות)
+    • זיהוי עיוותים קוגניטיביים בולטים מהסשן האחרון
+    • תכנון ניסוי התנהגותי לשבוע הקרוב
+    • עדכון קונספטואליזציה קוגניטיבית
+- longitudinal_patterns.regression_signals: flag any return of previously challenged automatic thoughts
+- last_session_summary.open_threads: include unresolved automatic thoughts or untested behavioral experiments
+"""
+
+_CBT_RENDER_ADDON = """\
+## CBT framing (active):
+- Section headers should reference CBT concepts naturally (e.g., "מטלת בית קוגניטיבית", "עיוות קוגניטיבי", "ניסוי התנהגותי")
+- Modality checklist items must use CBT terminology — not generic phrases
+- Highlight any pattern of cognitive distortions across sessions
+"""
+
+
 def _build_extraction_user_prompt(inp: PrepInput) -> str:
     fields_to_fill = _MODE_FIELDS.get(inp.mode, list(_MODE_FIELDS[PrepMode.DEEP]))
     token_guidance = _MODE_TOKEN_GUIDANCE.get(inp.mode, "")
@@ -171,6 +190,10 @@ def _build_extraction_user_prompt(inp: PrepInput) -> str:
     ]
     for f in fields_to_fill:
         parts.append(f"  - {f}")
+
+    if inp.modality.lower() == "cbt":
+        parts.append("")
+        parts.append(_CBT_EXTRACTION_ADDON.strip())
 
     parts.append("")
     parts.append(token_guidance)
@@ -209,8 +232,9 @@ def _build_render_system_prompt(inp: PrepInput) -> str:
 
 def _build_render_user_prompt(inp: PrepInput, prep_json: dict) -> str:
     token_guidance = _MODE_TOKEN_GUIDANCE.get(inp.mode, "")
+    cbt_block = f"\n\n{_CBT_RENDER_ADDON.strip()}" if inp.modality.lower() == "cbt" else ""
     return (
-        f"Mode: {inp.mode.value} — {token_guidance}\n\n"
+        f"Mode: {inp.mode.value} — {token_guidance}{cbt_block}\n\n"
         "The structured prep data has been extracted. Render it as a ready-to-use "
         "pre-session brief that the therapist can scan in under 60 seconds.\n\n"
         f"Structured prep data:\n{json.dumps(prep_json, ensure_ascii=False, indent=2)}\n\n"

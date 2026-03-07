@@ -25,14 +25,36 @@ HEBREW_QUALITY_RULE = """\
 """
 
 
+def is_cbt_active(profile) -> bool:
+    """
+    Return True if the therapist has CBT in their active modalities.
+
+    Checks both:
+    - approach_description (CSV string, e.g. "CBT, psychodynamic") — set by frontend
+    - therapeutic_approach (single enum value, e.g. TherapeuticApproach.CBT)
+
+    Strictly opt-in: any non-CBT therapist gets False and is completely unaffected.
+    """
+    if not profile:
+        return False
+    if profile.approach_description:
+        values = [v.strip() for v in profile.approach_description.split(",")]
+        if "CBT" in values:
+            return True
+    if profile.therapeutic_approach and str(profile.therapeutic_approach).upper() == "CBT":
+        return True
+    return False
+
+
 def resolve_modality_pack(db: "Session", therapist_id: int) -> Optional["ModalityPack"]:
     """
     Return the active ModalityPack for the given therapist.
 
     Resolution order:
     1. therapist_profiles.modality_pack_id  — explicit therapist choice
-    2. Fallback to 'generic_integrative'    — safe default
-    3. None                                 — no packs in DB at all
+    2. Auto-detect CBT from approach_description / therapeutic_approach
+    3. Fallback to 'generic_integrative'    — safe default
+    4. None                                 — no packs in DB at all
     """
     from app.models.therapist import TherapistProfile
     from app.models.modality import ModalityPack
@@ -54,6 +76,19 @@ def resolve_modality_pack(db: "Session", therapist_id: int) -> Optional["Modalit
         )
         if pack:
             return pack
+
+    # Auto-detect CBT from therapist modalities
+    if is_cbt_active(profile):
+        cbt_pack = (
+            db.query(ModalityPack)
+            .filter(
+                ModalityPack.name == "cbt",
+                ModalityPack.is_active == True,  # noqa: E712
+            )
+            .first()
+        )
+        if cbt_pack:
+            return cbt_pack
 
     # Fallback: generic_integrative
     return (

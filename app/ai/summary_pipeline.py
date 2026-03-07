@@ -84,6 +84,15 @@ _SCHEMA_STR = json.dumps(CLINICAL_JSON_SCHEMA, ensure_ascii=False, indent=2)
 
 # ── Extraction prompt builders ────────────────────────────────────────────────
 
+_CBT_EXTRACTION_SYSTEM_ADDON = """\
+## CBT extraction rules (active — therapist uses CBT):
+- automatic_thoughts: extract EVERY automatic thought mentioned (quoted or paraphrased); do NOT leave empty
+- cognitive_distortions: name each distortion explicitly (e.g., "קטסטרופיזציה", "חשיבה שחור-לבן", "אישיות יתר")
+- interventions_used: must include CBT-specific techniques (e.g., "ניסוי התנהגותי", "בחינת עדויות", "שאלות סוקרטיות")
+- homework_reviewed: always document whether previous CBT homework was reviewed and the client's completion status
+"""
+
+
 def _build_extraction_system_prompt(modality_pack: Optional["ModalityPack"]) -> str:
     lines = ["You are a clinical data extraction assistant."]
     lines.append(
@@ -94,6 +103,9 @@ def _build_extraction_system_prompt(modality_pack: Optional["ModalityPack"]) -> 
         lines.append("")
         lines.append("## Clinical framework for this therapist:")
         lines.append(modality_pack.prompt_module.strip())
+    if modality_pack and modality_pack.name == "cbt":
+        lines.append("")
+        lines.append(_CBT_EXTRACTION_SYSTEM_ADDON.strip())
     return "\n".join(lines)
 
 
@@ -121,15 +133,28 @@ def _build_extraction_user_prompt(inp: SummaryInput) -> str:
 
 # ── Render prompt builder ─────────────────────────────────────────────────────
 
+_CBT_RENDER_SECTION = """\
+## מבנה סיכום בסגנון CBT (פעיל):
+- פתח עם מיקוד הסשן ומצב רוח שנצפה
+- סקור מטלת הבית הקוגניטיבית מהפגישה הקודמת (הושלמה? מחסומים?)
+- תאר מחשבות אוטומטיות ועיוותים קוגניטיביים שזוהו — ציטוט ישיר אם אפשר
+- תאר התערבויות קוגניטיביות-התנהגותיות שנעשו
+- סיים עם מטלת הבית החדשה ומיקוד הפגישה הבאה
+- אם חסרים נתוני CBT (מחשבות אוטומטיות / עיוותים), סמן: ⚠️ חסר
+"""
+
+
 def _build_render_prompt(inp: SummaryInput, clinical_json: dict) -> str:
+    is_cbt = inp.modality_pack is not None and inp.modality_pack.name == "cbt"
+    cbt_block = f"\n{_CBT_RENDER_SECTION}" if is_cbt else ""
     return (
         "The structured clinical data for this session has been extracted. "
         "Render it as a natural, cohesive session summary in the therapist's voice.\n\n"
-        "Guidelines:\n"
+        f"Guidelines:\n"
         "- Do NOT list fields mechanically. Integrate the content naturally.\n"
         "- Write as if the therapist is documenting their own session.\n"
         "- If the modality requires specific elements that are absent, "
-        "flag them at the end as: ⚠️ חסר: [element]\n\n"
+        f"flag them at the end as: ⚠️ חסר: [element]{cbt_block}\n\n"
         f"Structured session data:\n{json.dumps(clinical_json, ensure_ascii=False, indent=2)}\n\n"
         "Write the session summary now."
     )

@@ -116,6 +116,16 @@ _DRIFT_HARD_THRESHOLD = 0.6    # above this → hard flag (⚠️ prefix)
 
 # ── Prompt builders ───────────────────────────────────────────────────────────
 
+_CBT_PLAN_ADDON = """\
+## תכנית טיפולית במבנה CBT (פעיל):
+- primary_goals: כל מטרה חייבת לכלול יעד קוגניטיבי ו/או התנהגותי ספציפי
+  (לדוגמה: "הפחתת קטסטרופיזציה בנושא X", "פיתוח כלי תגובה להפחתת הימנעות")
+- interventions_planned: חייב להכיל לפחות: ניסוי התנהגותי, בחינת עדויות, ויומן מחשבות
+- milestones: כלול אבני דרך CBT ספציפיות (השלמת מטלות בית, שינוי בדירוג עצמי)
+- risk_considerations: כלול הערה על דפוסי הימנעות אם קיימים
+"""
+
+
 def _build_extraction_system_prompt(inp: TreatmentPlanInput) -> str:
     is_update = inp.existing_plan is not None
     mode_note = (
@@ -133,6 +143,7 @@ def _build_extraction_system_prompt(inp: TreatmentPlanInput) -> str:
             "Assign sequential goal IDs (G1, G2, …) and milestone IDs (M1, M2, …)."
         )
     )
+    cbt_block = f"\n\n{_CBT_PLAN_ADDON.strip()}" if inp.modality.lower() == "cbt" else ""
     return "\n".join([
         "You are a clinical treatment planning assistant.",
         "Your ONLY job is to extract a structured treatment plan from approved session summaries "
@@ -142,7 +153,7 @@ def _build_extraction_system_prompt(inp: TreatmentPlanInput) -> str:
         mode_note,
         "",
         "IMPORTANT: Do not fabricate clinical information. "
-        "Extract only what is documented in the approved summaries.",
+        f"Extract only what is documented in the approved summaries.{cbt_block}",
     ])
 
 
@@ -194,13 +205,23 @@ FORMAL HEBREW WRITING STANDARDS (mandatory):
 """
 
 
+_CBT_PLAN_RENDER_ADDON = """\
+## מבנה תכנית טיפולית בסגנון CBT (פעיל):
+- שלב כותרת "גישה טיפולית: CBT — טיפול קוגניטיבי-התנהגותי"
+- תאר מטרות בשפה קוגניטיבית-התנהגותית ספציפית
+- פרט התערבויות CBT מתוכננות (ניסויים התנהגותיים, בחינת עדויות, הומוורק קוגניטיבי)
+- אבני דרך יכללו קריטריונים מדידים (לדוגמה: "הפחתת הימנעות ב-50%")
+"""
+
+
 def _build_render_system_prompt(inp: TreatmentPlanInput) -> str:
+    cbt_block = f"\n{_CBT_PLAN_RENDER_ADDON.strip()}" if inp.modality.lower() == "cbt" else ""
     return "\n".join([
         "You are a clinical documentation specialist preparing a formal treatment plan.",
         "This document will be reviewed by the therapist and may be included in the patient file.",
         "",
         _FORMAL_HEBREW_PLAN_RULE,
-        "",
+        cbt_block,
         "Render a complete, readable Hebrew treatment plan document from the structured data.",
         "Include all goals, milestones, planned interventions, and risk considerations.",
         "Format clearly with section headings.",

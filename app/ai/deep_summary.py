@@ -204,11 +204,17 @@ def _build_synthesis_user(
             f"{json.dumps(inp.treatment_plan, ensure_ascii=False, indent=2)}\n"
         )
 
+    cbt_hint = (
+        "\nCBT synthesis note: track the evolution of automatic thoughts and "
+        "cognitive distortions across chunks; highlight cognitive shifts as turning_points.\n"
+        if inp.modality.lower() == "cbt" else ""
+    )
+
     chunk_text = json.dumps(merged_chunks, ensure_ascii=False, indent=2)
     return (
         f"Modality: {inp.modality}\n"
         f"Total sessions: {len(inp.approved_summaries)}\n"
-        f"{plan_section}\n"
+        f"{plan_section}{cbt_hint}\n"
         f"Chunk analyses to merge:\n{chunk_text}\n\n"
         f"Synthesize into a complete summary following this schema:\n{_SCHEMA_STR}"
     )
@@ -223,14 +229,24 @@ NARRATIVE WRITING STANDARDS:
 - Include the arc_narrative as the opening paragraph
 """
 
+_CBT_DEEP_SUMMARY_ADDON = """\
+## סיכום עמוק בגישת CBT (פעיל):
+- תאר את האבולוציה של הדפוסים הקוגניטיביים לאורך הטיפול
+- זהה עיוותים קוגניטיביים חוזרים ואת השינוי בהם לאורך הזמן
+- תאר אילו ניסויים התנהגותיים בוצעו ומה היו תוצאותיהם
+- הפרד בין "מה עבד" ל"מה לא עבד" בנקודת מבט קוגניטיבית-התנהגותית
+- recommendations_going_forward חייב להכיל לפחות 2 המלצות CBT ספציפיות
+"""
+
 
 def _build_render_system(inp: DeepSummaryInput) -> str:
+    cbt_block = f"\n\n{_CBT_DEEP_SUMMARY_ADDON.strip()}" if inp.modality.lower() == "cbt" else ""
     base = "\n".join([
         "You are a senior clinical documentation specialist preparing a comprehensive treatment narrative.",
         "This document covers the full arc of treatment and will be used for clinical review.",
         "",
         _FORMAL_HEBREW_NARRATIVE_RULE,
-    ])
+    ]) + cbt_block
     if inp.therapist_signature:
         base = inp.therapist_signature + "\n\n" + base
     return base

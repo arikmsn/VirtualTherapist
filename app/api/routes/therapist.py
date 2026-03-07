@@ -42,6 +42,8 @@ class TherapistProfileResponse(BaseModel):
     areas_of_expertise: Optional[str] = None
     # Therapist account creation date (used for "days since signup" display)
     therapist_created_at: Optional[datetime] = None
+    # Derived: True when CBT is active for this therapist (drives UI hints)
+    cbt_active: bool = False
 
     class Config:
         from_attributes = True
@@ -78,6 +80,7 @@ def _to_list(v):
 
 def _profile_response(profile, therapist=None) -> TherapistProfileResponse:
     """Build a TherapistProfileResponse from an ORM TherapistProfile instance."""
+    from app.ai.modality import is_cbt_active
     return TherapistProfileResponse(
         id=profile.id,
         therapist_id=profile.therapist_id,
@@ -101,6 +104,7 @@ def _profile_response(profile, therapist=None) -> TherapistProfileResponse:
         years_of_experience=profile.years_of_experience,
         areas_of_expertise=profile.areas_of_expertise,
         therapist_created_at=therapist.created_at if therapist else None,
+        cbt_active=is_cbt_active(profile),
     )
 
 

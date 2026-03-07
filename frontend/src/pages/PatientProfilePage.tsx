@@ -33,7 +33,7 @@ import {
   ArrowPathIcon,
   Cog6ToothIcon,
 } from '@heroicons/react/24/outline'
-import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI, treatmentPlanAPI, type TreatmentPlanVersion } from '@/lib/api'
+import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI, treatmentPlanAPI, therapistAPI, type TreatmentPlanVersion } from '@/lib/api'
 import { usePrepStream } from '@/hooks/usePrepStream'
 import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
 
@@ -200,6 +200,9 @@ export default function PatientProfilePage() {
   const [newSessionCreating, setNewSessionCreating] = useState(false)
   const [newSessionError, setNewSessionError] = useState('')
 
+  // CBT mode — derived from therapist profile, loaded once
+  const [isCbtActive, setIsCbtActive] = useState(false)
+
   // Patient data
   const [patient, setPatient] = useState<Patient | null>(null)
   const [loading, setLoading] = useState(true)
@@ -252,14 +255,17 @@ export default function PatientProfilePage() {
     return () => { document.body.style.overflow = '' }
   }, [showEditPatient, showInactiveConfirm, showNewSession, prepModalSession])
 
-  // Load patient + sessions on mount
+  // Load patient + therapist profile on mount
   useEffect(() => {
     const load = async () => {
       try {
-        const p = await patientsAPI.get(pid)
-        setPatient(p)
-      } catch (err: any) {
-        setError(err.response?.data?.detail || 'שגיאה בטעינת המטופל')
+        const [p, profile] = await Promise.allSettled([
+          patientsAPI.get(pid),
+          therapistAPI.getProfile(),
+        ])
+        if (p.status === 'fulfilled') setPatient(p.value)
+        else setError((p.reason as any)?.response?.data?.detail || 'שגיאה בטעינת המטופל')
+        if (profile.status === 'fulfilled') setIsCbtActive(!!profile.value.cbt_active)
       } finally {
         setLoading(false)
       }
@@ -865,6 +871,9 @@ export default function PatientProfilePage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <SparklesIcon className="h-5 w-5 text-purple-600" />
                 <h2 className="text-lg font-bold text-purple-900">סיכום עומק AI</h2>
+                {isCbtActive && (
+                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">מבנה סיכום בסגנון CBT</span>
+                )}
               </div>
               <button
                 onClick={handleGenerateInsight}
@@ -1160,6 +1169,9 @@ export default function PatientProfilePage() {
                 <ClipboardDocumentListIcon className="h-5 w-5 text-indigo-600" />
                 <h2 className="text-lg font-bold text-indigo-900">תוכנית טיפולית</h2>
                 <span className="text-xs text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">הצעת AI</span>
+                {isCbtActive && (
+                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">תכנית טיפולית במבנה CBT</span>
+                )}
               </div>
               <div className="flex gap-2 flex-wrap self-start">
                 {treatmentPlan && (
@@ -1552,7 +1564,12 @@ export default function PatientProfilePage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] animate-fade-in">
             <div className="flex items-center justify-between px-5 py-4 border-b border-amber-100 flex-shrink-0 bg-amber-50 rounded-t-2xl">
               <div>
-                <h2 className="text-lg font-bold text-amber-900">הכנה לפגישה</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold text-amber-900">הכנה לפגישה</h2>
+                  {isCbtActive && (
+                    <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">מותאם לגישה CBT</span>
+                  )}
+                </div>
                 <p className="text-xs text-amber-700 mt-0.5">
                   {prepModalSession.session_number ? `פגישה #${prepModalSession.session_number} · ` : ''}
                   {formatDateIL(prepModalSession.session_date)}
