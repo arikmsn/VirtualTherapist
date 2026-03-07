@@ -48,7 +48,7 @@ const TONE_OPTIONS = [
 
 export default function OnboardingPage() {
   const navigate = useNavigate()
-  const { markOnboardingComplete } = useAuth()
+  const { markOnboardingComplete, logout } = useAuth()
   const [step, setStep] = useState(0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -133,12 +133,26 @@ export default function OnboardingPage() {
   }
 
 
+  const handleExit = () => {
+    logout()
+    navigate('/login')
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex flex-col" dir="rtl">
       {/* Header bar */}
       <header className="bg-white border-b border-gray-100 px-6 py-3.5 flex items-center justify-between">
         <AppLogo variant="full" size="md" />
-        <span className="text-sm text-gray-400">הגדרות ראשוניות — שלב {step + 1} מתוך {STEPS.length}</span>
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-gray-400">הגדרות ראשוניות — שלב {step + 1} מתוך {STEPS.length}</span>
+          <button
+            type="button"
+            onClick={handleExit}
+            className="text-sm text-gray-400 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            יציאה
+          </button>
+        </div>
       </header>
 
       {/* Progress */}

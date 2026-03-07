@@ -401,6 +401,38 @@ export const sessionsAPI = {
     })
     return response.data
   },
+
+  // Multi-clip recording
+  uploadClip: async (sessionId: number, audioBlob: Blob, durationSeconds?: number, language?: string) => {
+    const formData = new FormData()
+    formData.append('audio', audioBlob, 'clip.webm')
+    if (durationSeconds != null) formData.append('duration_seconds', String(durationSeconds))
+    if (language) formData.append('language', language)
+    const response = await api.post(`/sessions/${sessionId}/clips`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data as {
+      id: number; clip_index: number; duration_seconds: number | null
+      transcript: string | null; status: string; created_at: string
+    }
+  },
+
+  listClips: async (sessionId: number) => {
+    const response = await api.get(`/sessions/${sessionId}/clips`)
+    return response.data as Array<{
+      id: number; clip_index: number; duration_seconds: number | null
+      transcript: string | null; status: string; created_at: string
+    }>
+  },
+
+  deleteClip: async (sessionId: number, clipId: number) => {
+    await api.delete(`/sessions/${sessionId}/clips/${clipId}`)
+  },
+
+  finalizeClips: async (sessionId: number) => {
+    const response = await api.post(`/sessions/${sessionId}/clips/finalize`)
+    return response.data
+  },
 }
 
 // Patient Summaries API
@@ -424,6 +456,18 @@ export const patientSummariesAPI = {
       measurable_progress: string
       directions_for_next_phase: string
     }
+  },
+
+  getDeepSummaryHistory: async (patientId: number) => {
+    const response = await api.get(`/clients/${patientId}/deep-summary/history`)
+    return response.data as Array<{
+      summary_id: number
+      status: string
+      sessions_covered: number | null
+      created_at: string
+      rendered_text: string | null
+      summary_json: Record<string, unknown> | null
+    }>
   },
 }
 

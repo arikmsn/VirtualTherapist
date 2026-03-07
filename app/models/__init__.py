@@ -10,6 +10,7 @@ from app.models.modality import ModalityPack
 from app.models.signature import TherapistSignatureProfile
 from app.models.ai_log import AIGenerationLog
 from app.models.reference_vault import TherapistReferenceVault
+from app.models.audio_clip import AudioClip
 
 __all__ = [
     "Therapist",
@@ -28,4 +29,5 @@ __all__ = [
     "TherapistSignatureProfile",
     "AIGenerationLog",
     "TherapistReferenceVault",
+    "AudioClip",
 ]

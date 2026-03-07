@@ -37,6 +37,8 @@ class DeepSummaryListItem(BaseModel):
     sessions_covered: Optional[int] = None
     approved_at: Optional[datetime] = None
     created_at: datetime
+    rendered_text: Optional[str] = None
+    summary_json: Optional[dict] = None
 
 
 class VaultEntryResponse(BaseModel):
@@ -159,6 +161,8 @@ async def get_deep_summary_history(
                 sessions_covered=s.sessions_covered,
                 approved_at=s.approved_at,
                 created_at=s.created_at,
+                rendered_text=s.rendered_text,
+                summary_json=s.summary_json,
             )
             for s in summaries
         ]

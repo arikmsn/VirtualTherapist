@@ -405,6 +405,32 @@ async def generate_deep_summary(
             therapist_id=current_therapist.id,
             agent=agent,
         )
+
+        # Persist to deep_summaries table so history can be retrieved
+        from app.models.deep_summary import DeepSummary, DeepSummaryStatus
+        summary_json = {
+            "overall_treatment_picture": result.overall_treatment_picture,
+            "timeline_highlights": result.timeline_highlights,
+            "goals_and_tasks": result.goals_and_tasks,
+            "measurable_progress": result.measurable_progress,
+            "directions_for_next_phase": result.directions_for_next_phase,
+        }
+        rendered = "\n\n".join(filter(None, [
+            result.overall_treatment_picture,
+            result.goals_and_tasks,
+            result.measurable_progress,
+            result.directions_for_next_phase,
+        ]))
+        db_row = DeepSummary(
+            patient_id=patient_id,
+            therapist_id=current_therapist.id,
+            summary_json=summary_json,
+            rendered_text=rendered or None,
+            status=DeepSummaryStatus.APPROVED.value,
+        )
+        db.add(db_row)
+        db.commit()
+
         return DeepSummaryResponse(
             overall_treatment_picture=result.overall_treatment_picture,
             timeline_highlights=result.timeline_highlights,

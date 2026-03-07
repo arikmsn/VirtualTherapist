@@ -793,6 +793,74 @@ async def stream_prep_v2(
 
     agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
 
+    # ── Cache check (mirrors generate_prep_v2 logic) ──────────────────────────
+    # If the same mode was generated recently, stream the cached text immediately
+    # without calling the AI model.
+    from datetime import datetime as _dt
+    _PREP_CACHE_SECONDS = 600  # 10 minutes
+    if (
+        session.prep_json is not None
+        and session.prep_mode == mode.value
+        and session.prep_generated_at is not None
+    ):
+        _age = (_dt.utcnow() - session.prep_generated_at).total_seconds()
+        _use_cache = False
+        if _age < _PREP_CACHE_SECONDS:
+            _use_cache = True
+            logger.info(
+                f"[stream_prep] session={session_id} mode={mode.value} — "
+                f"time-based cache hit (age={_age:.0f}s)"
+            )
+        elif session.prep_input_fingerprint:
+            # Outside time window — do fingerprint check
+            from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
+            _fp_sessions = (
+                db.query(TherapySession)
+                .filter(
+                    TherapySession.patient_id == session.patient_id,
+                    TherapySession.summary_id.isnot(None),
+                )
+                .order_by(TherapySession.session_date.asc())
+                .all()
+            )
+            _fp_summaries = [
+                s.summary.full_summary
+                for s in _fp_sessions
+                if s.summary and s.summary.approved_by_therapist
+            ][-10:]
+            _fp = compute_fingerprint({
+                "mode": mode.value,
+                "summaries": _fp_summaries,
+                "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
+            })
+            if (
+                _fp == session.prep_input_fingerprint
+                and session.prep_input_fingerprint_version == FINGERPRINT_VERSION
+            ):
+                _use_cache = True
+                logger.info(
+                    f"[stream_prep] session={session_id} mode={mode.value} — "
+                    f"fingerprint cache hit (inputs unchanged, age={_age:.0f}s)"
+                )
+        if _use_cache:
+            cached_text = session.prep_rendered_text or ""
+
+            async def _cached_sse():
+                yield f"data: {json.dumps({'phase': 'rendering'})}\n\n"
+                # Stream in chunks so the UI still sees progressive output
+                chunk_size = 80
+                for i in range(0, len(cached_text), chunk_size):
+                    yield f"data: {json.dumps({'chunk': cached_text[i:i + chunk_size]})}\n\n"
+                yield f"data: {json.dumps({'phase': 'done', 'prep_json': session.prep_json, 'sessions_analyzed': 0, 'cached': True})}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(
+                _cached_sse(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+    # ── End cache check ───────────────────────────────────────────────────────
+
     # Build approved summaries (same logic as generate_prep_v2)
     from app.models.session import Session as TherapySession
     patient_sessions_q = (
@@ -864,3 +932,255 @@ async def stream_prep_v2(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ── Multi-clip recording (Phase 10) ─────────────────────────────────────────
+
+
+class ClipResponse(BaseModel):
+    id: int
+    clip_index: int
+    duration_seconds: Optional[int] = None
+    transcript: Optional[str] = None
+    status: str
+    created_at: datetime
+
+
+@router.post(
+    "/{session_id}/clips",
+    response_model=ClipResponse,
+    status_code=201,
+)
+async def upload_clip(
+    session_id: int,
+    audio: UploadFile = File(...),
+    duration_seconds: Optional[int] = Form(default=None),
+    language: Optional[str] = Form(default=None),
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Upload a single audio clip for a session.
+
+    Transcribes the clip immediately via Whisper and stores the result.
+    Returns the clip with status='transcribed' and transcript text on success,
+    or status='error' if transcription failed (allowing the UI to show a warning).
+    """
+    from app.models.session import Session as TherapySession
+    from app.models.audio_clip import AudioClip
+    from app.services.audio_service import AudioService
+    from app.core.config import settings as app_settings
+
+    # Ownership check
+    session = db.query(TherapySession).filter(
+        TherapySession.id == session_id,
+        TherapySession.therapist_id == current_therapist.id,
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+
+    max_size = app_settings.MAX_AUDIO_SIZE_MB * 1024 * 1024
+    if len(audio_bytes) > max_size:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio file too large. Max: {app_settings.MAX_AUDIO_SIZE_MB} MB.",
+        )
+
+    # Determine clip index (next in sequence for this session)
+    existing_count = db.query(AudioClip).filter(
+        AudioClip.session_id == session_id,
+    ).count()
+    clip_index = existing_count + 1
+
+    clip = AudioClip(
+        session_id=session_id,
+        therapist_id=current_therapist.id,
+        clip_index=clip_index,
+        duration_seconds=duration_seconds,
+        status="pending",
+    )
+    db.add(clip)
+    db.flush()  # get clip.id
+
+    # Transcribe immediately
+    try:
+        audio_service = AudioService()
+        transcript = await audio_service.transcribe_upload(
+            file_bytes=audio_bytes,
+            filename=audio.filename or f"clip_{clip_index}.webm",
+            language=language,
+        )
+        clip.transcript = transcript
+        clip.status = "transcribed"
+    except Exception as exc:
+        logger.warning(f"upload_clip session={session_id} clip={clip_index} transcription failed: {exc!r}")
+        clip.status = "error"
+        clip.error_message = str(exc)
+
+    db.commit()
+    db.refresh(clip)
+
+    return ClipResponse(
+        id=clip.id,
+        clip_index=clip.clip_index,
+        duration_seconds=clip.duration_seconds,
+        transcript=clip.transcript,
+        status=clip.status,
+        created_at=clip.created_at,
+    )
+
+
+@router.get(
+    "/{session_id}/clips",
+    response_model=List[ClipResponse],
+)
+async def list_clips(
+    session_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """List all audio clips for a session, ordered by clip_index."""
+    from app.models.session import Session as TherapySession
+    from app.models.audio_clip import AudioClip
+
+    session = db.query(TherapySession).filter(
+        TherapySession.id == session_id,
+        TherapySession.therapist_id == current_therapist.id,
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    clips = (
+        db.query(AudioClip)
+        .filter(AudioClip.session_id == session_id)
+        .order_by(AudioClip.clip_index.asc())
+        .all()
+    )
+    return [
+        ClipResponse(
+            id=c.id,
+            clip_index=c.clip_index,
+            duration_seconds=c.duration_seconds,
+            transcript=c.transcript,
+            status=c.status,
+            created_at=c.created_at,
+        )
+        for c in clips
+    ]
+
+
+@router.delete("/{session_id}/clips/{clip_id}", status_code=204)
+async def delete_clip(
+    session_id: int,
+    clip_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Delete a single clip. Reorders remaining clips to fill the gap."""
+    from app.models.audio_clip import AudioClip
+
+    clip = db.query(AudioClip).filter(
+        AudioClip.id == clip_id,
+        AudioClip.session_id == session_id,
+        AudioClip.therapist_id == current_therapist.id,
+    ).first()
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip not found")
+
+    deleted_index = clip.clip_index
+    db.delete(clip)
+    db.flush()
+
+    # Re-number subsequent clips
+    subsequent = (
+        db.query(AudioClip)
+        .filter(
+            AudioClip.session_id == session_id,
+            AudioClip.clip_index > deleted_index,
+        )
+        .all()
+    )
+    for c in subsequent:
+        c.clip_index -= 1
+
+    db.commit()
+
+
+@router.post(
+    "/{session_id}/clips/finalize",
+    response_model=SummaryResponse,
+    status_code=201,
+)
+async def finalize_clips(
+    session_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Merge all transcribed clip transcripts and generate a session summary.
+
+    Clips are concatenated in clip_index order. Clips with status='error' are
+    skipped (their absence noted in the merged transcript). Requires at least
+    one transcribed clip.
+    """
+    from app.models.session import Session as TherapySession
+    from app.models.audio_clip import AudioClip
+
+    session = db.query(TherapySession).filter(
+        TherapySession.id == session_id,
+        TherapySession.therapist_id == current_therapist.id,
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    clips = (
+        db.query(AudioClip)
+        .filter(AudioClip.session_id == session_id)
+        .order_by(AudioClip.clip_index.asc())
+        .all()
+    )
+
+    transcribed = [c for c in clips if c.status == "transcribed" and c.transcript]
+    if not transcribed:
+        raise HTTPException(
+            status_code=400,
+            detail="No transcribed clips found. Upload and transcribe clips first.",
+        )
+
+    # Merge: include a header per clip so the AI knows segment boundaries
+    parts = []
+    for c in transcribed:
+        parts.append(f"[קטע {c.clip_index}]\n{c.transcript.strip()}")
+    merged_transcript = "\n\n".join(parts)
+
+    session_service = SessionService(db)
+    therapist_service = TherapistService(db)
+
+    try:
+        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+        # Re-use the text summary path with the merged transcript as input notes
+        summary = await session_service.generate_summary_from_text(
+            session_id=session_id,
+            therapist_notes=merged_transcript,
+            agent=agent,
+            therapist_id=current_therapist.id,
+        )
+        # Store the merged transcript on the summary for side-by-side display
+        summary.transcript = merged_transcript
+        summary.generated_from = "audio"
+        db.commit()
+        db.refresh(summary)
+        return _summary_response_with_meta(summary)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        logger.exception(f"finalize_clips session={session_id} RuntimeError: {e!r}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception(f"finalize_clips session={session_id} failed: {e!r}")
+        raise HTTPException(status_code=500, detail=str(e))

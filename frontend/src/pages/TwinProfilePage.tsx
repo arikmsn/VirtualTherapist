@@ -42,6 +42,8 @@ interface TherapistProfile {
   certifications: string | null
   years_of_experience: string | null
   areas_of_expertise: string | null
+  // Account creation date (for "days since signup" tile)
+  therapist_created_at: string | null
 }
 
 const MODALITIES = [
@@ -286,21 +288,13 @@ export default function TwinProfilePage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in" dir="rtl">
       {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <SparklesIcon className="h-6 w-6 text-therapy-calm" />
-            <h1 className="text-2xl font-bold text-gray-900">פרופיל ה-Twin שלי</h1>
-          </div>
-          <p className="text-gray-600 mt-1 text-sm">
-            כך ה-AI מדמה את הסגנון הטיפולי שלך — ערוך וכוון לפי הצורך
-          </p>
-        </div>
-        <div className="text-xs text-gray-400 text-left">
-          <div className="font-medium text-gray-500">גרסת סגנון</div>
-          <div className="text-lg font-bold text-therapy-calm">v{profile.style_version}</div>
-        </div>
+      <div className="flex items-center gap-2">
+        <SparklesIcon className="h-6 w-6 text-therapy-calm" />
+        <h1 className="text-2xl font-bold text-gray-900">פרופיל ה-Twin שלי</h1>
       </div>
+      <p className="text-gray-600 mt-1 text-sm">
+        כך ה-AI מדמה את הסגנון הטיפולי שלך — ערוך וכוון לפי הצורך
+      </p>
 
       {/* ── "מה למדנו" — Signature Learning Overview ── */}
       {sigProfile && (
@@ -319,26 +313,24 @@ export default function TwinProfilePage() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="bg-white rounded-lg p-3 text-center">
               <div className="text-2xl font-bold text-indigo-700">{sigProfile.approved_sample_count}</div>
               <div className="text-xs text-gray-500 mt-0.5">סיכומים מאושרים</div>
             </div>
             <div className="bg-white rounded-lg p-3 text-center">
-              <div className="text-2xl font-bold text-indigo-700">{sigProfile.min_samples_required}</div>
-              <div className="text-xs text-gray-500 mt-0.5">נדרשים להפעלה</div>
-            </div>
-            <div className="bg-white rounded-lg p-3 text-center">
-              <div className="text-2xl font-bold text-indigo-700">v{sigProfile.style_version}</div>
-              <div className="text-xs text-gray-500 mt-0.5">גרסת סגנון</div>
-            </div>
-            <div className="bg-white rounded-lg p-3 text-center">
               <div className={`text-2xl font-bold ${sigProfile.samples_until_active === 0 ? 'text-green-600' : 'text-amber-600'}`}>
                 {sigProfile.samples_until_active === 0 ? '✓' : sigProfile.samples_until_active}
               </div>
-              <div className="text-xs text-gray-500 mt-0.5">
-                {sigProfile.samples_until_active === 0 ? 'פעיל' : 'עוד לאישור'}
+              <div className="text-xs text-gray-500 mt-0.5">טרם מולאו</div>
+            </div>
+            <div className="bg-white rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-indigo-700">
+                {profile.therapist_created_at
+                  ? Math.floor((Date.now() - new Date(profile.therapist_created_at).getTime()) / 86400000)
+                  : '—'}
               </div>
+              <div className="text-xs text-gray-500 mt-0.5">ימי פעילות</div>
             </div>
           </div>
 
@@ -624,7 +616,7 @@ export default function TwinProfilePage() {
                 <span className="text-amber-600 font-medium">יש שינויים שלא נשמרו</span>
               )}
               {!saveSuccess && !saveError && !isDirty && (
-                <span className="text-gray-400 text-xs">גרסת סגנון {profile.style_version}</span>
+                <span className="text-gray-400 text-xs">כל השינויים נשמרו</span>
               )}
             </div>
 

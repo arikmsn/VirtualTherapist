@@ -32,6 +32,7 @@ import {
   InformationCircleIcon,
   ClipboardDocumentListIcon,
   ArrowPathIcon,
+  Cog6ToothIcon,
 } from '@heroicons/react/24/outline'
 import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI, treatmentPlanAPI, type TreatmentPlanVersion } from '@/lib/api'
 import { usePrepStream } from '@/hooks/usePrepStream'
@@ -62,6 +63,7 @@ interface Patient {
   full_name: string
   phone?: string
   email?: string
+  age?: number | null
   status: string
   start_date?: string
   primary_concerns?: string
@@ -135,7 +137,7 @@ interface PrepModalSession {
   session_number?: number
 }
 
-type Tab = 'sessions' | 'summaries' | 'inbetween' | 'notes' | 'plan'
+type Tab = 'sessions' | 'summaries' | 'inbetween' | 'notes' | 'plan' | 'settings'
 
 // --- Component ---
 
@@ -145,9 +147,14 @@ export default function PatientProfilePage() {
   const location = useLocation()
   const pid = Number(patientId)
 
-  const initialTab = (location.state as { initialTab?: Tab } | null)?.initialTab ?? 'sessions'
-  const openComposer = (location.state as { openComposer?: boolean } | null)?.openComposer ?? false
+  const locationState = location.state as { initialTab?: Tab; openComposer?: boolean; toast?: string } | null
+  const initialTab = locationState?.initialTab ?? 'sessions'
+  const openComposer = locationState?.openComposer ?? false
   const [tab, setTab] = useState<Tab>(initialTab)
+  const [toastMessage, setToastMessage] = useState(locationState?.toast ?? '')
+  // Auto-dismiss toast after 4 seconds
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (toastMessage) { const t = setTimeout(() => setToastMessage(''), 4000); return () => clearTimeout(t) } }, [toastMessage])
 
   // Notebook state
   const [notebookText, setNotebookText] = useState('')
@@ -170,6 +177,15 @@ export default function PatientProfilePage() {
   const [showInactiveConfirm, setShowInactiveConfirm] = useState(false)
   const [inactiveStep, setInactiveStep] = useState(1)
   const [inactiveSaving, setInactiveSaving] = useState(false)
+
+  // Settings tab — inline patient edit
+  const [editingPatientInfo, setEditingPatientInfo] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editAge, setEditAge] = useState('')
+  const [editPhone, setEditPhone] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [savingPatientInfo, setSavingPatientInfo] = useState(false)
+  const [patientInfoError, setPatientInfoError] = useState('')
 
   // Exercises
   const [exercises, setExercises] = useState<ExerciseItem[]>([])
@@ -203,6 +219,14 @@ export default function PatientProfilePage() {
   const [insight, setInsight] = useState<DeepSummary | null>(null)
   const [insightLoading, setInsightLoading] = useState(false)
   const [insightError, setInsightError] = useState('')
+  const [deepHistory, setDeepHistory] = useState<Array<{
+    summary_id: number; created_at: string; rendered_text: string | null
+    summary_json: Record<string, unknown> | null
+  }>>([])
+  const [deepHistoryLoading, setDeepHistoryLoading] = useState(false)
+  const [viewingDeepSummary, setViewingDeepSummary] = useState<{
+    created_at: string; rendered_text: string | null; summary_json: Record<string, unknown> | null
+  } | null>(null)
 
   // Treatment plan
   const [treatmentPlan, setTreatmentPlan] = useState<TreatmentPlan | null>(null)
@@ -287,6 +311,8 @@ export default function PatientProfilePage() {
       }
     }
     load()
+    loadDeepHistory()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pid, tab])
 
   // Load exercises for this patient
@@ -458,6 +484,16 @@ export default function PatientProfilePage() {
     }
   }
 
+  const loadDeepHistory = async () => {
+    setDeepHistoryLoading(true)
+    try {
+      const data = await patientSummariesAPI.getDeepSummaryHistory(pid)
+      setDeepHistory(data)
+    } catch { /* non-critical */ } finally {
+      setDeepHistoryLoading(false)
+    }
+  }
+
   const handleGenerateInsight = async () => {
     setInsightLoading(true)
     setInsightError('')
@@ -465,6 +501,7 @@ export default function PatientProfilePage() {
     try {
       const result = await patientSummariesAPI.generateDeepSummary(pid)
       setInsight(result)
+      loadDeepHistory()
     } catch (err: any) {
       setInsightError(err.response?.data?.detail || 'שגיאה ביצירת סיכום העומק')
     } finally {
@@ -616,6 +653,13 @@ export default function PatientProfilePage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in" dir="rtl">
+      {/* Toast notification */}
+      {toastMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-gray-800 text-white text-sm px-5 py-3 rounded-xl shadow-lg animate-fade-in">
+          {toastMessage}
+        </div>
+      )}
+
       {/* Back nav */}
       <button
         onClick={() => navigate('/patients')}
@@ -753,6 +797,7 @@ export default function PatientProfilePage() {
             { key: 'plan', label: 'תוכנית טיפולית', icon: ClipboardDocumentListIcon },
             { key: 'inbetween', label: 'הודעות ותזכורות', icon: ChatBubbleLeftRightIcon },
             { key: 'notes', label: 'הערות', icon: BookOpenIcon },
+            { key: 'settings', label: 'הגדרות', icon: Cog6ToothIcon },
           ] as const).map(({ key, label, icon: Icon }) => (
             <button
               key={key}
@@ -976,6 +1021,36 @@ export default function PatientProfilePage() {
               </div>
             )}
           </div>
+
+          {/* Deep Summary History */}
+          {(deepHistoryLoading || deepHistory.length > 0) && (
+            <div className="card border-purple-100">
+              <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <SparklesIcon className="h-4 w-4 text-purple-400" />
+                היסטוריית סיכומי עומק
+                {deepHistoryLoading && <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-purple-400 mr-auto" />}
+              </h3>
+              <div className="space-y-2">
+                {deepHistory.map((item) => (
+                  <div key={item.summary_id} className="rounded-lg border border-purple-100 bg-purple-50 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-gray-500">{formatDateIL(item.created_at)}</span>
+                      <button
+                        type="button"
+                        onClick={() => setViewingDeepSummary(item)}
+                        className="text-xs text-purple-600 hover:text-purple-800 shrink-0"
+                      >
+                        הצג
+                      </button>
+                    </div>
+                    {item.rendered_text && (
+                      <p className="text-xs text-gray-600 mt-1 line-clamp-2 leading-relaxed">{item.rendered_text}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Summaries list */}
           {summariesLoading ? (
@@ -1341,23 +1416,148 @@ export default function PatientProfilePage() {
         </div>
       )}
 
-      </div>{/* end tab content column */}
+      {/* ── Settings Tab ── */}
+      {tab === 'settings' && (
+        <div className="space-y-6">
+          {/* Patient info edit */}
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-800">פרטי מטופל</h3>
+              {!editingPatientInfo && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditName(patient.full_name || '')
+                    setEditAge(patient.age != null ? String(patient.age) : '')
+                    setEditPhone(patient.phone || '')
+                    setEditEmail(patient.email || '')
+                    setPatientInfoError('')
+                    setEditingPatientInfo(true)
+                  }}
+                  className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                >
+                  <PencilSquareIcon className="h-4 w-4" />
+                  ערוך
+                </button>
+              )}
+            </div>
 
-      {/* ── Danger Zone (only when patient is active/paused) ── */}
-      {patient.status !== 'inactive' && (
-        <div className="border border-red-200 rounded-xl p-4">
-          <h3 className="text-sm font-semibold text-red-700 mb-1">⚠️ אזור מסוכן</h3>
-          <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-            פעולה זו תסמן את המטופל כלא פעיל ותסתיר אותו מרשימת המטופלים הפעילים. כל ההיסטוריה תישמר וניתן לשחזר בכל עת.
-          </p>
-          <button
-            onClick={() => { setInactiveStep(1); setShowInactiveConfirm(true) }}
-            className="text-sm text-red-600 hover:text-red-800 border border-red-300 hover:border-red-500 rounded-lg px-3 py-2 transition-colors touch-manipulation"
-          >
-            סמן כלא פעיל
-          </button>
+            {editingPatientInfo ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">שם מלא</label>
+                  <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">גיל</label>
+                    <input type="number" value={editAge} onChange={(e) => setEditAge(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">טלפון</label>
+                    <input type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">אימייל</label>
+                  <input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+                {patientInfoError && <p className="text-sm text-red-600">{patientInfoError}</p>}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={savingPatientInfo}
+                    onClick={async () => {
+                      setSavingPatientInfo(true)
+                      setPatientInfoError('')
+                      try {
+                        await patientsAPI.update(pid, {
+                          full_name: editName.trim() || undefined,
+                          age: editAge ? Number(editAge) : undefined,
+                          phone: editPhone.trim() || undefined,
+                          email: editEmail.trim() || undefined,
+                        })
+                        setPatient((prev) => prev ? {
+                          ...prev,
+                          full_name: editName.trim() || prev.full_name,
+                          age: editAge ? Number(editAge) : prev.age,
+                          phone: editPhone.trim() || prev.phone,
+                          email: editEmail.trim() || prev.email,
+                        } : prev)
+                        setEditingPatientInfo(false)
+                      } catch (err: any) {
+                        setPatientInfoError(err.response?.data?.detail || 'שגיאה בשמירה')
+                      } finally {
+                        setSavingPatientInfo(false)
+                      }
+                    }}
+                    className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {savingPatientInfo ? 'שומר...' : 'שמור'}
+                  </button>
+                  <button type="button" onClick={() => setEditingPatientInfo(false)}
+                    className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
+                    ביטול
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <dl className="space-y-2 text-sm">
+                <div className="flex gap-3"><dt className="text-gray-400 w-20 flex-shrink-0">שם</dt><dd className="text-gray-700">{patient.full_name}</dd></div>
+                {patient.age != null && <div className="flex gap-3"><dt className="text-gray-400 w-20 flex-shrink-0">גיל</dt><dd className="text-gray-700">{patient.age}</dd></div>}
+                {patient.phone && <div className="flex gap-3"><dt className="text-gray-400 w-20 flex-shrink-0">טלפון</dt><dd className="text-gray-700">{patient.phone}</dd></div>}
+                {patient.email && <div className="flex gap-3"><dt className="text-gray-400 w-20 flex-shrink-0">אימייל</dt><dd className="text-gray-700">{patient.email}</dd></div>}
+              </dl>
+            )}
+          </div>
+
+          {/* AI toggle */}
+          <div className="card">
+            <h3 className="font-semibold text-gray-800 mb-3">ניתוח AI</h3>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!patient) return
+                  const newVal = !patient.allow_ai_contact
+                  try {
+                    await patientsAPI.update(pid, { allow_ai_contact: newVal })
+                    setPatient((prev) => prev ? { ...prev, allow_ai_contact: newVal } : prev)
+                  } catch { /* ignore */ }
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${patient.allow_ai_contact ? 'bg-indigo-600' : 'bg-gray-200'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${patient.allow_ai_contact ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+              <span className="text-sm text-gray-700">
+                {patient.allow_ai_contact ? 'ניתוח AI פעיל למטופל זה' : 'ניתוח AI כבוי למטופל זה'}
+              </span>
+            </div>
+          </div>
+
+          {/* Danger Zone */}
+          {patient.status !== 'inactive' && (
+            <div className="border border-red-200 rounded-xl p-4">
+              <h3 className="text-sm font-semibold text-red-700 mb-1">⚠️ אזור מסוכן</h3>
+              <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+                פעולה זו תסמן את המטופל כלא פעיל ותסתיר אותו מרשימת המטופלים הפעילים. כל ההיסטוריה תישמר וניתן לשחזר בכל עת.
+              </p>
+              <button
+                onClick={() => { setInactiveStep(1); setShowInactiveConfirm(true) }}
+                className="text-sm text-red-600 hover:text-red-800 border border-red-300 hover:border-red-500 rounded-lg px-3 py-2 transition-colors touch-manipulation"
+              >
+                סמן כלא פעיל
+              </button>
+            </div>
+          )}
         </div>
       )}
+
+      </div>{/* end tab content column */}
 
       {/* ── Prep Brief Modal ── */}
       {prepModalSession && (
@@ -1405,6 +1605,72 @@ export default function PatientProfilePage() {
             </div>
             <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
               <button onClick={closePrepModal} className="btn-secondary w-full min-h-[44px] touch-manipulation">סגור</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Deep Summary History Modal ── */}
+      {viewingDeepSummary && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-purple-100 flex-shrink-0 bg-purple-50 rounded-t-2xl">
+              <div className="flex items-center gap-2">
+                <SparklesIcon className="h-5 w-5 text-purple-600" />
+                <h2 className="text-base font-bold text-purple-900">סיכום עומק</h2>
+                <span className="text-xs text-purple-500">{formatDateIL(viewingDeepSummary.created_at)}</span>
+              </div>
+              <button onClick={() => setViewingDeepSummary(null)} className="text-gray-400 hover:text-gray-700 p-1">
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-5 space-y-4">
+              {viewingDeepSummary.summary_json ? (() => {
+                const j = viewingDeepSummary.summary_json as Record<string, unknown>
+                return (
+                  <>
+                    {j.overall_treatment_picture && (
+                      <div className="bg-white rounded-lg p-4 border border-gray-100">
+                        <h3 className="font-bold text-gray-800 mb-2">תמונת מצב כללית</h3>
+                        <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.overall_treatment_picture)}</p>
+                      </div>
+                    )}
+                    {Array.isArray(j.timeline_highlights) && j.timeline_highlights.length > 0 && (
+                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                        <h3 className="font-bold text-blue-900 mb-2">אבני דרך</h3>
+                        <ul className="list-disc list-inside space-y-1 text-blue-800 text-sm">
+                          {(j.timeline_highlights as string[]).map((h, i) => <li key={i}>{h}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {j.goals_and_tasks && (
+                      <div className="bg-white rounded-lg p-4 border border-gray-100">
+                        <h3 className="font-bold text-gray-800 mb-2">מטרות ומשימות</h3>
+                        <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.goals_and_tasks)}</p>
+                      </div>
+                    )}
+                    {j.measurable_progress && (
+                      <div className="bg-green-50 rounded-lg p-4 border border-green-100">
+                        <h3 className="font-bold text-green-800 mb-2">סימני התקדמות</h3>
+                        <p className="text-green-800 text-sm whitespace-pre-line leading-relaxed">{String(j.measurable_progress)}</p>
+                      </div>
+                    )}
+                    {j.directions_for_next_phase && (
+                      <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                        <h3 className="font-bold text-purple-900 mb-2">כיוונים להמשך</h3>
+                        <p className="text-purple-800 text-sm whitespace-pre-line leading-relaxed">{String(j.directions_for_next_phase)}</p>
+                      </div>
+                    )}
+                  </>
+                )
+              })() : viewingDeepSummary.rendered_text ? (
+                <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{viewingDeepSummary.rendered_text}</p>
+              ) : (
+                <p className="text-gray-400 text-sm">אין תוכן שמור</p>
+              )}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
+              <button onClick={() => setViewingDeepSummary(null)} className="btn-secondary w-full">סגור</button>
             </div>
           </div>
         </div>

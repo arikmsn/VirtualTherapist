@@ -40,6 +40,8 @@ class TherapistProfileResponse(BaseModel):
     certifications: Optional[str] = None
     years_of_experience: Optional[str] = None
     areas_of_expertise: Optional[str] = None
+    # Therapist account creation date (used for "days since signup" display)
+    therapist_created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -72,7 +74,7 @@ def _to_list(v):
     return v if isinstance(v, list) else None
 
 
-def _profile_response(profile) -> TherapistProfileResponse:
+def _profile_response(profile, therapist=None) -> TherapistProfileResponse:
     """Build a TherapistProfileResponse from an ORM TherapistProfile instance."""
     return TherapistProfileResponse(
         id=profile.id,
@@ -96,6 +98,7 @@ def _profile_response(profile) -> TherapistProfileResponse:
         certifications=profile.certifications,
         years_of_experience=profile.years_of_experience,
         areas_of_expertise=profile.areas_of_expertise,
+        therapist_created_at=therapist.created_at if therapist else None,
     )
 
 
@@ -111,7 +114,7 @@ async def get_therapist_profile(
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    return _profile_response(profile)
+    return _profile_response(profile, therapist=current_therapist)
 
 
 @router.patch("/profile", response_model=TherapistProfileResponse)
@@ -139,7 +142,7 @@ async def update_twin_controls(
             therapist_id=current_therapist.id,
             profile_data=updates,
         )
-        return _profile_response(profile)
+        return _profile_response(profile, therapist=current_therapist)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -193,7 +196,7 @@ async def reset_twin_controls(
             therapist_id=current_therapist.id,
             profile_data=updates,
         )
-        return _profile_response(profile)
+        return _profile_response(profile, therapist=current_therapist)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

@@ -15,7 +15,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI, exercisesAPI } from '@/lib/api'
 import { usePrepStream } from '@/hooks/usePrepStream'
-import AudioRecorder from '@/components/AudioRecorder'
+import MultiClipRecorder from '@/components/MultiClipRecorder'
 import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
 
 interface SessionSummary {
@@ -177,23 +177,6 @@ export default function SessionDetailPage() {
     }
   }
 
-  // --- Voice Recap: audio blob → upload → transcript + summary ---
-  const handleAudioRecordingComplete = async (blob: Blob) => {
-    setGenerating(true)
-    setError('')
-
-    try {
-      const result = await sessionsAPI.generateSummaryFromAudio(Number(sessionId), blob)
-      setSummary(result)
-      setSession((prev) => prev ? { ...prev, summary_id: result.id } : prev)
-    } catch (err: any) {
-      const detail = err.response?.data?.detail || 'שגיאה בתמלול ויצירת הסיכום'
-      setError(detail)
-    } finally {
-      setGenerating(false)
-    }
-  }
-
   const startEditing = () => {
     if (!summary) return
     setEditFullSummary(summary.full_summary || '')
@@ -284,8 +267,15 @@ export default function SessionDetailPage() {
     setError('')
     try {
       await sessionsAPI.deleteSummary(Number(sessionId))
-      setSummary(null)
-      setConfirmDeleteSummary(false)
+      // Navigate back to the patient's sessions tab; the session remains but has no summary
+      if (session?.patient_id) {
+        navigate(`/patients/${session.patient_id}`, {
+          state: { initialTab: 'sessions', toast: 'הסיכום נמחק. הפגישה נשארה ברשימה ללא סיכום.' },
+        })
+      } else {
+        setSummary(null)
+        setConfirmDeleteSummary(false)
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'שגיאה במחיקת הסיכום')
     } finally {
@@ -442,8 +432,12 @@ export default function SessionDetailPage() {
 
           {/* Voice Recap Tab */}
           {inputMode === 'voice' && (
-            <AudioRecorder
-              onRecordingComplete={handleAudioRecordingComplete}
+            <MultiClipRecorder
+              sessionId={Number(sessionId)}
+              onFinalized={(result) => {
+                setSummary(result as SessionSummary)
+                setSession((prev) => prev ? { ...prev, summary_id: (result as SessionSummary).id } : prev)
+              }}
               processing={generating}
             />
           )}
@@ -666,12 +660,24 @@ export default function SessionDetailPage() {
                         {summary.transcript}
                       </p>
                     </div>
-                    {/* Summary panel (side-by-side) */}
+                    {/* Summary panel (side-by-side) — editable in edit mode */}
                     <div className="card">
                       <h3 className="font-bold text-gray-800 mb-2">סיכום</h3>
-                      <p className="text-gray-700 whitespace-pre-line text-sm leading-relaxed">
-                        {summary.full_summary}
-                      </p>
+                      {editing ? (
+                        <>
+                          <textarea
+                            value={editFullSummary}
+                            onChange={(e) => setEditFullSummary(e.target.value)}
+                            className="input-field h-48 resize-none text-sm"
+                            maxLength={3000}
+                          />
+                          <p className="text-right text-xs text-gray-400 mt-1">{editFullSummary.length}/3000</p>
+                        </>
+                      ) : (
+                        <p className="text-gray-700 whitespace-pre-line text-sm leading-relaxed">
+                          {summary.full_summary}
+                        </p>
+                      )}
                     </div>
                   </div>
                 )
