@@ -196,7 +196,7 @@ export default function OnboardingPage() {
             {step === 0 && (
               <div className="space-y-3">
                 <p className="text-xs text-gray-400 bg-indigo-50 rounded-lg px-3 py-2 leading-relaxed">
-                  המקצוע שלך מעזר ל-AI להתאים את השפה הקלינית, מבנה הסיכומים והניתוחים לרקע שלך. בחר תפקיד אחד.
+                  המקצוע שלך עוזר ל‑AI להתאים את השפה הקלינית, מבנה הסיכומים והניתוחים לרקע המקצועי שלך. נא לבחור תפקיד אחד.
                 </p>
                 <div className="grid grid-cols-2 gap-2.5">
                   {PROFESSION_OPTIONS.map((p) => (
@@ -235,7 +235,7 @@ export default function OnboardingPage() {
             {step === 1 && (
               <div className="space-y-3">
                 <p className="text-xs text-gray-400 bg-indigo-50 rounded-lg px-3 py-2 leading-relaxed">
-                  ניתן לבחור כמה שיטות. הבחירה קובעת כיצד ה-AI יבנה סיכומים ויעבד פגישות — לדוגמה, CBT מפעיל ניתוח מחשבות אוטומטיות ומטלות בין-מפגשים.
+                  ניתן לבחור מספר שיטות. הבחירה קובעת כיצד ה‑AI יבנה סיכומים ויעבד פגישות. לדוגמה, CBT מפעיל ניתוח מחשבות אוטומטיות ומטלות בין‑מפגשים.
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   {THERAPY_MODES.map((m) => {
@@ -271,13 +271,13 @@ export default function OnboardingPage() {
                 )}
                 {selectedModes.length === 0 ? (
                   <div className="flex items-center justify-between">
-                    <p className="text-xs text-amber-600">בחר לפחות שיטה אחת</p>
+                    <p className="text-xs text-amber-600">בחרו לפחות שיטה אחת</p>
                     <button
                       type="button"
                       onClick={() => setSelectedModes(['integrative'])}
                       className="text-xs text-gray-400 underline hover:text-gray-600"
                     >
-                      דלג — הגדר כאינטגרטיבי
+                      דלג — הגדר כמטפל כללי
                     </button>
                   </div>
                 ) : (
@@ -353,7 +353,7 @@ export default function OnboardingPage() {
                     value={form.terminology}
                     onChange={(e) => set('terminology', e.target.value)}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    placeholder="מילות מפתח שאתה משתמש בהן בסיכומים, הפרד בפסיקים..."
+                    placeholder="מילות מפתח שמשתמשים בהן בסיכומים, יש להפריד בפסיקים..."
                   />
                 </div>
               </div>
@@ -430,7 +430,7 @@ export default function OnboardingPage() {
                     onChange={(e) => set('exampleSummary', e.target.value)}
                     rows={5}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-                    placeholder="הכנס כאן סיכום פגישה לדוגמא — ניתן למחוק פרטים מזהים..."
+                    placeholder="הכניסו כאן סיכום פגישה לדוגמא, נדרש למחוק פרטים מזהים..."
                   />
                 </div>
                 <div>
