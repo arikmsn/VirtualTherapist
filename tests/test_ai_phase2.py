@@ -522,3 +522,98 @@ class TestResolveModalityPack:
 
         result = resolve_modality_pack(mock_db, therapist_id=1)
         assert result is mock_generic
+
+
+# ── complete_onboarding_step — step 1 approach mapping ───────────────────────
+
+class TestCompleteOnboardingStepApproach:
+    """
+    Ensure complete_onboarding_step(step=1) never 500-crashes for the values
+    that the onboarding UI now sends:
+      • lowercase canonical keys (cbt, dbt, psychodynamic, …)
+      • "other:free text" encoded values
+      • values not in the TherapeuticApproach enum (family_systemic)
+      • legacy uppercase keys (backward compat)
+    """
+
+    def _make_service_with_profile(self):
+        """Return (TherapistService, profile_mock, db_mock) ready to call."""
+        from app.services.therapist_service import TherapistService
+        from app.models.therapist import TherapistProfile, TherapeuticApproach
+
+        mock_profile = MagicMock(spec=TherapistProfile)
+        mock_profile.therapeutic_approach = TherapeuticApproach.OTHER
+        mock_profile.approach_description = None
+        mock_profile.onboarding_step = 0
+        mock_profile.onboarding_completed = False
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_profile
+
+        svc = TherapistService(mock_db)
+        return svc, mock_profile, mock_db
+
+    @pytest.mark.asyncio
+    async def test_lowercase_cbt_maps_to_enum(self):
+        svc, profile, db = self._make_service_with_profile()
+        from app.models.therapist import TherapeuticApproach
+        await svc.complete_onboarding_step(1, 1, {"approach": "cbt"})
+        assert profile.therapeutic_approach == TherapeuticApproach.CBT
+
+    @pytest.mark.asyncio
+    async def test_lowercase_psychodynamic_maps_to_enum(self):
+        svc, profile, db = self._make_service_with_profile()
+        from app.models.therapist import TherapeuticApproach
+        await svc.complete_onboarding_step(1, 1, {"approach": "psychodynamic"})
+        assert profile.therapeutic_approach == TherapeuticApproach.PSYCHODYNAMIC
+
+    @pytest.mark.asyncio
+    async def test_other_with_text_maps_to_other(self):
+        """'other:פסיכואנליזה' should not crash and should map to OTHER."""
+        svc, profile, db = self._make_service_with_profile()
+        from app.models.therapist import TherapeuticApproach
+        await svc.complete_onboarding_step(1, 1, {"approach": "other:פסיכואנליזה"})
+        assert profile.therapeutic_approach == TherapeuticApproach.OTHER
+
+    @pytest.mark.asyncio
+    async def test_family_systemic_not_in_enum_maps_to_other(self):
+        """'family_systemic' is not in the legacy enum — must fall back safely."""
+        svc, profile, db = self._make_service_with_profile()
+        from app.models.therapist import TherapeuticApproach
+        await svc.complete_onboarding_step(1, 1, {"approach": "family_systemic"})
+        assert profile.therapeutic_approach == TherapeuticApproach.OTHER
+
+    @pytest.mark.asyncio
+    async def test_uppercase_cbt_still_works(self):
+        """Legacy uppercase 'CBT' must continue to work."""
+        svc, profile, db = self._make_service_with_profile()
+        from app.models.therapist import TherapeuticApproach
+        await svc.complete_onboarding_step(1, 1, {"approach": "CBT"})
+        assert profile.therapeutic_approach == TherapeuticApproach.CBT
+
+    @pytest.mark.asyncio
+    async def test_multiple_modes_first_mode_used(self):
+        """When frontend sends first element of encodedModes, all should work."""
+        svc, profile, db = self._make_service_with_profile()
+        from app.models.therapist import TherapeuticApproach
+        # encodedModes[0] could be "dbt" when therapist selected CBT+DBT+other
+        await svc.complete_onboarding_step(1, 1, {"approach": "dbt"})
+        assert profile.therapeutic_approach == TherapeuticApproach.DBT
+
+    @pytest.mark.asyncio
+    async def test_approach_description_saved_from_camel_case_key(self):
+        """Frontend sends 'approachDescription' (camelCase), not 'description'."""
+        svc, profile, db = self._make_service_with_profile()
+        await svc.complete_onboarding_step(1, 1, {
+            "approach": "integrative",
+            "approachDescription": "cbt, dbt, other:פסיכואנליזה",
+        })
+        assert profile.approach_description == "cbt, dbt, other:פסיכואנליזה"
+
+    @pytest.mark.asyncio
+    async def test_no_crash_on_empty_approach(self):
+        """Missing 'approach' key should fall back to OTHER, not crash."""
+        svc, profile, db = self._make_service_with_profile()
+        from app.models.therapist import TherapeuticApproach
+        await svc.complete_onboarding_step(1, 1, {})
+        assert profile.therapeutic_approach == TherapeuticApproach.OTHER

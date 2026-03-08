@@ -140,8 +140,32 @@ class TherapistService:
 
         # Update based on step
         if step == 1:  # Therapeutic approach
-            profile.therapeutic_approach = TherapeuticApproach(data.get("approach", "CBT"))
-            profile.approach_description = data.get("description")
+            # Map new canonical lowercase/encoded values to legacy enum.
+            # Frontend sends lowercase keys (e.g. "cbt", "psychodynamic") or
+            # "other:free text" for the "other" free-text pattern.
+            _APPROACH_MAP: Dict[str, TherapeuticApproach] = {
+                "cbt": TherapeuticApproach.CBT,
+                "dbt": TherapeuticApproach.DBT,
+                "act": TherapeuticApproach.ACT,
+                "emdr": TherapeuticApproach.EMDR,
+                "psychodynamic": TherapeuticApproach.PSYCHODYNAMIC,
+                "humanistic": TherapeuticApproach.HUMANISTIC,
+                "integrative": TherapeuticApproach.INTEGRATIVE,
+                "psychodrama": TherapeuticApproach.PSYCHODRAMA,
+                "gestalt": TherapeuticApproach.GESTALT,
+                "other": TherapeuticApproach.OTHER,
+                "family_systemic": TherapeuticApproach.OTHER,
+            }
+            raw = str(data.get("approach") or "other")
+            # Strip "other:free text" prefix before lookup
+            if raw.startswith("other:"):
+                raw = "other"
+            # Try exact enum lookup first, then mapped lookup, then safe fallback
+            try:
+                profile.therapeutic_approach = TherapeuticApproach(raw)
+            except ValueError:
+                profile.therapeutic_approach = _APPROACH_MAP.get(raw.lower(), TherapeuticApproach.OTHER)
+            profile.approach_description = data.get("approachDescription") or data.get("description")
 
         elif step == 2:  # Writing style
             profile.tone = data.get("tone")
