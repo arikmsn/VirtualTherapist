@@ -66,9 +66,14 @@ export default function PrintPatientPage() {
           setTherapistName((profileData as any).full_name || (profileData as any).email || '')
         }
 
-        // Fetch AI documents in parallel, ignoring 404s
+        // Fetch AI documents in parallel, ignoring 404s.
+        // Deep summary: use history (fast GET) instead of regenerating (slow POST).
         const [insightData, planData] = await Promise.allSettled([
-          showSummary ? patientSummariesAPI.generateDeepSummary(id).catch(() => null) : Promise.resolve(null),
+          showSummary
+            ? patientSummariesAPI.getDeepSummaryHistory(id)
+                .then(h => (h[0]?.summary_json as DeepSummary | null) ?? null)
+                .catch(() => null)
+            : Promise.resolve(null),
           showPlan ? treatmentPlanAPI.get(id).catch(() => null) : Promise.resolve(null),
         ])
 
@@ -222,7 +227,11 @@ export default function PrintPatientPage() {
             </h2>
 
             {!plan || (!planGoals?.length && !planFocusAreas?.length && !planInterventions?.length) ? (
-              <p className="text-gray-400 text-sm">אין תוכנית טיפולית שמורה.</p>
+              plan?.rendered_text ? (
+                <div className="text-sm text-gray-800 whitespace-pre-line leading-relaxed">{plan.rendered_text}</div>
+              ) : (
+                <p className="text-gray-400 text-sm">אין תוכנית טיפולית שמורה.</p>
+              )
             ) : (
               <div className="space-y-5 text-sm leading-relaxed">
                 {plan.title && (

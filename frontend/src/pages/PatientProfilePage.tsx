@@ -607,13 +607,7 @@ export default function PatientProfilePage() {
 
   const sessionTypeLabel = (t?: string) => {
     if (!t) return ''
-    const map: Record<string, string> = {
-      individual: 'אישי',
-      group: 'קבוצה',
-      couples: 'זוגי',
-      family: 'משפחה',
-    }
-    return map[t] || t
+    return SESSION_TYPES.find(s => s.value === t)?.label || t
   }
 
   const statusLabel = (s: string) => {
@@ -1185,23 +1179,22 @@ export default function PatientProfilePage() {
                 <h2 className="text-lg font-bold text-indigo-900">תוכנית טיפולית</h2>
                 <span className="text-xs text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">הצעת AI</span>
                 {isCbtActive && (
-                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">תכנית טיפולית במבנה CBT</span>
-                )}
-                {treatmentPlan && (
-                  <>
-                    <CopyButton text={treatmentPlanToText(treatmentPlan)} />
-                    <button
-                      type="button"
-                      onClick={() => window.open(`/patients/${pid}/print?doc=plan`, '_blank')}
-                      title="הדפסה"
-                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors"
-                    >
-                      🖨 הדפסה
-                    </button>
-                  </>
+                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">במבנה CBT</span>
                 )}
               </div>
-              <div className="flex gap-2 flex-wrap self-start">
+              <div className="flex gap-2 flex-wrap items-center self-start">
+                {treatmentPlan && (
+                  <CopyButton text={treatmentPlanToText(treatmentPlan)} />
+                )}
+                {treatmentPlan && (
+                  <button
+                    type="button"
+                    onClick={() => window.open(`/patients/${pid}/print?doc=plan`, '_blank')}
+                    className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors"
+                  >
+                    🖨 הדפסה
+                  </button>
+                )}
                 {treatmentPlan && (
                   <button
                     onClick={handleGeneratePlan}
@@ -1209,7 +1202,7 @@ export default function PatientProfilePage() {
                     className="flex items-center gap-1.5 text-sm text-indigo-700 hover:text-indigo-900 border border-indigo-300 hover:border-indigo-500 bg-white rounded-lg px-3 py-2 transition-colors disabled:opacity-50 min-h-[40px] touch-manipulation"
                   >
                     <ArrowPathIcon className={`h-4 w-4 ${planLoading ? 'animate-spin' : ''}`} />
-                    רענן לפי ההיסטוריה העדכנית
+                    רענון
                   </button>
                 )}
                 {treatmentPlan && (
@@ -1664,7 +1657,7 @@ export default function PatientProfilePage() {
                 <h2 className="text-base font-bold text-purple-900">סיכום עומק</h2>
                 <span className="text-xs text-purple-500">{formatDateIL(viewingDeepSummary.created_at)}</span>
                 <CopyButton
-                  text={deepSummaryToText(viewingDeepSummary.summary_json as unknown as DeepSummary) || viewingDeepSummary.rendered_text || ''}
+                  text={deepSummaryToText(viewingDeepSummary.summary_json as unknown as DeepSummary)}
                 />
                 <button
                   type="button"
