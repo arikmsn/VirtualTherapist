@@ -45,8 +45,10 @@ class TherapistProfileResponse(BaseModel):
     # Derived: True when CBT is active for this therapist (drives UI hints)
     cbt_active: bool = False
     # Profession + therapy modes (migration 029)
+    # primary_therapy_modes is ALWAYS a list (never null) so the frontend can
+    # safely iterate it without a null-guard.
     profession: Optional[str] = None
-    primary_therapy_modes: Optional[List[str]] = None
+    primary_therapy_modes: List[str] = []
 
     class Config:
         from_attributes = True

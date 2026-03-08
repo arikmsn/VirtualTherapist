@@ -46,7 +46,9 @@ interface TherapistProfile {
   therapist_created_at: string | null
   // Profession + therapy modes (migration 029)
   profession: string | null
-  primary_therapy_modes: string[] | null
+  primary_therapy_modes: string[] | null   // API guarantees [] not null
+  // Derived: CBT active for this therapist
+  cbt_active: boolean
 }
 
 const MODALITIES = [
@@ -406,6 +408,17 @@ export default function TwinProfilePage() {
         </div>
       )}
 
+      {/* ── Profession + modalities context note ── */}
+      <div className="text-xs text-gray-500 bg-gray-50 rounded-xl px-4 py-3 leading-relaxed border border-gray-100">
+        המקצוע וגישות הטיפול שלך מאפשרים ל-Twin להתאים את מבנה הסיכומים, השפה הקלינית וניתוח הפגישות —
+        לדוגמה, CBT מפעיל ניתוח מחשבות אוטומטיות ומטלות בין-מפגשים, בעוד מטפל פסיכודינמי יקבל מבנה שונה.
+        {profile.cbt_active && (
+          <span className="mr-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+            ✓ CBT פעיל — חבילת CBT מופעלת על כל הסיכומים
+          </span>
+        )}
+      </div>
+
       {/* ── Section 0: Profession ── */}
       <div className="card">
         <div className="flex items-center justify-between mb-3">
@@ -435,7 +448,14 @@ export default function TwinProfilePage() {
       {/* ── Section 1: Therapeutic modalities (chips view / editable grid) ── */}
       <div className="card">
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-bold text-gray-800">גישות טיפוליות</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-bold text-gray-800">גישות טיפוליות</h2>
+            {profile.cbt_active && (
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                CBT פעיל
+              </span>
+            )}
+          </div>
           <button
             onClick={() => setEditingModalities((v) => !v)}
             className="text-xs text-therapy-calm hover:underline"

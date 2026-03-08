@@ -265,6 +265,204 @@ class TestCompletenessCheckerWithModality:
         assert result.score == 0.95
 
 
+# ── is_cbt_active ─────────────────────────────────────────────────────────────
+
+class TestIsCbtActive:
+    """Unit tests for is_cbt_active() — covers all three resolution layers."""
+
+    def _profile(self, primary_therapy_modes=None, approach_description=None, therapeutic_approach=None):
+        p = MagicMock()
+        p.primary_therapy_modes = primary_therapy_modes
+        p.approach_description = approach_description
+        p.therapeutic_approach = therapeutic_approach
+        return p
+
+    def test_none_profile_returns_false(self):
+        from app.ai.modality import is_cbt_active
+        assert is_cbt_active(None) is False
+
+    # ── Layer 1: primary_therapy_modes ────────────────────────────────────────
+
+    def test_cbt_in_primary_modes_returns_true(self):
+        from app.ai.modality import is_cbt_active
+        p = self._profile(primary_therapy_modes=["cbt", "dbt"])
+        assert is_cbt_active(p) is True
+
+    def test_cbt_uppercase_in_primary_modes_returns_true(self):
+        from app.ai.modality import is_cbt_active
+        p = self._profile(primary_therapy_modes=["CBT"])
+        assert is_cbt_active(p) is True
+
+    def test_no_cbt_in_primary_modes_returns_false(self):
+        from app.ai.modality import is_cbt_active
+        p = self._profile(primary_therapy_modes=["dbt", "act", "humanistic"])
+        assert is_cbt_active(p) is False
+
+    def test_non_empty_primary_modes_short_circuits_legacy(self):
+        """When primary_therapy_modes is set and non-empty, legacy fields are ignored."""
+        from app.ai.modality import is_cbt_active
+        # primary_modes has no CBT → False, even though legacy approach_description says CBT
+        p = self._profile(
+            primary_therapy_modes=["psychodynamic"],
+            approach_description="CBT",
+            therapeutic_approach="CBT",
+        )
+        assert is_cbt_active(p) is False
+
+    def test_empty_list_primary_modes_falls_back_to_legacy(self):
+        """Empty list → fall back to legacy CSV field."""
+        from app.ai.modality import is_cbt_active
+        p = self._profile(primary_therapy_modes=[], approach_description="CBT, psychodynamic")
+        assert is_cbt_active(p) is True
+
+    # ── Layer 2: approach_description legacy ─────────────────────────────────
+
+    def test_cbt_in_approach_description_returns_true(self):
+        from app.ai.modality import is_cbt_active
+        p = self._profile(approach_description="CBT, psychodynamic")
+        assert is_cbt_active(p) is True
+
+    def test_non_cbt_approach_description_returns_false(self):
+        from app.ai.modality import is_cbt_active
+        p = self._profile(approach_description="psychodynamic, humanistic")
+        assert is_cbt_active(p) is False
+
+    # ── Layer 3: therapeutic_approach legacy ──────────────────────────────────
+
+    def test_therapeutic_approach_cbt_returns_true(self):
+        from app.ai.modality import is_cbt_active
+        p = self._profile(therapeutic_approach="CBT")
+        assert is_cbt_active(p) is True
+
+    def test_therapeutic_approach_non_cbt_returns_false(self):
+        from app.ai.modality import is_cbt_active
+        p = self._profile(therapeutic_approach="psychodynamic")
+        assert is_cbt_active(p) is False
+
+
+# ── resolve_modality_pack — new CBT-via-primary_modes scenarios ───────────────
+
+class TestResolveModalityPackCbtViaModes:
+    """Additional resolve_modality_pack tests covering primary_therapy_modes logic."""
+
+    def _make_db(self, profile, cbt_pack=None, generic_pack=None):
+        from app.models.modality import ModalityPack
+        from app.models.therapist import TherapistProfile
+
+        mock_db = MagicMock()
+
+        def query_side_effect(model):
+            q = MagicMock()
+            if model is TherapistProfile:
+                q.filter.return_value.first.return_value = profile
+            elif model is ModalityPack:
+                # Chain two .filter() calls
+                inner = MagicMock()
+                # Decide which pack to return based on name filter args — simplest: always return
+                # cbt_pack first, then generic_pack on second call
+                inner.first.return_value = cbt_pack or generic_pack
+                q.filter.return_value.filter.return_value = inner
+                q.filter.return_value.first.return_value = generic_pack  # explicit pack lookup
+            return q
+
+        mock_db.query.side_effect = query_side_effect
+        return mock_db
+
+    def test_cbt_via_primary_modes_resolves_cbt_pack(self):
+        from app.ai.modality import resolve_modality_pack
+        from app.models.modality import ModalityPack
+        from app.models.therapist import TherapistProfile
+
+        cbt_pack = MagicMock(spec=ModalityPack)
+        cbt_pack.name = "cbt"
+        cbt_pack.is_active = True
+
+        generic_pack = MagicMock(spec=ModalityPack)
+        generic_pack.name = "generic_integrative"
+
+        profile = MagicMock(spec=TherapistProfile)
+        profile.modality_pack_id = None
+        profile.primary_therapy_modes = ["cbt", "dbt"]
+        profile.approach_description = None
+        profile.therapeutic_approach = None
+
+        mock_db = MagicMock()
+
+        def query_side_effect(model):
+            q = MagicMock()
+            if model is TherapistProfile:
+                q.filter.return_value.first.return_value = profile
+            elif model is ModalityPack:
+                # first call = CBT pack lookup, second = generic fallback
+                q.filter.return_value.first.side_effect = [cbt_pack, generic_pack]
+            return q
+
+        mock_db.query.side_effect = query_side_effect
+
+        result = resolve_modality_pack(mock_db, therapist_id=1)
+        assert result is cbt_pack
+
+    def test_no_cbt_in_primary_modes_falls_back_to_generic(self):
+        from app.ai.modality import resolve_modality_pack
+        from app.models.modality import ModalityPack
+        from app.models.therapist import TherapistProfile
+
+        generic_pack = MagicMock(spec=ModalityPack)
+        generic_pack.name = "generic_integrative"
+
+        profile = MagicMock(spec=TherapistProfile)
+        profile.modality_pack_id = None
+        profile.primary_therapy_modes = ["psychodynamic", "humanistic"]
+        profile.approach_description = None
+        profile.therapeutic_approach = None
+
+        mock_db = MagicMock()
+
+        def query_side_effect(model):
+            q = MagicMock()
+            if model is TherapistProfile:
+                q.filter.return_value.first.return_value = profile
+            elif model is ModalityPack:
+                q.filter.return_value.first.return_value = generic_pack
+            return q
+
+        mock_db.query.side_effect = query_side_effect
+
+        result = resolve_modality_pack(mock_db, therapist_id=1)
+        assert result is generic_pack
+
+    def test_empty_primary_modes_falls_back_to_legacy_cbt(self):
+        """Empty list primary_therapy_modes → legacy approach_description CBT → CBT pack."""
+        from app.ai.modality import resolve_modality_pack
+        from app.models.modality import ModalityPack
+        from app.models.therapist import TherapistProfile
+
+        cbt_pack = MagicMock(spec=ModalityPack)
+        cbt_pack.name = "cbt"
+        cbt_pack.is_active = True
+
+        profile = MagicMock(spec=TherapistProfile)
+        profile.modality_pack_id = None
+        profile.primary_therapy_modes = []
+        profile.approach_description = "CBT"
+        profile.therapeutic_approach = None
+
+        mock_db = MagicMock()
+
+        def query_side_effect(model):
+            q = MagicMock()
+            if model is TherapistProfile:
+                q.filter.return_value.first.return_value = profile
+            elif model is ModalityPack:
+                q.filter.return_value.first.return_value = cbt_pack
+            return q
+
+        mock_db.query.side_effect = query_side_effect
+
+        result = resolve_modality_pack(mock_db, therapist_id=1)
+        assert result is cbt_pack
+
+
 # ── resolve_modality_pack ─────────────────────────────────────────────────────
 
 class TestResolveModalityPack:

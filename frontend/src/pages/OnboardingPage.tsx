@@ -6,8 +6,8 @@ import { CheckIcon } from '@heroicons/react/24/solid'
 import AppLogo from '@/components/common/AppLogo'
 
 const STEPS = [
-  { title: 'מקצוע', description: 'מהו תפקידך המקצועי?' },
-  { title: 'שיטות טיפול', description: 'בחר את הגישות הטיפוליות שבהן אתה עובד' },
+  { title: 'מקצוע', description: 'מהו תפקידך המקצועי? (בחירה יחידה)' },
+  { title: 'שיטות טיפול', description: 'בחר את הגישות הטיפוליות שבהן אתה עובד (בחירה מרובה)' },
   { title: 'סגנון כתיבה', description: 'תיאור של הסיכומים הקיימים שלך' },
   { title: 'רקע מקצועי', description: 'פרטים שיעזרו לבינה המלאכותית להבין את הרקע שלך' },
   { title: 'דוגמאות ללמידה', description: 'דוגמאות כדי שהמערכת תלמד את הסגנון האישי שלך (לא חובה)' },
@@ -208,6 +208,9 @@ export default function OnboardingPage() {
             {/* Step 1 — Profession */}
             {step === 0 && (
               <div className="space-y-3">
+                <p className="text-xs text-gray-400 bg-indigo-50 rounded-lg px-3 py-2 leading-relaxed">
+                  המקצוע שלך מעזר ל-AI להתאים את השפה הקלינית, מבנה הסיכומים והניתוחים לרקע שלך. בחר תפקיד אחד.
+                </p>
                 <div className="grid grid-cols-2 gap-2.5">
                   {PROFESSION_OPTIONS.map((p) => (
                     <button
@@ -216,12 +219,15 @@ export default function OnboardingPage() {
                       onClick={() => set('profession', p.value)}
                       className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border-2 text-sm font-medium transition-colors text-right ${
                         form.profession === p.value
-                          ? 'border-indigo-500 bg-indigo-50 text-indigo-800'
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-800 ring-2 ring-indigo-200'
                           : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-200 hover:bg-indigo-50/30'
                       }`}
                     >
                       <span className="text-lg leading-none">{p.emoji}</span>
                       <span className="flex-1">{p.label}</span>
+                      {form.profession === p.value && (
+                        <span className="text-indigo-500 text-xs font-bold">✓</span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -231,7 +237,9 @@ export default function OnboardingPage() {
             {/* Step 2 — Therapy Modes */}
             {step === 1 && (
               <div className="space-y-3">
-                <p className="text-xs text-gray-400">ניתן לבחור מספר שיטות. הבחירה שלך תשפיע על אופן כתיבת הסיכומים והפענוח הקליני של ה-AI.</p>
+                <p className="text-xs text-gray-400 bg-indigo-50 rounded-lg px-3 py-2 leading-relaxed">
+                  ניתן לבחור כמה שיטות. הבחירה קובעת כיצד ה-AI יבנה סיכומים ויעבד פגישות — לדוגמה, CBT מפעיל ניתוח מחשבות אוטומטיות ומטלות בין-מפגשים.
+                </p>
                 <div className="grid grid-cols-2 gap-2">
                   {THERAPY_MODES.map((m) => {
                     const checked = selectedModes.includes(m.value)
@@ -246,14 +254,27 @@ export default function OnboardingPage() {
                             : 'border-gray-200 bg-white text-gray-600 hover:border-indigo-300 hover:bg-indigo-50/30'
                         }`}
                       >
-                        {checked && <span className="text-white text-xs">✓</span>}
+                        <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${checked ? 'bg-white border-white' : 'border-gray-300'}`}>
+                          {checked && <span className="text-indigo-600 text-xs font-bold">✓</span>}
+                        </span>
                         <span>{m.label}</span>
                       </button>
                     )
                   })}
                 </div>
-                {selectedModes.length === 0 && (
-                  <p className="text-xs text-amber-600">בחר לפחות שיטה אחת להמשיך</p>
+                {selectedModes.length === 0 ? (
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-amber-600">בחר לפחות שיטה אחת</p>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedModes(['integrative'])}
+                      className="text-xs text-gray-400 underline hover:text-gray-600"
+                    >
+                      דלג — הגדר כאינטגרטיבי
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-indigo-600 font-medium">{selectedModes.length} שיטות נבחרו</p>
                 )}
               </div>
             )}
