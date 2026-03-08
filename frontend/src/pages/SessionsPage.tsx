@@ -307,7 +307,13 @@ export default function SessionsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <h3 className="text-lg font-bold">
-                        {patientMap[session.patient_id] || `מטופל #${session.patient_id}`}
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/patients/${session.patient_id}`) }}
+                          className="hover:text-therapy-calm hover:underline transition-colors"
+                        >
+                          {patientMap[session.patient_id] || `מטופל #${session.patient_id}`}
+                        </button>
                       </h3>
                       {session.summary_status === 'approved' ? (
                         <span className="badge badge-approved text-xs">

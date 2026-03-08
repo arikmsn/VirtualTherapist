@@ -18,6 +18,15 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { therapistAPI } from '@/lib/api'
+import {
+  PROFESSION_OPTIONS,
+  THERAPY_MODES,
+  encodeProfession,
+  decodeProfession,
+  encodeModes,
+  decodeModes,
+  modeLabel,
+} from '@/lib/therapistConstants'
 
 interface TherapistProfile {
   id: number
@@ -46,49 +55,9 @@ interface TherapistProfile {
   therapist_created_at: string | null
   // Profession + therapy modes (migration 029)
   profession: string | null
-  primary_therapy_modes: string[] | null   // API guarantees [] not null
+  primary_therapy_modes: string[]   // API guarantees [] not null
   // Derived: CBT active for this therapist
   cbt_active: boolean
-}
-
-const MODALITIES = [
-  { value: 'CBT', label: 'CBT — קוגניטיבי-התנהגותי' },
-  { value: 'DBT', label: 'DBT — דיאלקטי-התנהגותי' },
-  { value: 'ACT', label: 'ACT — קבלה ומחויבות' },
-  { value: 'EMDR', label: 'EMDR' },
-  { value: 'psychodynamic', label: 'פסיכודינמי' },
-  { value: 'humanistic', label: 'הומניסטי' },
-  { value: 'gestalt', label: 'גשטלט' },
-  { value: 'integrative', label: 'אינטגרטיבי' },
-  { value: 'psychodrama', label: 'פסיכודרמה' },
-  { value: 'other', label: 'אחר' },
-]
-
-const MODALITY_VALUES = MODALITIES.map((m) => m.value)
-
-const PROFESSION_LABELS: Record<string, string> = {
-  psychologist: 'פסיכולוג/ית קליני/ת',
-  social_worker: 'עובד/ת סוציאלית קלינית',
-  psychotherapist: 'פסיכותרפיסט/ית',
-  family_therapist: 'מטפל/ת זוגי/ת ומשפחתי/ת',
-  counselor: 'יועץ/ת',
-  psychiatrist: 'פסיכיאטר/ית',
-  other: 'אחר',
-}
-
-function parseModalities(profile: TherapistProfile): string[] {
-  // Prefer primary_therapy_modes (migration 029), fall back to legacy fields
-  if (profile.primary_therapy_modes && profile.primary_therapy_modes.length > 0) {
-    return profile.primary_therapy_modes
-  }
-  const result = new Set<string>()
-  if (profile.therapeutic_approach) result.add(profile.therapeutic_approach)
-  if (profile.approach_description) {
-    profile.approach_description.split(',').map((s) => s.trim()).forEach((v) => {
-      if (MODALITY_VALUES.includes(v)) result.add(v)
-    })
-  }
-  return [...result]
 }
 
 const WARMTH_LABELS: Record<number, string> = {
@@ -171,13 +140,13 @@ export default function TwinProfilePage() {
   const [tone, setTone] = useState('')
   const [newProhibition, setNewProhibition] = useState('')
 
-  // Therapeutic modalities (multi-select for approach_description)
-  const [selectedModalities, setSelectedModalities] = useState<string[]>([])
-  const [initModalities, setInitModalities] = useState<string[]>([])
-  const [editingModalities, setEditingModalities] = useState(false)
+  // Profession (decoded into key + free text)
+  const [professionKey, setProfessionKey] = useState('')
+  const [professionOtherText, setProfessionOtherText] = useState('')
 
-  // Profession
-  const [profession, setProfession] = useState('')
+  // Therapeutic modalities (decoded keys + free text for "other")
+  const [selectedModalities, setSelectedModalities] = useState<string[]>([])
+  const [modesOtherText, setModesOtherText] = useState('')
 
   // Professional credentials
   const [education, setEducation] = useState('')
@@ -208,8 +177,9 @@ export default function TwinProfilePage() {
       customRules !== (profile.custom_rules || '') ||
       tone !== (profile.tone || '') ||
       JSON.stringify(prohibitions) !== JSON.stringify(profile.prohibitions || []) ||
-      JSON.stringify([...selectedModalities].sort()) !== JSON.stringify([...initModalities].sort()) ||
-      profession !== (profile.profession || '') ||
+      encodeProfession(professionKey, professionOtherText) !== (profile.profession || '') ||
+      JSON.stringify([...encodeModes(selectedModalities, modesOtherText)].sort()) !==
+        JSON.stringify([...(profile.primary_therapy_modes || [])].sort()) ||
       education !== (profile.education || '') ||
       certifications !== (profile.certifications || '') ||
       yearsOfExperience !== (profile.years_of_experience || '') ||
@@ -225,22 +195,27 @@ export default function TwinProfilePage() {
         ])
         if (sig.status === 'fulfilled') setSigProfile(sig.value)
         if (data.status === 'rejected') throw data.reason
-        const profileData = (data as PromiseFulfilledResult<TherapistProfile>).value
-        const data2 = profileData
-        setProfile(data2)
-        setToneWarmth(data2.tone_warmth)
-        setDirectiveness(data2.directiveness)
-        setProhibitions(data2.prohibitions || [])
-        setCustomRules(data2.custom_rules || '')
-        setTone(data2.tone || '')
-        setProfession(data2.profession || '')
-        const mods = parseModalities(data2)
-        setSelectedModalities(mods)
-        setInitModalities(mods)
-        setEducation(data2.education || '')
-        setCertifications(data2.certifications || '')
-        setYearsOfExperience(data2.years_of_experience || '')
-        setAreasOfExpertise(data2.areas_of_expertise || '')
+        const d = (data as PromiseFulfilledResult<TherapistProfile>).value
+        setProfile(d)
+        setToneWarmth(d.tone_warmth)
+        setDirectiveness(d.directiveness)
+        setProhibitions(d.prohibitions || [])
+        setCustomRules(d.custom_rules || '')
+        setTone(d.tone || '')
+        setEducation(d.education || '')
+        setCertifications(d.certifications || '')
+        setYearsOfExperience(d.years_of_experience || '')
+        setAreasOfExpertise(d.areas_of_expertise || '')
+
+        // Decode profession
+        const { key, otherText } = decodeProfession(d.profession)
+        setProfessionKey(key)
+        setProfessionOtherText(otherText)
+
+        // Decode therapy modes
+        const { modes, otherText: mOther } = decodeModes(d.primary_therapy_modes || [])
+        setSelectedModalities(modes)
+        setModesOtherText(mOther)
       } catch (err: any) {
         setError(err.response?.data?.detail || 'שגיאה בטעינת הפרופיל')
       } finally {
@@ -255,24 +230,30 @@ export default function TwinProfilePage() {
     setSaveError('')
     setSaveSuccess(false)
     try {
+      const encodedProfession = encodeProfession(professionKey, professionOtherText)
+      const encodedModes = encodeModes(selectedModalities, modesOtherText)
       const updated = await therapistAPI.updateTwinControls({
         tone_warmth: toneWarmth,
         directiveness,
         prohibitions,
         custom_rules: customRules || null,
         tone: tone || null,
-        profession: profession || null,
-        primary_therapy_modes: selectedModalities.length > 0 ? selectedModalities : null,
-        approach_description: selectedModalities.length > 0 ? selectedModalities.join(', ') : null,
+        profession: encodedProfession || null,
+        primary_therapy_modes: encodedModes.length > 0 ? encodedModes : null,
+        approach_description: encodedModes.length > 0 ? encodedModes.join(', ') : null,
         education: education || null,
         certifications: certifications || null,
         years_of_experience: yearsOfExperience || null,
         areas_of_expertise: areasOfExpertise || null,
       })
       setProfile(updated)
-      setProfession(updated.profession || '')
-      const mods = parseModalities(updated)
-      setInitModalities(mods)
+      // Re-sync decoded states to match the saved profile
+      const { key, otherText } = decodeProfession(updated.profession)
+      setProfessionKey(key)
+      setProfessionOtherText(otherText)
+      const { modes, otherText: mOther } = decodeModes(updated.primary_therapy_modes || [])
+      setSelectedModalities(modes)
+      setModesOtherText(mOther)
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
     } catch (err: any) {
@@ -291,6 +272,12 @@ export default function TwinProfilePage() {
 
   const removeProhibition = (idx: number) => {
     setProhibitions(prohibitions.filter((_, i) => i !== idx))
+  }
+
+  const toggleMode = (value: string) => {
+    setSelectedModalities((prev) =>
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+    )
   }
 
   // --- Loading / Error ---
@@ -368,6 +355,7 @@ export default function TwinProfilePage() {
             </div>
           </div>
 
+          {/* Style summary — shown only when available */}
           {sigProfile.style_summary ? (
             <div>
               <div className="text-xs font-medium text-indigo-700 mb-1.5">סיכום הסגנון הנלמד:</div>
@@ -375,15 +363,14 @@ export default function TwinProfilePage() {
                 {sigProfile.style_summary}
               </p>
             </div>
-          ) : (
+          ) : !sigProfile.is_active ? (
+            /* Only show "more samples needed" when NOT yet active */
             <p className="text-sm text-indigo-600 bg-white rounded-lg p-3 border border-indigo-100">
-              {sigProfile.is_active
-                ? 'המנגנון כבר פעיל ומתעדכן בכל סיכום שאושר.'
-                : sigProfile.samples_until_active > 0
-                  ? `אשר עוד ${sigProfile.samples_until_active} סיכומים כדי להפעיל את מנגנון הלמידה.`
-                  : 'המנגנון עומד להיות מופעל — אשר את הסיכום הבא.'}
+              {sigProfile.samples_until_active > 0
+                ? `אשר עוד ${sigProfile.samples_until_active} סיכומים כדי להפעיל את מנגנון הלמידה.`
+                : 'המנגנון עומד להיות מופעל — אשר את הסיכום הבא.'}
             </p>
-          )}
+          ) : null}
 
           {/* How it affects */}
           <div className="mt-4 pt-3 border-t border-indigo-200">
@@ -408,7 +395,7 @@ export default function TwinProfilePage() {
         </div>
       )}
 
-      {/* ── Profession + modalities context note ── */}
+      {/* ── Context note ── */}
       <div className="text-xs text-gray-500 bg-gray-50 rounded-xl px-4 py-3 leading-relaxed border border-gray-100">
         המקצוע וגישות הטיפול שלך מאפשרים ל-Twin להתאים את מבנה הסיכומים, השפה הקלינית וניתוח הפגישות —
         לדוגמה, CBT מפעיל ניתוח מחשבות אוטומטיות ומטלות בין-מפגשים, בעוד מטפל פסיכודינמי יקבל מבנה שונה.
@@ -419,102 +406,155 @@ export default function TwinProfilePage() {
         )}
       </div>
 
-      {/* ── Section 0: Profession ── */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold text-gray-800">מקצוע</h2>
+      {/* ── Unified Professional Details card (profession + modalities + credentials) ── */}
+      <div className="card space-y-6">
+        <div>
+          <h2 className="text-lg font-bold text-gray-800">פרטים מקצועיים</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            פרטים אלו משולבים בהנחיות ה-AI ומשפיעים על אופן יצירת הסיכומים וההודעות
+          </p>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {Object.entries(PROFESSION_LABELS).map(([val, label]) => (
-            <button
-              key={val}
-              type="button"
-              onClick={() => setProfession(val)}
-              className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
-                profession === val
-                  ? 'border-therapy-calm bg-blue-50 text-therapy-calm font-medium'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {!profession && (
-          <p className="text-xs text-gray-400 mt-2">לא נבחר מקצוע</p>
-        )}
-      </div>
 
-      {/* ── Section 1: Therapeutic modalities (chips view / editable grid) ── */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-1">
+        {/* Profession grid */}
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-gray-700">מקצוע</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {PROFESSION_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setProfessionKey(opt.value)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                  professionKey === opt.value
+                    ? 'border-therapy-calm bg-blue-50 text-therapy-calm font-medium'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                }`}
+              >
+                <span>{opt.emoji}</span>
+                <span>{opt.label}</span>
+              </button>
+            ))}
+          </div>
+          {professionKey === 'other' && (
+            <input
+              type="text"
+              value={professionOtherText}
+              onChange={(e) => setProfessionOtherText(e.target.value)}
+              placeholder="פרט את תפקידך המקצועי..."
+              className="input-field mt-2"
+              autoFocus
+            />
+          )}
+        </div>
+
+        <div className="border-t border-gray-100" />
+
+        {/* Therapy modes multi-select */}
+        <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-gray-800">גישות טיפוליות</h2>
+            <span className="text-sm font-medium text-gray-700">גישות טיפוליות</span>
             {profile.cbt_active && (
               <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
                 CBT פעיל
               </span>
             )}
           </div>
-          <button
-            onClick={() => setEditingModalities((v) => !v)}
-            className="text-xs text-therapy-calm hover:underline"
-          >
-            {editingModalities ? 'סגור עריכה' : 'ערוך גישות'}
-          </button>
+          <p className="text-xs text-gray-400">בחר את כל השיטות הטיפוליות בהן אתה עובד (בחירה מרובה)</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {THERAPY_MODES.map((m) => {
+              const checked = selectedModalities.includes(m.value)
+              return (
+                <label
+                  key={m.value}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors text-sm ${
+                    checked
+                      ? 'border-therapy-calm bg-blue-50 text-therapy-calm font-medium'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleMode(m.value)}
+                    className="accent-therapy-calm"
+                  />
+                  {m.label}
+                </label>
+              )
+            })}
+          </div>
+          {selectedModalities.includes('other') && (
+            <input
+              type="text"
+              value={modesOtherText}
+              onChange={(e) => setModesOtherText(e.target.value)}
+              placeholder="פרט גישה טיפולית נוספת..."
+              className="input-field mt-2"
+            />
+          )}
+          {selectedModalities.length === 0 && (
+            <p className="text-xs text-gray-400">לא נבחרו גישות טיפוליות</p>
+          )}
+          {selectedModalities.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {selectedModalities.map((v) => (
+                <span key={v} className="px-2.5 py-0.5 bg-blue-50 border border-blue-200 text-therapy-calm text-xs rounded-full font-medium">
+                  {modeLabel(v === 'other' && modesOtherText ? `other:${modesOtherText}` : v)}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
-        {editingModalities ? (
-          <>
-            <p className="text-sm text-gray-500 mb-4">בחר את כל השיטות הטיפוליות בהן אתה עובד</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {MODALITIES.map((m) => {
-                const checked = selectedModalities.includes(m.value)
-                return (
-                  <label
-                    key={m.value}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors text-sm ${
-                      checked
-                        ? 'border-therapy-calm bg-blue-50 text-therapy-calm font-medium'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => {
-                        setSelectedModalities((prev) =>
-                          prev.includes(m.value)
-                            ? prev.filter((v) => v !== m.value)
-                            : [...prev, m.value]
-                        )
-                      }}
-                      className="accent-therapy-calm"
-                    />
-                    {m.label}
-                  </label>
-                )
-              })}
-            </div>
-          </>
-        ) : (
-          <div className="flex flex-wrap gap-2 mt-2">
-            {selectedModalities.length > 0 ? selectedModalities.map((v) => {
-              const m = MODALITIES.find((x) => x.value === v)
-              return m ? (
-                <span key={v} className="px-3 py-1 bg-blue-50 border border-blue-200 text-therapy-calm text-sm rounded-full font-medium">
-                  {m.label}
-                </span>
-              ) : null
-            }) : (
-              <span className="text-sm text-gray-400">לא נבחרו גישות טיפוליות — לחץ "ערוך גישות" להוסיף</span>
-            )}
-          </div>
-        )}
+        <div className="border-t border-gray-100" />
 
-        {/* Other onboarding-collected fields */}
-        <div className="mt-4 pt-4 border-t border-gray-100 space-y-3 text-sm">
-          {/* Tone — editable */}
+        {/* Credentials */}
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">השכלה</label>
+              <input
+                type="text"
+                value={education}
+                onChange={(e) => setEducation(e.target.value)}
+                className="input-field"
+                placeholder="לדוגמה: M.A. פסיכולוגיה קלינית, האוניברסיטה העברית"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">שנות ניסיון</label>
+              <input
+                type="text"
+                value={yearsOfExperience}
+                onChange={(e) => setYearsOfExperience(e.target.value)}
+                className="input-field"
+                placeholder="לדוגמה: 8"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">הסמכות ותעודות</label>
+            <input
+              type="text"
+              value={certifications}
+              onChange={(e) => setCertifications(e.target.value)}
+              className="input-field"
+              placeholder="לדוגמה: מטפל מוסמך CBT, הסמכת EMDR"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">תחומי התמחות</label>
+            <textarea
+              value={areasOfExpertise}
+              onChange={(e) => setAreasOfExpertise(e.target.value)}
+              className="input-field h-20 resize-none text-sm"
+              placeholder="לדוגמה: חרדה, טראומה, יחסים זוגיים, הפרעות אכילה"
+            />
+          </div>
+        </div>
+
+        {/* Tone (onboarding-collected, editable) */}
+        <div className="border-t border-gray-100 pt-4 space-y-3 text-sm">
           <div className="flex gap-3 items-center">
             <span className="text-gray-500 w-32 flex-shrink-0">סגנון:</span>
             <input
@@ -544,7 +584,7 @@ export default function TwinProfilePage() {
         </div>
       </div>
 
-      {/* ── Section 2: Twin Controls (editable) ── */}
+      {/* ── Twin Controls (editable sliders) ── */}
       <div className="card space-y-6">
         <div>
           <h2 className="text-lg font-bold text-gray-800">כוונונים חיים</h2>
@@ -553,7 +593,6 @@ export default function TwinProfilePage() {
           </p>
         </div>
 
-        {/* Tone warmth slider */}
         <SliderControl
           label="חמימות תקשורת"
           leftLabel="פורמלי"
@@ -563,7 +602,6 @@ export default function TwinProfilePage() {
           valueLabels={WARMTH_LABELS}
         />
 
-        {/* Directiveness slider */}
         <SliderControl
           label="רמת הכוונה"
           leftLabel="חקרני"
@@ -574,7 +612,7 @@ export default function TwinProfilePage() {
         />
       </div>
 
-      {/* ── Section 3: Prohibitions ── */}
+      {/* ── Prohibitions ── */}
       <div className="card space-y-4">
         <div>
           <h2 className="text-lg font-bold text-gray-800">מגבלות — מה אסור ל-AI להגיד</h2>
@@ -583,7 +621,6 @@ export default function TwinProfilePage() {
           </p>
         </div>
 
-        {/* Add prohibition */}
         <div className="flex gap-2">
           <input
             type="text"
@@ -603,7 +640,6 @@ export default function TwinProfilePage() {
           </button>
         </div>
 
-        {/* Prohibition list */}
         {prohibitions.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-4">אין מגבלות מוגדרות</p>
         ) : (
@@ -627,7 +663,7 @@ export default function TwinProfilePage() {
         )}
       </div>
 
-      {/* ── Section 4: Custom rules (free-text) ── */}
+      {/* ── Custom rules (free-text) ── */}
       <div className="card space-y-3">
         <div>
           <h2 className="text-lg font-bold text-gray-800">כללים מותאמים אישית</h2>
@@ -643,66 +679,7 @@ export default function TwinProfilePage() {
         />
       </div>
 
-      {/* ── Section 5: Professional credentials (editable) ── */}
-      <div className="card space-y-4">
-        <div>
-          <h2 className="text-lg font-bold text-gray-800">פרטים מקצועיים</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            פרטים אלו משולבים בהנחיות ה-AI ומשפיעים על אופן יצירת הסיכומים וההודעות
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Education */}
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">השכלה</label>
-            <input
-              type="text"
-              value={education}
-              onChange={(e) => setEducation(e.target.value)}
-              className="input-field"
-              placeholder="לדוגמה: M.A. פסיכולוגיה קלינית, האוניברסיטה העברית"
-            />
-          </div>
-
-          {/* Years of experience */}
-          <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">שנות ניסיון</label>
-            <input
-              type="text"
-              value={yearsOfExperience}
-              onChange={(e) => setYearsOfExperience(e.target.value)}
-              className="input-field"
-              placeholder="לדוגמה: 8"
-            />
-          </div>
-        </div>
-
-        {/* Certifications */}
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">הסמכות ותעודות</label>
-          <input
-            type="text"
-            value={certifications}
-            onChange={(e) => setCertifications(e.target.value)}
-            className="input-field"
-            placeholder="לדוגמה: מטפל מוסמך CBT, הסמכת EMDR"
-          />
-        </div>
-
-        {/* Areas of expertise */}
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">תחומי התמחות</label>
-          <textarea
-            value={areasOfExpertise}
-            onChange={(e) => setAreasOfExpertise(e.target.value)}
-            className="input-field h-20 resize-none text-sm"
-            placeholder="לדוגמה: חרדה, טראומה, יחסים זוגיים, הפרעות אכילה"
-          />
-        </div>
-      </div>
-
-      {/* ── Save / Reset bar ── */}
+      {/* ── Save bar ── */}
       <div className="sticky bottom-4">
         <div className="card bg-white shadow-lg border border-gray-200">
           <div className="flex items-center justify-between gap-4">

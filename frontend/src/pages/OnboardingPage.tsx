@@ -4,6 +4,12 @@ import { agentAPI, therapistAPI } from '@/lib/api'
 import { useAuth } from '@/auth/useAuth'
 import { CheckIcon } from '@heroicons/react/24/solid'
 import AppLogo from '@/components/common/AppLogo'
+import {
+  PROFESSION_OPTIONS,
+  THERAPY_MODES,
+  encodeProfession,
+  encodeModes,
+} from '@/lib/therapistConstants'
 
 const STEPS = [
   { title: 'מקצוע', description: 'מהו תפקידך המקצועי? (בחירה יחידה)' },
@@ -11,30 +17,6 @@ const STEPS = [
   { title: 'סגנון כתיבה', description: 'תיאור של הסיכומים הקיימים שלך' },
   { title: 'רקע מקצועי', description: 'פרטים שיעזרו לבינה המלאכותית להבין את הרקע שלך' },
   { title: 'דוגמאות ללמידה', description: 'דוגמאות כדי שהמערכת תלמד את הסגנון האישי שלך (לא חובה)' },
-]
-
-const PROFESSION_OPTIONS = [
-  { value: 'psychologist', label: 'פסיכולוג/ית קליני/ת', emoji: '🧠' },
-  { value: 'social_worker', label: 'עובד/ת סוציאלית קלינית', emoji: '🤝' },
-  { value: 'psychotherapist', label: 'פסיכותרפיסט/ית', emoji: '💬' },
-  { value: 'family_therapist', label: 'מטפל/ת זוגי/ת ומשפחתי/ת', emoji: '👨‍👩‍👧' },
-  { value: 'counselor', label: 'יועץ/ת', emoji: '🌱' },
-  { value: 'psychiatrist', label: 'פסיכיאטר/ית', emoji: '⚕️' },
-  { value: 'other', label: 'אחר', emoji: '➕' },
-]
-
-const THERAPY_MODES = [
-  { value: 'cbt', label: 'CBT — קוגניטיבי-התנהגותי' },
-  { value: 'dbt', label: 'DBT — דיאלקטי-התנהגותי' },
-  { value: 'act', label: 'ACT — קבלה ומחויבות' },
-  { value: 'emdr', label: 'EMDR' },
-  { value: 'psychodynamic', label: 'פסיכודינמי' },
-  { value: 'humanistic', label: 'הומניסטי' },
-  { value: 'gestalt', label: 'גשטלט' },
-  { value: 'integrative', label: 'אינטגרטיבי' },
-  { value: 'family_systemic', label: 'מערכתי-משפחתי' },
-  { value: 'psychodrama', label: 'פסיכודרמה' },
-  { value: 'other', label: 'אחר' },
 ]
 
 const TONE_OPTIONS = [
@@ -66,6 +48,8 @@ export default function OnboardingPage() {
   })
   const [selectedTones, setSelectedTones] = useState<string[]>([])
   const [selectedModes, setSelectedModes] = useState<string[]>([])
+  const [professionOtherText, setProfessionOtherText] = useState('')
+  const [modesOtherText, setModesOtherText] = useState('')
 
   const set = (field: keyof typeof form, value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -85,8 +69,8 @@ export default function OnboardingPage() {
     [...selectedTones, form.toneExtra].filter(Boolean).join(', ')
 
   const canAdvance = (): boolean => {
-    if (step === 0) return form.profession !== ''
-    if (step === 1) return selectedModes.length > 0
+    if (step === 0) return form.profession !== '' && (form.profession !== 'other' || professionOtherText.trim() !== '')
+    if (step === 1) return selectedModes.length > 0 && (!selectedModes.includes('other') || modesOtherText.trim() !== '')
     if (step === 2) return selectedTones.length > 0 || form.toneExtra.trim() !== ''
     return true
   }
@@ -97,16 +81,19 @@ export default function OnboardingPage() {
     setError('')
     try {
       if (step === 0) {
-        // Save profession
-        await therapistAPI.updateTwinControls({ profession: form.profession })
+        // Save profession (encode "other:text" if needed)
+        await therapistAPI.updateTwinControls({
+          profession: encodeProfession(form.profession, professionOtherText),
+        })
       } else if (step === 1) {
         // Save therapy modes — also populate legacy approach field for backward compat
-        const firstMode = selectedModes[0] || 'other'
+        const encodedModes = encodeModes(selectedModes, modesOtherText)
+        const firstMode = encodedModes[0] || 'other'
         await Promise.all([
           agentAPI.completeOnboardingStep(1, { approach: firstMode, approachDescription: '' }),
           therapistAPI.updateTwinControls({
-            primary_therapy_modes: selectedModes,
-            approach_description: selectedModes.join(', '),
+            primary_therapy_modes: encodedModes,
+            approach_description: encodedModes.join(', '),
           }),
         ])
       } else if (step === 2) {
@@ -231,6 +218,16 @@ export default function OnboardingPage() {
                     </button>
                   ))}
                 </div>
+                {form.profession === 'other' && (
+                  <input
+                    type="text"
+                    value={professionOtherText}
+                    onChange={(e) => setProfessionOtherText(e.target.value)}
+                    placeholder="פרט את תפקידך המקצועי..."
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 mt-1"
+                    autoFocus
+                  />
+                )}
               </div>
             )}
 
@@ -262,6 +259,16 @@ export default function OnboardingPage() {
                     )
                   })}
                 </div>
+                {selectedModes.includes('other') && (
+                  <input
+                    type="text"
+                    value={modesOtherText}
+                    onChange={(e) => setModesOtherText(e.target.value)}
+                    placeholder="פרט גישה טיפולית נוספת..."
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    autoFocus
+                  />
+                )}
                 {selectedModes.length === 0 ? (
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-amber-600">בחר לפחות שיטה אחת</p>
