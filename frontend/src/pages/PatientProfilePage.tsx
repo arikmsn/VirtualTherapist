@@ -1637,7 +1637,16 @@ export default function PatientProfilePage() {
             </div>
             <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex items-center gap-3">
               {prepStream.phase === 'done' && prepStream.text && (
-                <CopyButton text={prepStream.text} className="flex-shrink-0" />
+                <>
+                  <CopyButton text={prepStream.text} className="flex-shrink-0" />
+                  <button
+                    type="button"
+                    onClick={() => window.open(`/sessions/${prepModalSession!.id}/print`, '_blank')}
+                    className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors flex-shrink-0"
+                  >
+                    🖨 הדפסה
+                  </button>
+                </>
               )}
               <button onClick={closePrepModal} className="btn-secondary flex-1 min-h-[44px] touch-manipulation">סגור</button>
             </div>
@@ -1650,10 +1659,20 @@ export default function PatientProfilePage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir="rtl">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh]">
             <div className="flex items-center justify-between px-5 py-4 border-b border-purple-100 flex-shrink-0 bg-purple-50 rounded-t-2xl">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <SparklesIcon className="h-5 w-5 text-purple-600" />
                 <h2 className="text-base font-bold text-purple-900">סיכום עומק</h2>
                 <span className="text-xs text-purple-500">{formatDateIL(viewingDeepSummary.created_at)}</span>
+                <CopyButton
+                  text={deepSummaryToText(viewingDeepSummary.summary_json as unknown as DeepSummary) || viewingDeepSummary.rendered_text || ''}
+                />
+                <button
+                  type="button"
+                  onClick={() => window.open(`/patients/${pid}/print?doc=summary`, '_blank')}
+                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-purple-200 bg-white text-purple-500 hover:text-purple-700 hover:border-purple-300 transition-colors"
+                >
+                  🖨 הדפסה
+                </button>
               </div>
               <button onClick={() => setViewingDeepSummary(null)} className="text-gray-400 hover:text-gray-700 p-1">
                 <XMarkIcon className="h-5 w-5" />
