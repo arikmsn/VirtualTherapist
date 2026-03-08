@@ -36,6 +36,8 @@ import {
 import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNotesAPI, treatmentPlanAPI, therapistAPI, type TreatmentPlanVersion } from '@/lib/api'
 import { usePrepStream } from '@/hooks/usePrepStream'
 import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
+import CopyButton from '@/components/CopyButton'
+import { deepSummaryToText, treatmentPlanToText } from '@/lib/docText'
 
 const SESSION_TYPES = [
   { value: 'individual', label: 'פרטני' },
@@ -874,6 +876,19 @@ export default function PatientProfilePage() {
                 {isCbtActive && (
                   <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">מבנה סיכום בסגנון CBT</span>
                 )}
+                {insight && (
+                  <>
+                    <CopyButton text={deepSummaryToText(insight)} />
+                    <button
+                      type="button"
+                      onClick={() => window.open(`/patients/${pid}/print?doc=summary`, '_blank')}
+                      title="הדפסה"
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors"
+                    >
+                      🖨 הדפסה
+                    </button>
+                  </>
+                )}
               </div>
               <button
                 onClick={handleGenerateInsight}
@@ -1171,6 +1186,19 @@ export default function PatientProfilePage() {
                 <span className="text-xs text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">הצעת AI</span>
                 {isCbtActive && (
                   <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">תכנית טיפולית במבנה CBT</span>
+                )}
+                {treatmentPlan && (
+                  <>
+                    <CopyButton text={treatmentPlanToText(treatmentPlan)} />
+                    <button
+                      type="button"
+                      onClick={() => window.open(`/patients/${pid}/print?doc=plan`, '_blank')}
+                      title="הדפסה"
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors"
+                    >
+                      🖨 הדפסה
+                    </button>
+                  </>
                 )}
               </div>
               <div className="flex gap-2 flex-wrap self-start">
@@ -1607,8 +1635,11 @@ export default function PatientProfilePage() {
                 </div>
               ) : null}
             </div>
-            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
-              <button onClick={closePrepModal} className="btn-secondary w-full min-h-[44px] touch-manipulation">סגור</button>
+            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex items-center gap-3">
+              {prepStream.phase === 'done' && prepStream.text && (
+                <CopyButton text={prepStream.text} className="flex-shrink-0" />
+              )}
+              <button onClick={closePrepModal} className="btn-secondary flex-1 min-h-[44px] touch-manipulation">סגור</button>
             </div>
           </div>
         </div>

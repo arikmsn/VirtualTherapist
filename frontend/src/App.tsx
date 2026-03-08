@@ -14,6 +14,8 @@ import PatientSummariesPage from './pages/PatientSummariesPage'
 import PatientProfilePage from './pages/PatientProfilePage'
 import TwinProfilePage from './pages/TwinProfilePage'
 import GoogleCallbackPage from './pages/GoogleCallbackPage'
+import PrintSessionPage from './pages/PrintSessionPage'
+import PrintPatientPage from './pages/PrintPatientPage'
 import Layout from './components/Layout'
 
 function AppRoutes() {
@@ -57,6 +59,12 @@ function AppRoutes() {
         {/* Onboarding — full-screen, no sidebar/nav, inside ProtectedRoute but outside Layout */}
         <Route element={<ProtectedRoute />}>
           <Route path="/onboarding" element={<OnboardingPage />} />
+        </Route>
+
+        {/* Print views — full-screen, no sidebar/nav */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/sessions/:sessionId/print" element={<PrintSessionPage />} />
+          <Route path="/patients/:patientId/print" element={<PrintPatientPage />} />
         </Route>
 
         {/* Protected routes — redirect to /onboarding if not completed */}
