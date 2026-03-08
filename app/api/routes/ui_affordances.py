@@ -245,41 +245,39 @@ def get_signature_progress(
 
     Reports how many approved summaries exist vs. the minimum threshold,
     whether the signature is active, and the current Hebrew style description.
+
+    NOTE: is_active is derived from the live approved-summary count, NOT from
+    the stale TherapistSignatureProfile.is_active DB field.  The DB field is
+    only set to True when the AI rebuild runs (requires provider != None in the
+    approval path), which may lag behind the actual count.
     """
+    # Fetch the signature row WITHOUT filtering on is_active — we need the
+    # min_samples_required and style_summary from the row even when stale.
     sig = (
         db.query(TherapistSignatureProfile)
-        .filter_by(therapist_id=current_therapist.id, is_active=True)
+        .filter(TherapistSignatureProfile.therapist_id == current_therapist.id)
         .first()
     )
 
-    if sig is None:
-        # Count approved summaries directly
-        approved_count = (
-            db.query(func.count(SessionSummary.id))
-            .join(SessionSummary.session)
-            .filter_by(therapist_id=current_therapist.id)
-            .filter(SessionSummary.approved_by_therapist == True)  # noqa: E712
-            .scalar()
-        ) or 0
-        min_req = 5
-        pct = min(100.0, (approved_count / min_req) * 100)
-        return SignatureProgressResponse(
-            approved_summary_count=approved_count,
-            min_samples_required=min_req,
-            is_active=False,
-            progress_pct=pct,
-            style_summary=None,
-        )
+    # Always compute a fresh approved-summary count per therapist.
+    approved_count = (
+        db.query(func.count(SessionSummary.id))
+        .join(SessionSummary.session)
+        .filter_by(therapist_id=current_therapist.id)
+        .filter(SessionSummary.approved_by_therapist == True)  # noqa: E712
+        .scalar()
+    ) or 0
 
-    pct = min(100.0, (sig.approved_sample_count / sig.min_samples_required) * 100)
-    is_active = sig.approved_sample_count >= sig.min_samples_required
+    min_req = sig.min_samples_required if sig else 5
+    pct = min(100.0, (approved_count / min_req) * 100) if min_req > 0 else 100.0
+    is_active = approved_count >= min_req   # derived from live count
 
     return SignatureProgressResponse(
-        approved_summary_count=sig.approved_sample_count,
-        min_samples_required=sig.min_samples_required,
+        approved_summary_count=approved_count,
+        min_samples_required=min_req,
         is_active=is_active,
         progress_pct=pct,
-        style_summary=sig.style_summary,
+        style_summary=sig.style_summary if sig else None,
     )
 
 

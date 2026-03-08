@@ -313,7 +313,9 @@ export default function TwinProfilePage() {
               </span>
             ) : (
               <span className="text-xs bg-gray-300 text-gray-600 px-2 py-0.5 rounded-full mr-auto">
-                לא מספיק דוגמאות עדיין
+                {sigProfile.samples_until_active > 0
+                  ? `עוד ${sigProfile.samples_until_active} סיכומים לפעילה`
+                  : 'בהמתנה להפעלה'}
               </span>
             )}
           </div>
@@ -349,8 +351,10 @@ export default function TwinProfilePage() {
           ) : (
             <p className="text-sm text-indigo-600 bg-white rounded-lg p-3 border border-indigo-100">
               {sigProfile.is_active
-                ? 'הסגנון נלמד — אשר עוד סיכומים כדי לראות סיכום מפורט.'
-                : `אשר ${sigProfile.samples_until_active} סיכומים נוספים כדי להפעיל את מנגנון הלמידה.`}
+                ? 'המנגנון כבר פעיל ומתעדכן בכל סיכום שאושר.'
+                : sigProfile.samples_until_active > 0
+                  ? `אשר עוד ${sigProfile.samples_until_active} סיכומים כדי להפעיל את מנגנון הלמידה.`
+                  : 'המנגנון עומד להיות מופעל — אשר את הסיכום הבא.'}
             </p>
           )}
 

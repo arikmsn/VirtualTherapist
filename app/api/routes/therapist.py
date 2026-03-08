@@ -510,8 +510,12 @@ async def get_signature_profile(
         .filter(TherapistSignatureProfile.therapist_id == current_therapist.id)
         .first()
     )
-    # Use real approved summary count (the engine's internal counter only increments
-    # when a batch is processed, so it lags behind the actual approved count)
+    # Always use a live query for the approved summary count.
+    # The engine's internal counter (row.approved_sample_count) lags behind because
+    # record_approval() is only triggered when ai_draft_text is set and the async
+    # task completes.  The DB field `is_active` is only set to True during an AI
+    # rebuild (provider != None), which never runs in the approval hot-path.
+    # Therefore we derive both count and is_active from the live query.
     count = (
         db.query(_SessionSummary)
         .join(_TherapySession, _TherapySession.summary_id == _SessionSummary.id)
@@ -522,8 +526,9 @@ async def get_signature_profile(
         .count()
     )
     min_req = row.min_samples_required if row else 5
+    is_active_live = count >= min_req   # derived from fresh count, not stale DB field
     return SignatureProfileResponse(
-        is_active=bool(row.is_active) if row else False,
+        is_active=is_active_live,
         approved_sample_count=count,
         min_samples_required=min_req,
         samples_until_active=max(0, min_req - count),
