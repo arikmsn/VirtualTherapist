@@ -239,6 +239,7 @@ export default function PatientProfilePage() {
   const [savedPlan, setSavedPlan] = useState<TreatmentPlanVersion | null>(null)
   const [planHistory, setPlanHistory] = useState<TreatmentPlanVersion[]>([])
   const [savingPlan, setSavingPlan] = useState(false)
+  const [planSaveSuccess, setPlanSaveSuccess] = useState(false)
   const [planHistoryLoading, setPlanHistoryLoading] = useState(false)
   const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null)
 
@@ -523,6 +524,8 @@ export default function PatientProfilePage() {
         saved = await treatmentPlanAPI.create(pid)
       }
       setSavedPlan(saved)
+      setPlanSaveSuccess(true)
+      setTimeout(() => setPlanSaveSuccess(false), 3000)
       // Optimistic update: show the new version immediately
       setPlanHistory((prev) => {
         const without = prev.filter((p) => p.plan_id !== saved.plan_id)
@@ -530,7 +533,7 @@ export default function PatientProfilePage() {
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         )
       })
-      // Background refresh to get server-canonical order + rendered_text
+      // Background refresh to get server-canonical order + plan_json
       try {
         const history = await treatmentPlanAPI.getHistory(pid)
         setPlanHistory(history as TreatmentPlanVersion[])
@@ -542,6 +545,8 @@ export default function PatientProfilePage() {
         try {
           const saved = await treatmentPlanAPI.update(pid)
           setSavedPlan(saved)
+          setPlanSaveSuccess(true)
+          setTimeout(() => setPlanSaveSuccess(false), 3000)
           setPlanHistory((prev) => {
             const without = prev.filter((p) => p.plan_id !== saved.plan_id)
             return [saved, ...without].sort(
@@ -1186,7 +1191,7 @@ export default function PatientProfilePage() {
                 {treatmentPlan && (
                   <CopyButton text={treatmentPlanToText(treatmentPlan)} />
                 )}
-                {treatmentPlan && (
+                {savedPlan && (
                   <button
                     type="button"
                     onClick={() => window.open(`/patients/${pid}/print?doc=plan`, '_blank')}
@@ -1209,9 +1214,13 @@ export default function PatientProfilePage() {
                   <button
                     onClick={handleSavePlan}
                     disabled={savingPlan}
-                    className="flex items-center gap-1.5 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-2 transition-colors min-h-[40px] touch-manipulation disabled:opacity-50"
+                    className={`flex items-center gap-1.5 text-sm text-white rounded-lg px-3 py-2 transition-colors min-h-[40px] touch-manipulation disabled:opacity-50 ${
+                      planSaveSuccess
+                        ? 'bg-green-600 hover:bg-green-700'
+                        : 'bg-indigo-600 hover:bg-indigo-700'
+                    }`}
                   >
-                    {savingPlan ? 'שומר...' : 'שמור תוכנית'}
+                    {savingPlan ? 'שומר...' : planSaveSuccess ? '✓ נשמר' : 'שמור תוכנית'}
                   </button>
                 )}
               </div>
@@ -1356,20 +1365,78 @@ export default function PatientProfilePage() {
                         {expandedHistoryId === v.plan_id ? 'סגור' : 'הצג'}
                       </button>
                     </div>
-                    {expandedHistoryId === v.plan_id && v.rendered_text && (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
-                          {v.rendered_text
-                            .replace(/```(?:json)?\s*[\s\S]*?```/g, '')
-                            .replace(/<[^>]+>/g, '')
-                            .replace(/^\|.+\|.*$/gm, '')
-                            .replace(/^[-|: ]+$/gm, '')
-                            .replace(/^[a-zA-Z_]+:\s*$/gm, '')
-                            .replace(/\n{3,}/g, '\n\n')
-                            .trim()}
-                        </p>
-                      </div>
-                    )}
+                    {expandedHistoryId === v.plan_id && (() => {
+                      const pjv = (v.plan_json ?? {}) as Record<string, unknown>
+                      const vGoals = (pjv.primary_goals ?? []) as Array<{ goal_id?: string; description?: string; priority?: string; status?: string }>
+                      const vIntvs = (pjv.interventions_planned ?? []) as Array<{ intervention?: string; frequency?: string }>
+                      const vMiles = (pjv.milestones ?? []) as Array<{ description?: string; target_by_session?: number; achieved?: boolean }>
+                      const vRisks = (pjv.risk_considerations ?? []) as string[]
+                      const vPresenting = pjv.presenting_problem as string | undefined
+                      const PRIO: Record<string, string> = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' }
+                      const STAT: Record<string, string> = { not_started: 'לא החלה', in_progress: 'בתהליך', achieved: 'הושגה', dropped: 'הופסקה' }
+                      const hasContent = !!(vPresenting || vGoals.length || vIntvs.length || vMiles.length || vRisks.length)
+                      return hasContent ? (
+                        <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
+                          {vPresenting && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-1">בעיה מוצגת</p>
+                              <p className="text-sm text-gray-700 whitespace-pre-line">{vPresenting}</p>
+                            </div>
+                          )}
+                          {vGoals.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-1">מטרות טיפול</p>
+                              <ul className="space-y-1">
+                                {vGoals.map((g, gi) => (
+                                  <li key={gi} className="text-sm text-gray-700">
+                                    {g.description}
+                                    {(g.priority || g.status) && (
+                                      <span className="text-xs text-gray-400 mr-1">
+                                        {g.priority ? ` | ${PRIO[g.priority] ?? g.priority}` : ''}
+                                        {g.status ? ` | ${STAT[g.status] ?? g.status}` : ''}
+                                      </span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {vIntvs.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-1">התערבויות</p>
+                              <ul className="space-y-0.5">
+                                {vIntvs.map((it, ii) => (
+                                  <li key={ii} className="text-sm text-gray-700">
+                                    {it.intervention}{it.frequency && <span className="text-gray-400"> — {it.frequency}</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {vMiles.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-1">אבני דרך</p>
+                              <ul className="space-y-0.5">
+                                {vMiles.map((m, mi) => (
+                                  <li key={mi} className="text-sm text-gray-700">
+                                    {m.description}
+                                    {m.achieved && <span className="text-green-600 mr-1"> ✓</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {vRisks.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-1">שיקולי סיכון</p>
+                              <ul className="space-y-0.5">
+                                {vRisks.map((r, ri) => <li key={ri} className="text-sm text-gray-700">{r}</li>)}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      ) : null
+                    })()}
                   </div>
                 ))}
               </div>

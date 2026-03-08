@@ -17,7 +17,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { patientsAPI, patientSummariesAPI, treatmentPlanAPI, therapistAPI } from '@/lib/api'
 import AppLogo from '@/components/common/AppLogo'
-import { deepSummaryToText, treatmentPlanToText, type DeepSummary, type TreatmentPlan } from '@/lib/docText'
+import { deepSummaryToText, treatmentPlanToText, type DeepSummary } from '@/lib/docText'
 import { formatDateIL } from '@/lib/dateUtils'
 
 interface Patient {
@@ -114,9 +114,17 @@ export default function PrintPatientPage() {
     )
   }
 
-  const planGoals = ((plan?.plan_json as any)?.goals ?? []) as TreatmentPlan['goals']
-  const planFocusAreas = ((plan?.plan_json as any)?.focus_areas ?? []) as string[]
-  const planInterventions = ((plan?.plan_json as any)?.suggested_interventions ?? []) as string[]
+  // Extract from the clinical plan_json schema (primary_goals / interventions_planned / milestones / risk_considerations)
+  const pj = (plan?.plan_json ?? {}) as Record<string, unknown>
+  const planPresentingProblem = pj.presenting_problem as string | undefined
+  const planPrimaryGoals = (pj.primary_goals ?? []) as Array<{ goal_id?: string; description?: string; priority?: string; status?: string }>
+  const planInterventionsPlanned = (pj.interventions_planned ?? []) as Array<{ intervention?: string; frequency?: string }>
+  const planMilestones = (pj.milestones ?? []) as Array<{ description?: string; target_by_session?: number; achieved?: boolean }>
+  const planRisks = (pj.risk_considerations ?? []) as string[]
+  const hasPlanContent = !!(planPresentingProblem || planPrimaryGoals.length || planInterventionsPlanned.length || planMilestones.length || planRisks.length)
+
+  const PRIORITY_HE: Record<string, string> = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' }
+  const STATUS_HE: Record<string, string> = { not_started: 'לא החלה', in_progress: 'בתהליך', achieved: 'הושגה', dropped: 'הופסקה' }
 
   return (
     <div className="min-h-screen bg-white" dir="rtl">
@@ -226,46 +234,68 @@ export default function PrintPatientPage() {
               📋 תוכנית טיפולית
             </h2>
 
-            {!plan || (!planGoals?.length && !planFocusAreas?.length && !planInterventions?.length) ? (
-              plan?.rendered_text ? (
-                <div className="text-sm text-gray-800 whitespace-pre-line leading-relaxed">{plan.rendered_text}</div>
-              ) : (
-                <p className="text-gray-400 text-sm">אין תוכנית טיפולית שמורה.</p>
-              )
+            {!plan || !hasPlanContent ? (
+              <p className="text-gray-400 text-sm">אין תוכנית טיפולית שמורה.</p>
             ) : (
               <div className="space-y-5 text-sm leading-relaxed">
-                {plan.title && (
-                  <p className="text-xs text-indigo-600 font-medium">{plan.title}</p>
+                {planPresentingProblem && (
+                  <section>
+                    <h3 className="font-bold text-gray-900 mb-1.5">📋 בעיה מוצגת</h3>
+                    <p className="text-gray-800 whitespace-pre-line">{planPresentingProblem}</p>
+                  </section>
                 )}
 
-                {(planGoals ?? []).length > 0 && (
+                {planPrimaryGoals.length > 0 && (
                   <section>
                     <h3 className="font-bold text-gray-900 mb-2">🎯 מטרות טיפול</h3>
                     <div className="space-y-2">
-                      {(planGoals ?? []).map((g: any, i: number) => (
+                      {planPrimaryGoals.map((g, i) => (
                         <div key={i} className="border border-gray-100 rounded p-3">
-                          <p className="font-medium text-gray-900">{g.title}</p>
-                          <p className="text-gray-700 mt-0.5">{g.description}</p>
+                          <p className="text-gray-800">{g.description}</p>
+                          <div className="flex gap-3 mt-1 text-xs text-gray-500">
+                            {g.priority && <span>עדיפות: {PRIORITY_HE[g.priority] ?? g.priority}</span>}
+                            {g.status && <span>סטטוס: {STATUS_HE[g.status] ?? g.status}</span>}
+                          </div>
                         </div>
                       ))}
                     </div>
                   </section>
                 )}
 
-                {planFocusAreas.length > 0 && (
+                {planInterventionsPlanned.length > 0 && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">🔍 נושאים מרכזיים לעבודה</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">🛠️ התערבויות מתוכננות</h3>
                     <ul className="list-disc list-inside space-y-1 text-gray-800">
-                      {planFocusAreas.map((a, i) => <li key={i}>{a}</li>)}
+                      {planInterventionsPlanned.map((item, i) => (
+                        <li key={i}>
+                          {item.intervention}
+                          {item.frequency && <span className="text-gray-500"> — {item.frequency}</span>}
+                        </li>
+                      ))}
                     </ul>
                   </section>
                 )}
 
-                {planInterventions.length > 0 && (
+                {planMilestones.length > 0 && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">🛠️ סוגי התערבויות מוצעות</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">📍 אבני דרך</h3>
                     <ul className="list-disc list-inside space-y-1 text-gray-800">
-                      {planInterventions.map((item, i) => <li key={i}>{item}</li>)}
+                      {planMilestones.map((m, i) => (
+                        <li key={i}>
+                          {m.description}
+                          {m.target_by_session && <span className="text-gray-500"> (פגישה יעד: {m.target_by_session})</span>}
+                          {m.achieved && <span className="text-green-600"> ✓</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                {planRisks.length > 0 && (
+                  <section>
+                    <h3 className="font-bold text-gray-900 mb-1.5">⚠️ שיקולי סיכון</h3>
+                    <ul className="list-disc list-inside space-y-1 text-gray-800">
+                      {planRisks.map((r, i) => <li key={i}>{r}</li>)}
                     </ul>
                   </section>
                 )}

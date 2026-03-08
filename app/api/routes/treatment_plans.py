@@ -52,6 +52,7 @@ class TreatmentPlanListItem(BaseModel):
     approved_at: Optional[datetime] = None
     created_at: datetime
     rendered_text: Optional[str] = None
+    plan_json: Optional[Dict[str, Any]] = None
 
 
 class DriftCheckResponse(BaseModel):
@@ -214,6 +215,7 @@ async def get_treatment_plan_history(
                 approved_at=p.approved_at,
                 created_at=p.created_at,
                 rendered_text=p.rendered_text,
+                plan_json=p.plan_json,
             )
             for p in plans
         ]

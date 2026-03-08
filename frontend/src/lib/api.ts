@@ -530,6 +530,7 @@ export const treatmentPlanAPI = {
       approved_at: string | null
       created_at: string
       rendered_text: string | null
+      plan_json: Record<string, unknown> | null
     }>
   },
 
