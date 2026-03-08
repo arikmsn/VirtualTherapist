@@ -127,6 +127,10 @@ class TherapistProfile(BaseModel):
     license_number = Column(String(64), nullable=True)  # e.g. "12345"
     license_type = Column(String(64), nullable=True)    # e.g. "פסיכולוג קליני מורשה"
 
+    # Profession + therapy modes (added migration 029)
+    profession = Column(String(100), nullable=True)           # e.g. "psychologist"
+    primary_therapy_modes = Column(JSON, nullable=True)       # e.g. ["cbt", "dbt"]
+
     # Relationship
     therapist = relationship("Therapist", back_populates="profile")
 

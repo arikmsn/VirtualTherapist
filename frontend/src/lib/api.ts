@@ -609,6 +609,8 @@ export const therapistAPI = {
     certifications?: string | null
     years_of_experience?: string | null
     areas_of_expertise?: string | null
+    profession?: string | null
+    primary_therapy_modes?: string[] | null
   }) => {
     const response = await api.patch('/therapist/profile', data)
     return response.data

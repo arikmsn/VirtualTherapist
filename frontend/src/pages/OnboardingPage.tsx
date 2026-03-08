@@ -6,37 +6,36 @@ import { CheckIcon } from '@heroicons/react/24/solid'
 import AppLogo from '@/components/common/AppLogo'
 
 const STEPS = [
-  { title: 'גישה טיפולית', description: 'מהי הגישה הטיפולית שלך' },
+  { title: 'מקצוע', description: 'מהו תפקידך המקצועי?' },
+  { title: 'שיטות טיפול', description: 'בחר את הגישות הטיפוליות שבהן אתה עובד' },
   { title: 'סגנון כתיבה', description: 'תיאור של הסיכומים הקיימים שלך' },
   { title: 'רקע מקצועי', description: 'פרטים שיעזרו לבינה המלאכותית להבין את הרקע שלך' },
   { title: 'דוגמאות ללמידה', description: 'דוגמאות כדי שהמערכת תלמד את הסגנון האישי שלך (לא חובה)' },
 ]
 
-const THERAPEUTIC_APPROACHES = [
-  { value: 'CBT', label: 'CBT — טיפול קוגניטיבי-התנהגותי' },
-  { value: 'psychodynamic', label: 'פסיכודינמית' },
-  { value: 'humanistic', label: 'הומניסטית' },
-  { value: 'DBT', label: 'DBT — טיפול דיאלקטי-התנהגותי' },
-  { value: 'ACT', label: 'ACT — קבלה ומחויבות' },
-  { value: 'EMDR', label: 'EMDR' },
+const PROFESSION_OPTIONS = [
+  { value: 'psychologist', label: 'פסיכולוג/ית קליני/ת', emoji: '🧠' },
+  { value: 'social_worker', label: 'עובד/ת סוציאלית קלינית', emoji: '🤝' },
+  { value: 'psychotherapist', label: 'פסיכותרפיסט/ית', emoji: '💬' },
+  { value: 'family_therapist', label: 'מטפל/ת זוגי/ת ומשפחתי/ת', emoji: '👨‍👩‍👧' },
+  { value: 'counselor', label: 'יועץ/ת', emoji: '🌱' },
+  { value: 'psychiatrist', label: 'פסיכיאטר/ית', emoji: '⚕️' },
+  { value: 'other', label: 'אחר', emoji: '➕' },
+]
+
+const THERAPY_MODES = [
+  { value: 'cbt', label: 'CBT — קוגניטיבי-התנהגותי' },
+  { value: 'dbt', label: 'DBT — דיאלקטי-התנהגותי' },
+  { value: 'act', label: 'ACT — קבלה ומחויבות' },
+  { value: 'emdr', label: 'EMDR' },
+  { value: 'psychodynamic', label: 'פסיכודינמי' },
+  { value: 'humanistic', label: 'הומניסטי' },
   { value: 'gestalt', label: 'גשטלט' },
-  { value: 'integrative', label: 'אינטגרטיבית' },
+  { value: 'integrative', label: 'אינטגרטיבי' },
+  { value: 'family_systemic', label: 'מערכתי-משפחתי' },
   { value: 'psychodrama', label: 'פסיכודרמה' },
   { value: 'other', label: 'אחר' },
 ]
-
-const APPROACH_EXAMPLES: Record<string, string> = {
-  CBT: 'לדוגמה: אני עובד בדרך כלל עם CBT ממוקד מטרה, כולל שיעורי בית ותרגול בין מפגשים.',
-  psychodynamic: 'לדוגמה: אני עובד בגישה דינמית, עם דגש על יחסים, דפוסים חוזרים ועולם פנימי.',
-  humanistic: 'לדוגמה: אני מלווה את המטופל בתהליך של גדילה אישית, תוך דגש על הפוטנציאל הקיים.',
-  DBT: 'לדוגמה: אני משלב רגולציה רגשית, מיינדפולנס וכישורי סבילות למצוקה.',
-  ACT: 'לדוגמה: אני עובד על קבלת מחשבות ורגשות תוך מחויבות לפעולה בהתאם לערכים האישיים.',
-  EMDR: 'לדוגמה: אני משתמש ב-EMDR לעיבוד זיכרונות טראומטיים ולהפחתת תגובות פוסט-טראומטיות.',
-  gestalt: 'לדוגמה: אני עובד בגישת גשטלט, עם דגש על מודעות לרגע הנוכחי וניסוי ישיר.',
-  integrative: 'לדוגמה: אני משלב גישות שונות — CBT, פסיכודינמיקה ועבודה גופנית — לפי צרכי המטופל.',
-  psychodrama: 'לדוגמה: אני משתמש בטכניקות פסיכודרמה כדי לחקור ולשנות דפוסים רגשיים.',
-  other: 'תאר בקצרה את הגישה הטיפולית שלך, הטכניקות העיקריות ואופן העבודה שלך...',
-}
 
 const TONE_OPTIONS = [
   'פורמלי',
@@ -54,8 +53,7 @@ export default function OnboardingPage() {
   const [error, setError] = useState('')
 
   const [form, setForm] = useState({
-    approach: '',
-    approachDescription: '',
+    profession: '',
     toneExtra: '',
     messageLength: 'medium',
     terminology: '',
@@ -67,6 +65,7 @@ export default function OnboardingPage() {
     exampleMessage: '',
   })
   const [selectedTones, setSelectedTones] = useState<string[]>([])
+  const [selectedModes, setSelectedModes] = useState<string[]>([])
 
   const set = (field: keyof typeof form, value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -76,13 +75,19 @@ export default function OnboardingPage() {
       prev.includes(tone) ? prev.filter((t) => t !== tone) : [...prev, tone]
     )
 
+  const toggleMode = (mode: string) =>
+    setSelectedModes((prev) =>
+      prev.includes(mode) ? prev.filter((m) => m !== mode) : [...prev, mode]
+    )
+
   // Combines chip selections + free-text extra into a single tone string for the backend
   const buildToneString = () =>
     [...selectedTones, form.toneExtra].filter(Boolean).join(', ')
 
   const canAdvance = (): boolean => {
-    if (step === 0) return form.approach !== ''
-    if (step === 1) return selectedTones.length > 0 || form.toneExtra.trim() !== ''
+    if (step === 0) return form.profession !== ''
+    if (step === 1) return selectedModes.length > 0
+    if (step === 2) return selectedTones.length > 0 || form.toneExtra.trim() !== ''
     return true
   }
 
@@ -91,26 +96,33 @@ export default function OnboardingPage() {
     setSaving(true)
     setError('')
     try {
-      // Save current step data to backend
       if (step === 0) {
-        await agentAPI.completeOnboardingStep(1, {
-          approach: form.approach,
-          approachDescription: form.approachDescription,
-        })
+        // Save profession
+        await therapistAPI.updateTwinControls({ profession: form.profession })
       } else if (step === 1) {
+        // Save therapy modes — also populate legacy approach field for backward compat
+        const firstMode = selectedModes[0] || 'other'
+        await Promise.all([
+          agentAPI.completeOnboardingStep(1, { approach: firstMode, approachDescription: '' }),
+          therapistAPI.updateTwinControls({
+            primary_therapy_modes: selectedModes,
+            approach_description: selectedModes.join(', '),
+          }),
+        ])
+      } else if (step === 2) {
         await agentAPI.completeOnboardingStep(2, {
           tone: buildToneString(),
           messageLength: form.messageLength,
           terminology: form.terminology,
         })
-      } else if (step === 2) {
+      } else if (step === 3) {
         await therapistAPI.updateTwinControls({
           education: form.education || null,
           certifications: form.certifications || null,
           years_of_experience: form.yearsOfExperience || null,
           areas_of_expertise: form.areasOfExpertise || null,
         })
-      } else if (step === 3) {
+      } else if (step === 4) {
         // Optional examples step — only save if provided
         if (form.exampleSummary || form.exampleMessage) {
           await agentAPI.completeOnboardingStep(5, {
@@ -193,46 +205,61 @@ export default function OnboardingPage() {
             <h2 className="text-xl font-bold text-gray-900 mb-1">{STEPS[step].title}</h2>
             <p className="text-sm text-gray-500 mb-6">{STEPS[step].description}</p>
 
-            {/* Step 1 — Therapeutic Approach */}
+            {/* Step 1 — Profession */}
             {step === 0 && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    גישה טיפולית <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={form.approach}
-                    onChange={(e) => set('approach', e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                  >
-                    <option value="">בחר גישה...</option>
-                    {THERAPEUTIC_APPROACHES.map((a) => (
-                      <option key={a.value} value={a.value}>{a.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    תיאור הגישה שלך (לא חובה)
-                  </label>
-                  <textarea
-                    value={form.approachDescription}
-                    onChange={(e) => set('approachDescription', e.target.value)}
-                    rows={4}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-                    placeholder="תאר בקצרה את אופן העבודה שלך, הטכניקות העיקריות ומה מייחד את הגישה שלך..."
-                  />
-                  {form.approach && APPROACH_EXAMPLES[form.approach] && (
-                    <p className="mt-1.5 text-xs text-gray-400 leading-relaxed">
-                      {APPROACH_EXAMPLES[form.approach]}
-                    </p>
-                  )}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2.5">
+                  {PROFESSION_OPTIONS.map((p) => (
+                    <button
+                      key={p.value}
+                      type="button"
+                      onClick={() => set('profession', p.value)}
+                      className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border-2 text-sm font-medium transition-colors text-right ${
+                        form.profession === p.value
+                          ? 'border-indigo-500 bg-indigo-50 text-indigo-800'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-200 hover:bg-indigo-50/30'
+                      }`}
+                    >
+                      <span className="text-lg leading-none">{p.emoji}</span>
+                      <span className="flex-1">{p.label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Step 2 — Writing Style */}
+            {/* Step 2 — Therapy Modes */}
             {step === 1 && (
+              <div className="space-y-3">
+                <p className="text-xs text-gray-400">ניתן לבחור מספר שיטות. הבחירה שלך תשפיע על אופן כתיבת הסיכומים והפענוח הקליני של ה-AI.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {THERAPY_MODES.map((m) => {
+                    const checked = selectedModes.includes(m.value)
+                    return (
+                      <button
+                        key={m.value}
+                        type="button"
+                        onClick={() => toggleMode(m.value)}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm transition-colors text-right ${
+                          checked
+                            ? 'border-indigo-500 bg-indigo-600 text-white font-medium'
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-indigo-300 hover:bg-indigo-50/30'
+                        }`}
+                      >
+                        {checked && <span className="text-white text-xs">✓</span>}
+                        <span>{m.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {selectedModes.length === 0 && (
+                  <p className="text-xs text-amber-600">בחר לפחות שיטה אחת להמשיך</p>
+                )}
+              </div>
+            )}
+
+            {/* Step 3 — Writing Style */}
+            {step === 2 && (
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -304,8 +331,8 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            {/* Step 3 — Professional Background */}
-            {step === 2 && (
+            {/* Step 4 — Professional Background */}
+            {step === 3 && (
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -360,8 +387,8 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            {/* Step 4 — Learning Examples (optional) */}
-            {step === 3 && (
+            {/* Step 5 — Learning Examples (optional) */}
+            {step === 4 && (
               <div className="space-y-4">
                 <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">
                   דוגמאות עוזרות לבינה המלאכותית ללמוד את הסגנון הייחודי שלך. ניתן לדלג על שלב זה ולהוסיף מאוחר יותר.

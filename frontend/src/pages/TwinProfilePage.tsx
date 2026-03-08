@@ -44,6 +44,9 @@ interface TherapistProfile {
   areas_of_expertise: string | null
   // Account creation date (for "days since signup" tile)
   therapist_created_at: string | null
+  // Profession + therapy modes (migration 029)
+  profession: string | null
+  primary_therapy_modes: string[] | null
 }
 
 const MODALITIES = [
@@ -61,7 +64,21 @@ const MODALITIES = [
 
 const MODALITY_VALUES = MODALITIES.map((m) => m.value)
 
+const PROFESSION_LABELS: Record<string, string> = {
+  psychologist: 'פסיכולוג/ית קליני/ת',
+  social_worker: 'עובד/ת סוציאלית קלינית',
+  psychotherapist: 'פסיכותרפיסט/ית',
+  family_therapist: 'מטפל/ת זוגי/ת ומשפחתי/ת',
+  counselor: 'יועץ/ת',
+  psychiatrist: 'פסיכיאטר/ית',
+  other: 'אחר',
+}
+
 function parseModalities(profile: TherapistProfile): string[] {
+  // Prefer primary_therapy_modes (migration 029), fall back to legacy fields
+  if (profile.primary_therapy_modes && profile.primary_therapy_modes.length > 0) {
+    return profile.primary_therapy_modes
+  }
   const result = new Set<string>()
   if (profile.therapeutic_approach) result.add(profile.therapeutic_approach)
   if (profile.approach_description) {
@@ -157,6 +174,9 @@ export default function TwinProfilePage() {
   const [initModalities, setInitModalities] = useState<string[]>([])
   const [editingModalities, setEditingModalities] = useState(false)
 
+  // Profession
+  const [profession, setProfession] = useState('')
+
   // Professional credentials
   const [education, setEducation] = useState('')
   const [certifications, setCertifications] = useState('')
@@ -187,6 +207,7 @@ export default function TwinProfilePage() {
       tone !== (profile.tone || '') ||
       JSON.stringify(prohibitions) !== JSON.stringify(profile.prohibitions || []) ||
       JSON.stringify([...selectedModalities].sort()) !== JSON.stringify([...initModalities].sort()) ||
+      profession !== (profile.profession || '') ||
       education !== (profile.education || '') ||
       certifications !== (profile.certifications || '') ||
       yearsOfExperience !== (profile.years_of_experience || '') ||
@@ -210,6 +231,7 @@ export default function TwinProfilePage() {
         setProhibitions(data2.prohibitions || [])
         setCustomRules(data2.custom_rules || '')
         setTone(data2.tone || '')
+        setProfession(data2.profession || '')
         const mods = parseModalities(data2)
         setSelectedModalities(mods)
         setInitModalities(mods)
@@ -237,6 +259,8 @@ export default function TwinProfilePage() {
         prohibitions,
         custom_rules: customRules || null,
         tone: tone || null,
+        profession: profession || null,
+        primary_therapy_modes: selectedModalities.length > 0 ? selectedModalities : null,
         approach_description: selectedModalities.length > 0 ? selectedModalities.join(', ') : null,
         education: education || null,
         certifications: certifications || null,
@@ -244,6 +268,7 @@ export default function TwinProfilePage() {
         areas_of_expertise: areasOfExpertise || null,
       })
       setProfile(updated)
+      setProfession(updated.profession || '')
       const mods = parseModalities(updated)
       setInitModalities(mods)
       setSaveSuccess(true)
@@ -380,6 +405,32 @@ export default function TwinProfilePage() {
           </div>
         </div>
       )}
+
+      {/* ── Section 0: Profession ── */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-bold text-gray-800">מקצוע</h2>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {Object.entries(PROFESSION_LABELS).map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              onClick={() => setProfession(val)}
+              className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
+                profession === val
+                  ? 'border-therapy-calm bg-blue-50 text-therapy-calm font-medium'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {!profession && (
+          <p className="text-xs text-gray-400 mt-2">לא נבחר מקצוע</p>
+        )}
+      </div>
 
       {/* ── Section 1: Therapeutic modalities (chips view / editable grid) ── */}
       <div className="card">

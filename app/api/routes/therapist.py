@@ -44,6 +44,9 @@ class TherapistProfileResponse(BaseModel):
     therapist_created_at: Optional[datetime] = None
     # Derived: True when CBT is active for this therapist (drives UI hints)
     cbt_active: bool = False
+    # Profession + therapy modes (migration 029)
+    profession: Optional[str] = None
+    primary_therapy_modes: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
@@ -64,9 +67,52 @@ class UpdateTwinControlsRequest(BaseModel):
     certifications: Optional[str] = None
     years_of_experience: Optional[str] = None
     areas_of_expertise: Optional[str] = None
+    # Profession + therapy modes (migration 029)
+    profession: Optional[str] = None
+    primary_therapy_modes: Optional[List[str]] = None
 
 
 # --- Helpers ---
+
+VALID_THERAPY_MODES = [
+    "cbt", "psychodynamic", "act", "dbt", "humanistic",
+    "family_systemic", "integrative", "emdr", "gestalt", "psychodrama", "other",
+]
+
+
+def _derive_modes(profile) -> List[str]:
+    """
+    Derive a therapy-modes list from legacy fields when primary_therapy_modes is absent.
+
+    Priority:
+    1. profile.primary_therapy_modes — non-empty JSON list (migration 029)
+    2. profile.approach_description  — CSV string e.g. "CBT, psychodynamic"
+    3. profile.therapeutic_approach  — single enum value
+    4. []                             — no information
+    """
+    if profile.primary_therapy_modes and isinstance(profile.primary_therapy_modes, list):
+        return profile.primary_therapy_modes
+
+    modes: list[str] = []
+    if profile.approach_description:
+        for raw in profile.approach_description.split(","):
+            v = raw.strip().lower()
+            if v in VALID_THERAPY_MODES:
+                modes.append(v)
+            elif raw.strip().upper() == "CBT":
+                modes.append("cbt")
+            elif raw.strip().upper() == "DBT":
+                modes.append("dbt")
+            elif raw.strip().upper() == "ACT":
+                modes.append("act")
+            elif raw.strip().upper() == "EMDR":
+                modes.append("emdr")
+    if not modes and profile.therapeutic_approach:
+        v = str(profile.therapeutic_approach).lower()
+        if v in VALID_THERAPY_MODES:
+            modes.append(v)
+    return modes
+
 
 def _to_list(v):
     """Return v if it's already a list, else None.
@@ -105,6 +151,8 @@ def _profile_response(profile, therapist=None) -> TherapistProfileResponse:
         areas_of_expertise=profile.areas_of_expertise,
         therapist_created_at=therapist.created_at if therapist else None,
         cbt_active=is_cbt_active(profile),
+        profession=profile.profession,
+        primary_therapy_modes=_derive_modes(profile),
     )
 
 

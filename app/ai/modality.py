@@ -29,18 +29,24 @@ def is_cbt_active(profile) -> bool:
     """
     Return True if the therapist has CBT in their active modalities.
 
-    Checks both:
-    - approach_description (CSV string, e.g. "CBT, psychodynamic") — set by frontend
-    - therapeutic_approach (single enum value, e.g. TherapeuticApproach.CBT)
+    Resolution order:
+    1. primary_therapy_modes (JSON list, migration 029) — preferred source
+    2. approach_description (CSV string, e.g. "CBT, psychodynamic") — legacy
+    3. therapeutic_approach (single enum value, e.g. TherapeuticApproach.CBT) — legacy
 
     Strictly opt-in: any non-CBT therapist gets False and is completely unaffected.
     """
     if not profile:
         return False
+    # 1. New canonical field (migration 029)
+    if profile.primary_therapy_modes and isinstance(profile.primary_therapy_modes, list):
+        return "cbt" in [m.lower() for m in profile.primary_therapy_modes]
+    # 2. Legacy CSV field
     if profile.approach_description:
         values = [v.strip() for v in profile.approach_description.split(",")]
         if "CBT" in values:
             return True
+    # 3. Legacy single enum
     if profile.therapeutic_approach and str(profile.therapeutic_approach).upper() == "CBT":
         return True
     return False
