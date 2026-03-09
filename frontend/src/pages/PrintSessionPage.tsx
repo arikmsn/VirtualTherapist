@@ -91,8 +91,17 @@ export default function PrintSessionPage() {
         setPatient(patientData)
 
         if (isPrepMode) {
-          const prepData = await sessionsAPI.getStoredPrep(id).catch(() => null)
-          setPrepText(prepData?.rendered_text ?? null)
+          // Prefer text relayed via sessionStorage (avoids race with async DB commit).
+          const ssKey = `prep_print_${id}`
+          const relayed = sessionStorage.getItem(ssKey)
+          if (relayed) {
+            sessionStorage.removeItem(ssKey)
+            setPrepText(relayed)
+          } else {
+            // Fall back to stored DB value (for direct URL navigation or cached prep).
+            const prepData = await sessionsAPI.getStoredPrep(id).catch(() => null)
+            setPrepText(prepData?.rendered_text ?? null)
+          }
         } else {
           const summaryData = await sessionsAPI.getSummary(id).catch(() => null)
           setSummary(summaryData)
