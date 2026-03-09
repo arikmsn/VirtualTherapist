@@ -4,8 +4,11 @@ TherapyCompanion.AI - Virtual Therapist Assistant
 """
 
 
-from fastapi import FastAPI
+import traceback
+from datetime import datetime
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.api.routes import auth, agent, messages, patients, sessions, therapist, debug, exercises, admin
 from app.api.routes import formal_records, treatment_plans, deep_summaries, ui_affordances, eval as eval_routes
@@ -50,6 +53,30 @@ if settings.CORS_ORIGIN_REGEX:
 app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
 
+# ── System error middleware — catches unhandled 500s → admin_alerts ───────────
+@app.middleware("http")
+async def system_error_middleware(request: Request, call_next):
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as exc:
+        tb = traceback.format_exc()[:1000]
+        msg = f"{type(exc).__name__}: {str(exc)[:200]}\n\nPath: {request.url.path}\n\n{tb}"
+        try:
+            from app.core.database import SessionLocal
+            from app.utils.alerts import create_alert
+            db = SessionLocal()
+            try:
+                create_alert(db, "system_error", msg)
+                db.commit()
+            finally:
+                db.close()
+        except Exception:
+            pass
+        logger.exception(f"Unhandled 500 at {request.url.path}: {exc!r}")
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
 # Include routers
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(agent.router, prefix="/api/v1/agent", tags=["AI Agent"])
@@ -77,6 +104,41 @@ if settings.ADMIN_SECRET:
 app.include_router(admin_panel.router, prefix="/api/v1/admin-panel", tags=["Admin Panel"])
 
 
+def _check_inactive_therapists():
+    """Daily job: create inactive_therapist alerts for therapists idle > 30 days."""
+    try:
+        from datetime import timedelta
+        from app.core.database import SessionLocal
+        from app.models.therapist import Therapist
+        from app.utils.alerts import create_alert
+        db = SessionLocal()
+        try:
+            cutoff = datetime.utcnow() - timedelta(days=30)
+            idle = (
+                db.query(Therapist)
+                .filter(
+                    Therapist.is_active == True,
+                    Therapist.is_blocked == False,
+                    Therapist.last_login < cutoff,
+                )
+                .all()
+            )
+            for t in idle:
+                create_alert(
+                    db,
+                    "inactive_therapist",
+                    f"מטפל/ת {t.full_name} ({t.email}) לא התחבר/ה כבר 30+ יום",
+                    therapist_id=t.id,
+                    deduplicate_today=True,
+                )
+            db.commit()
+            logger.info(f"[inactive_check] {len(idle)} inactive therapists checked")
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning(f"_check_inactive_therapists failed (non-blocking): {exc!r}")
+
+
 @app.on_event("startup")
 async def startup_event():
     """Startup event handler"""
@@ -93,6 +155,15 @@ async def startup_event():
         id="poll_scheduled_messages",
         replace_existing=True,
     )
+
+    scheduler.add_job(
+        _check_inactive_therapists,
+        trigger="interval",
+        hours=24,
+        id="check_inactive_therapists",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info("APScheduler started — polling for scheduled messages every 30s")
     logger.info(f"Environment: {settings.ENVIRONMENT}")

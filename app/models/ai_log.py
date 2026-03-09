@@ -54,3 +54,7 @@ class AIGenerationLog(Base):
     prompt_tokens = Column(Integer)
     completion_tokens = Column(Integer)
     generation_ms = Column(Integer)
+
+    # Usage type (added migration 031)
+    # Values: 'text_claude', 'text_openai', 'transcription'
+    usage_type = Column(String(50), nullable=True)

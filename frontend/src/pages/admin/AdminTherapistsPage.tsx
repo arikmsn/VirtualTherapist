@@ -4,11 +4,8 @@ import { adminAPI, TherapistRow } from '@/lib/adminApi'
 function formatDate(iso: string | null) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('he-IL', {
-    day: '2-digit',
-    month: '2-digit',
-    year: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
+    day: '2-digit', month: '2-digit', year: '2-digit',
+    hour: '2-digit', minute: '2-digit',
   })
 }
 
@@ -23,7 +20,7 @@ export default function AdminTherapistsPage() {
     adminAPI
       .getTherapists()
       .then(setTherapists)
-      .catch(() => setError('שגיאה בטעינת מטפלים'))
+      .catch((e) => setError(`שגיאה בטעינת מטפלים (${e.message})`))
       .finally(() => setLoading(false))
   }, [])
 
@@ -47,8 +44,13 @@ export default function AdminTherapistsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
+      <div className="p-8">
+        <div className="h-8 bg-gray-800 rounded w-32 mb-6 animate-pulse" />
+        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-14 border-b border-gray-700 animate-pulse" />
+          ))}
+        </div>
       </div>
     )
   }
@@ -67,7 +69,7 @@ export default function AdminTherapistsPage() {
         dir="rtl"
       />
 
-      {error && <p className="text-red-400 mb-4">{error}</p>}
+      {error && <p className="text-red-400 mb-4 text-sm">{error}</p>}
 
       <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
         <table className="w-full text-sm">
@@ -76,6 +78,7 @@ export default function AdminTherapistsPage() {
               <th className="text-right px-4 py-3 font-medium">שם / אימייל</th>
               <th className="text-right px-4 py-3 font-medium">נרשם</th>
               <th className="text-right px-4 py-3 font-medium">כניסה אחרונה</th>
+              <th className="text-center px-4 py-3 font-medium">מטופלים פעילים</th>
               <th className="text-center px-4 py-3 font-medium">פגישות</th>
               <th className="text-center px-4 py-3 font-medium">AI</th>
               <th className="text-center px-4 py-3 font-medium">סטטוס</th>
@@ -86,26 +89,29 @@ export default function AdminTherapistsPage() {
             {filtered.map((t) => (
               <tr
                 key={t.id}
-                className={`border-b border-gray-700/50 transition-colors hover:bg-gray-750 ${
+                className={`border-b border-gray-700/50 hover:bg-gray-750 transition-colors ${
                   t.is_blocked ? 'opacity-60' : ''
                 }`}
               >
                 <td className="px-4 py-3">
                   <p className="text-white font-medium">{t.full_name}</p>
                   <p className="text-gray-400 text-xs">{t.email}</p>
-                  <div className="flex gap-1 mt-0.5">
-                    {t.is_admin && (
-                      <span className="text-xs bg-indigo-900 text-indigo-300 px-1.5 py-0.5 rounded">
-                        אדמין
-                      </span>
-                    )}
-                  </div>
+                  {t.is_admin && (
+                    <span className="text-xs bg-indigo-900 text-indigo-300 px-1.5 py-0.5 rounded mt-0.5 inline-block">
+                      אדמין
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
                   {formatDate(t.created_at)}
                 </td>
                 <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
                   {formatDate(t.last_login)}
+                </td>
+                <td className="px-4 py-3 text-center">
+                  <span className={`text-sm font-medium ${t.active_patients > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                    {t.active_patients}
+                  </span>
                 </td>
                 <td className="px-4 py-3 text-center text-gray-300">{t.session_count}</td>
                 <td className="px-4 py-3 text-center text-gray-300">{t.ai_call_count}</td>

@@ -4,6 +4,7 @@ from datetime import timedelta, datetime, timezone
 import hashlib
 import hmac
 import secrets
+import time
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -39,6 +40,31 @@ def _verify_state(signed_state: str) -> bool:
 
 
 router = APIRouter()
+
+# In-memory failed login tracker: {email: [unix_timestamp, ...]}
+_failed_attempts: dict[str, list[float]] = {}
+_FAIL_WINDOW_SECS = 3600   # 1 hour
+_FAIL_THRESHOLD = 3         # alert after N failures in window
+
+
+def _record_failed_login(email: str, db) -> None:
+    """Track failed login attempt; create alert if threshold reached."""
+    now = time.time()
+    attempts = [t for t in _failed_attempts.get(email, []) if now - t < _FAIL_WINDOW_SECS]
+    attempts.append(now)
+    _failed_attempts[email] = attempts
+    if len(attempts) >= _FAIL_THRESHOLD:
+        try:
+            from app.utils.alerts import create_alert
+            create_alert(
+                db,
+                "login_failed",
+                f"{len(attempts)} ניסיונות כניסה כושלים מהאימייל: {email} (שעה אחרונה)",
+                deduplicate_today=True,
+            )
+            db.commit()
+        except Exception:
+            pass
 
 
 class TokenResponse(BaseModel):
@@ -129,6 +155,7 @@ async def login(
 
     # Verify password
     if not therapist or not verify_password(form_data.password, therapist.hashed_password):
+        _record_failed_login(form_data.username, db)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

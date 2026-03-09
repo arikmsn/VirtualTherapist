@@ -26,6 +26,8 @@ async function patch<T>(path: string, body?: unknown): Promise<T> {
   return res.json()
 }
 
+// ── Types ──────────────────────────────────────────────────────────────────
+
 export interface DashboardStats {
   total_therapists: number
   active_last_30_days: number
@@ -33,6 +35,32 @@ export interface DashboardStats {
   total_tokens: number
   unread_alerts: number
   new_signups_last_7_days: number
+}
+
+export interface SignupWeek {
+  week_label: string
+  count: number
+}
+
+export interface TokenTypeCard {
+  usage_type: string
+  calls: number
+  tokens: number
+  cost_usd: number
+}
+
+export interface TokenDayStacked {
+  date: string
+  text_claude: number
+  text_openai: number
+  transcription: number
+}
+
+export interface DashboardExtended {
+  stats: DashboardStats
+  signup_by_week: SignupWeek[]
+  token_by_type: TokenTypeCard[]
+  token_by_day_stacked: TokenDayStacked[]
 }
 
 export interface TherapistRow {
@@ -46,6 +74,7 @@ export interface TherapistRow {
   created_at: string
   session_count: number
   ai_call_count: number
+  active_patients: number
 }
 
 export interface AlertRow {
@@ -62,15 +91,31 @@ export interface UsageDay {
   date: string
   calls: number
   tokens: number
+  text_claude_calls: number
+  text_openai_calls: number
+  transcription_calls: number
+  text_claude_tokens: number
+  text_openai_tokens: number
+  transcription_tokens: number
+}
+
+export interface UsageTypeStats {
+  usage_type: string
+  calls: number
+  tokens: number
+  cost_usd: number
 }
 
 export interface UsageStats {
   by_day: UsageDay[]
   by_flow: { flow_type: string; count: number }[]
   by_model: { model: string; count: number }[]
+  by_type: UsageTypeStats[]
   total_calls: number
   total_tokens: number
 }
+
+// ── API calls ──────────────────────────────────────────────────────────────
 
 export const adminAPI = {
   /** Get admin JWT — call from easter egg handler */
@@ -85,7 +130,7 @@ export const adminAPI = {
     return data.admin_token
   },
 
-  getDashboard: () => get<DashboardStats>('/admin-panel/dashboard'),
+  getDashboard: () => get<DashboardExtended>('/admin-panel/dashboard'),
   getTherapists: () => get<TherapistRow[]>('/admin-panel/therapists'),
   blockTherapist: (id: number, is_blocked: boolean) =>
     patch<TherapistRow>(`/admin-panel/therapists/${id}/block`, { is_blocked }),
