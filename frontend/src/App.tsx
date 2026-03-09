@@ -107,8 +107,8 @@ function AppRoutes() {
         </Routes>
       </Router>
 
-      {/* First-time data onboarding wizard — shown once, never again after completion or skip */}
-      {isAuthenticated && introWizardCompleted === false && !mustChangePassword && (
+      {/* First-time data onboarding wizard — null treated same as false (new/unloaded users) */}
+      {isAuthenticated && introWizardCompleted !== true && !mustChangePassword && (
         <OnboardingWizard onComplete={markIntroWizardComplete} />
       )}
 

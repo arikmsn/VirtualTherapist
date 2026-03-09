@@ -117,6 +117,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     }
     if (completed !== undefined) {
       setOnboardingCompleted(completed)
+      // Registration path: profile is not fetched, so explicitly mark wizard as needed
+      setIntroWizardCompleted(false)
     } else {
       // Callers should always pass `completed`; this fetch is a safety net so
       // onboardingCompleted never stays null and the UI never gets stuck on a

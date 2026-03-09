@@ -1,13 +1,12 @@
 /**
  * First-time data onboarding wizard.
- * Shown once to new therapists who have completed the AI style onboarding
- * but have not yet added any patient data.
+ * Shown once to new therapists after completing the AI style onboarding.
  *
  * Steps:
  *  1 — Add first patient
  *  2 — Add second patient (skippable)
  *  3 — Schedule a session
- *  4 — AI session prep reveal
+ *  4 — Static platform capabilities preview
  */
 
 import { useState, useEffect } from 'react'
@@ -31,30 +30,12 @@ interface SessionForm {
   notes: string
 }
 
-interface PrepBrief {
-  history_summary: string[]
-  last_session: string[]
-  tasks_to_check: string[]
-  focus_for_today: string[]
-  watch_out_for: string[]
-}
-
 const emptyPatient = (): PatientForm => ({
   full_name: '',
   age: '',
   primary_concerns: '',
-  therapy_approach: 'other',
+  therapy_approach: '',
 })
-
-const THERAPY_APPROACHES = [
-  { value: 'CBT', label: 'CBT — קוגניטיבי התנהגותי' },
-  { value: 'DBT', label: 'DBT — דיאלקטי התנהגותי' },
-  { value: 'ACT', label: 'ACT — קבלה ומחויבות' },
-  { value: 'psychodynamic', label: 'פסיכודינמי' },
-  { value: 'humanistic', label: 'הומניסטי' },
-  { value: 'integrative', label: 'אינטגרטיבי' },
-  { value: 'other', label: 'כללי / אחר' },
-]
 
 const DURATIONS = [
   { value: '45', label: '45 דקות' },
@@ -63,7 +44,18 @@ const DURATIONS = [
   { value: '90', label: '90 דקות' },
 ]
 
-// ── Shared input/label styles ────────────────────────────────────────────────
+// Label map for therapy approach values
+const APPROACH_LABELS: Record<string, string> = {
+  CBT: 'CBT — קוגניטיבי התנהגותי',
+  DBT: 'DBT — דיאלקטי התנהגותי',
+  ACT: 'ACT — קבלה ומחויבות',
+  psychodynamic: 'פסיכודינמי',
+  humanistic: 'הומניסטי',
+  integrative: 'אינטגרטיבי',
+  other: 'כללי / אחר',
+}
+
+// ── Shared styles ─────────────────────────────────────────────────────────────
 const inputCls =
   'w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm ' +
   'placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent'
@@ -93,10 +85,14 @@ function StepDots({ current, total }: { current: number; total: number }) {
 function PatientFields({
   data,
   onChange,
+  therapistMethods,
 }: {
   data: PatientForm
   onChange: (f: PatientForm) => void
+  therapistMethods: string[]
 }) {
+  const singleMethod = therapistMethods.length === 1 ? therapistMethods[0] : null
+
   return (
     <div className="space-y-4">
       <div>
@@ -107,7 +103,6 @@ function PatientFields({
           placeholder="ישראל ישראלי"
           value={data.full_name}
           onChange={(e) => onChange({ ...data, full_name: e.target.value })}
-          required
         />
       </div>
       <div>
@@ -120,7 +115,6 @@ function PatientFields({
           max={120}
           value={data.age}
           onChange={(e) => onChange({ ...data, age: e.target.value })}
-          required
         />
       </div>
       <div>
@@ -131,22 +125,75 @@ function PatientFields({
           placeholder="לדוגמה: חרדה, קשיי שינה, משבר זוגי..."
           value={data.primary_concerns}
           onChange={(e) => onChange({ ...data, primary_concerns: e.target.value })}
-          required
         />
       </div>
       <div>
         <label className={labelCls}>שיטת טיפול מועדפת</label>
-        <select
-          className={inputCls}
-          value={data.therapy_approach}
-          onChange={(e) => onChange({ ...data, therapy_approach: e.target.value })}
-        >
-          {THERAPY_APPROACHES.map((a) => (
-            <option key={a.value} value={a.value}>
-              {a.label}
-            </option>
-          ))}
-        </select>
+        {singleMethod ? (
+          <>
+            <div className={inputCls + ' cursor-default text-gray-300'}>
+              {APPROACH_LABELS[singleMethod] ?? singleMethod}
+            </div>
+            <p className="text-xs text-gray-600 mt-1">ניתן לשינוי בתוך המערכת בהגדרות</p>
+          </>
+        ) : (
+          <select
+            className={inputCls}
+            value={data.therapy_approach}
+            onChange={(e) => onChange({ ...data, therapy_approach: e.target.value })}
+          >
+            <option value="">בחרו שיטה...</option>
+            {therapistMethods.map((m) => (
+              <option key={m} value={m}>
+                {APPROACH_LABELS[m] ?? m}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Static platform preview (step 4) ─────────────────────────────────────────
+const PREVIEW_CARDS = [
+  {
+    icon: '📋',
+    title: 'רקע המטופל',
+    text: 'סיכום מצטבר של כל הפגישות הקודמות, כתוב בצורה ברורה ומובנית, כדי שתיכנס לכל פגישה עם תמונה מלאה של המטופל.',
+  },
+  {
+    icon: '🎯',
+    title: 'מיקוד לפגישה הקרובה',
+    text: 'נושאים מרכזיים לדיון על בסיס מה שעלה בפגישה הקודמת, משימות פתוחות ודברים שביקשת לבדוק — הכל מוכן מראש.',
+  },
+  {
+    icon: '✅',
+    title: 'תזכורות ומשימות פתוחות',
+    text: 'רשימת משימות שהוגדרו בפגישות קודמות, כדי שלא תפספסי דבר ותוכלי להמשיך בדיוק מהנקודה שעצרת.',
+  },
+  {
+    icon: '📝',
+    title: 'סיכום פגישה בלחיצה אחת',
+    text: 'בסיום כל פגישה, המערכת תייצר עבורך סיכום מפורט שתוכל לערוך ולאשר — חוסך לך דקות יקרות של תיעוד.',
+  },
+]
+
+function PlatformPreview() {
+  return (
+    <div className="space-y-3">
+      {PREVIEW_CARDS.map((card) => (
+        <div key={card.title} className="bg-gray-800 rounded-xl px-4 py-3.5 flex gap-3">
+          <span className="text-xl flex-shrink-0 mt-0.5">{card.icon}</span>
+          <div>
+            <p className="text-sm font-semibold text-white mb-1">{card.title}</p>
+            <p className="text-xs text-gray-400 leading-relaxed">{card.text}</p>
+          </div>
+        </div>
+      ))}
+      <div className="bg-indigo-950/60 border border-indigo-700/50 rounded-xl px-4 py-3.5 text-sm text-indigo-200 leading-relaxed">
+        <span className="font-semibold">💡 </span>
+        ככל שתשתמש במערכת יותר, כך ההכנות והסיכומים יהיו מדויקים ומותאמים יותר עבורך.
       </div>
     </div>
   )
@@ -164,12 +211,11 @@ export default function OnboardingWizard({ onComplete }: Props) {
     duration_minutes: '50',
     notes: '',
   })
+  const [therapistMethods, setTherapistMethods] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [prepBrief, setPrepBrief] = useState<PrepBrief | null>(null)
-  const [aiLoading, setAiLoading] = useState(false)
 
-  // On mount: if therapist already has patients, silently complete
+  // On mount: check for existing patients + load therapist's therapy methods
   useEffect(() => {
     patientsAPI.list().then((patients: any[]) => {
       if (patients.length > 0) {
@@ -177,18 +223,33 @@ export default function OnboardingWizard({ onComplete }: Props) {
         onComplete()
       }
     }).catch(() => {
-      // If list fails, don't show wizard
       onComplete()
+    })
+
+    therapistAPI.getProfile().then((profile: any) => {
+      const modes: string[] = profile.primary_therapy_modes ?? []
+      if (modes.length > 0) {
+        setTherapistMethods(modes)
+        if (modes.length === 1) {
+          setPatient1((p) => ({ ...p, therapy_approach: modes[0] }))
+          setPatient2((p) => ({ ...p, therapy_approach: modes[0] }))
+        }
+      } else if (profile.therapeutic_approach) {
+        const m = profile.therapeutic_approach
+        setTherapistMethods([m])
+        setPatient1((p) => ({ ...p, therapy_approach: m }))
+        setPatient2((p) => ({ ...p, therapy_approach: m }))
+      } else {
+        setTherapistMethods(Object.keys(APPROACH_LABELS))
+      }
+    }).catch(() => {
+      setTherapistMethods(Object.keys(APPROACH_LABELS))
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const skip = async () => {
-    try {
-      await therapistAPI.completeIntroWizard()
-    } catch {
-      // best effort
-    }
+    try { await therapistAPI.completeIntroWizard() } catch { /* best effort */ }
     onComplete()
   }
 
@@ -199,21 +260,24 @@ export default function OnboardingWizard({ onComplete }: Props) {
     return ''
   }
 
-  const buildPrimaryConcerns = (p: PatientForm) =>
-    `גיל: ${p.age}\n${p.primary_concerns}`
+  const buildPrimaryConcerns = (p: PatientForm) => `גיל: ${p.age}\n${p.primary_concerns}`
 
-  // Step 1: create first patient → step 2
+  const createPatient = async (p: PatientForm) =>
+    patientsAPI.create({
+      full_name: p.full_name,
+      primary_concerns: buildPrimaryConcerns(p),
+      diagnosis: p.therapy_approach && p.therapy_approach !== 'other'
+        ? `שיטת טיפול: ${p.therapy_approach}`
+        : undefined,
+    })
+
   const submitStep1 = async () => {
     const err = validatePatient(patient1)
     if (err) { setError(err); return }
     setError('')
     setLoading(true)
     try {
-      const created = await patientsAPI.create({
-        full_name: patient1.full_name,
-        primary_concerns: buildPrimaryConcerns(patient1),
-        diagnosis: patient1.therapy_approach !== 'other' ? `שיטת טיפול: ${patient1.therapy_approach}` : undefined,
-      })
+      const created = await createPatient(patient1)
       setCreatedIds([{ id: created.id, name: created.full_name }])
       setSession((s) => ({ ...s, patient_id: String(created.id) }))
       setStep(2)
@@ -224,18 +288,13 @@ export default function OnboardingWizard({ onComplete }: Props) {
     }
   }
 
-  // Step 2: create second patient → step 3
   const submitStep2 = async () => {
     const err = validatePatient(patient2)
     if (err) { setError(err); return }
     setError('')
     setLoading(true)
     try {
-      const created = await patientsAPI.create({
-        full_name: patient2.full_name,
-        primary_concerns: buildPrimaryConcerns(patient2),
-        diagnosis: patient2.therapy_approach !== 'other' ? `שיטת טיפול: ${patient2.therapy_approach}` : undefined,
-      })
+      const created = await createPatient(patient2)
       setCreatedIds((prev) => [...prev, { id: created.id, name: created.full_name }])
       setStep(3)
     } catch {
@@ -245,7 +304,6 @@ export default function OnboardingWizard({ onComplete }: Props) {
     }
   }
 
-  // Step 3: create session → AI prep (step 4)
   const submitStep3 = async () => {
     if (!session.patient_id) { setError('יש לבחור מטופל/ת'); return }
     if (!session.session_datetime) { setError('יש לבחור תאריך ושעה'); return }
@@ -253,43 +311,26 @@ export default function OnboardingWizard({ onComplete }: Props) {
     setLoading(true)
     try {
       const dt = new Date(session.session_datetime)
-      const dateStr = dt.toISOString().split('T')[0]
-      const created = await sessionsAPI.create({
+      await sessionsAPI.create({
         patient_id: Number(session.patient_id),
-        session_date: dateStr,
+        session_date: dt.toISOString().split('T')[0],
         start_time: dt.toISOString(),
         duration_minutes: Number(session.duration_minutes),
       })
-
-      // Trigger AI prep
       setStep(4)
-      setLoading(false)
-      setAiLoading(true)
-      try {
-        const brief = await sessionsAPI.getPrepBrief(created.id)
-        setPrepBrief(brief)
-      } catch {
-        // If AI fails, show empty state gracefully
-        setPrepBrief({ history_summary: [], last_session: [], tasks_to_check: [], focus_for_today: [], watch_out_for: [] })
-      } finally {
-        setAiLoading(false)
-      }
     } catch {
       setError('שגיאה ביצירת הפגישה, נסה שוב')
+    } finally {
       setLoading(false)
     }
   }
 
   const finishWizard = async () => {
-    try {
-      await therapistAPI.completeIntroWizard()
-    } catch {
-      // best effort
-    }
+    try { await therapistAPI.completeIntroWizard() } catch { /* best effort */ }
     onComplete()
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
@@ -307,34 +348,30 @@ export default function OnboardingWizard({ onComplete }: Props) {
           )}
           {step === 4 && (
             <div className="text-center">
-              <p className="text-lg font-bold text-white">✨ הכנה לפגישה שלך — נוצרה על ידי AI</p>
-              <p className="text-xs text-gray-400 mt-1">כך מטפל אונליין מכין אותך לפני כל פגישה, אוטומטית.</p>
+              <p className="text-lg font-bold text-white">✨ זה מה שמטפל אונליין יכין לך לפני כל פגישה</p>
+              <p className="text-xs text-gray-400 mt-1">לאחר כמה פגישות, המערכת תייצר את כל זה אוטומטית עבורך</p>
             </div>
           )}
         </div>
 
-        {/* Scrollable body */}
+        {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
-
-          {/* ── Step 1 ─────────────────────────────────────── */}
           {step === 1 && (
             <>
               <h2 className="text-lg font-bold text-white mb-1">בואו נתחיל — הוסיפו את המטופל הראשון שלכם</h2>
               <p className="text-sm text-gray-400 mb-5">המערכת עובדת הכי טוב עם מידע אמיתי.</p>
-              <PatientFields data={patient1} onChange={setPatient1} />
+              <PatientFields data={patient1} onChange={setPatient1} therapistMethods={therapistMethods} />
             </>
           )}
 
-          {/* ── Step 2 ─────────────────────────────────────── */}
           {step === 2 && (
             <>
-              <h2 className="text-lg font-bold text-white mb-1">מצוין! עכשיו הוסיפו מטופל נוסף</h2>
+              <h2 className="text-lg font-bold text-white mb-1">הוסיפו בבקשה פרטי מטופל שני</h2>
               <p className="text-sm text-gray-400 mb-5">כשמוסיפים 2+ מטופלים המערכת מתחילה לעבוד בשבילך.</p>
-              <PatientFields data={patient2} onChange={setPatient2} />
+              <PatientFields data={patient2} onChange={setPatient2} therapistMethods={therapistMethods} />
             </>
           )}
 
-          {/* ── Step 3 ─────────────────────────────────────── */}
           {step === 3 && (
             <>
               <h2 className="text-lg font-bold text-white mb-1">קביעת פגישה ראשונה</h2>
@@ -388,29 +425,8 @@ export default function OnboardingWizard({ onComplete }: Props) {
             </>
           )}
 
-          {/* ── Step 4: AI reveal ──────────────────────────── */}
-          {step === 4 && (
-            <>
-              {aiLoading ? (
-                <div className="flex flex-col items-center justify-center py-10 gap-4">
-                  <div className="w-8 h-8 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
-                  <p className="text-sm text-gray-400">מכין את ההכנה שלך...</p>
-                </div>
-              ) : (
-                <>
-                  <PrepBriefDisplay brief={prepBrief} />
+          {step === 4 && <PlatformPreview />}
 
-                  {/* Callout */}
-                  <div className="mt-5 bg-indigo-950/60 border border-indigo-700/50 rounded-xl px-4 py-3.5 text-sm text-indigo-200 leading-relaxed">
-                    <span className="font-semibold">💡 </span>
-                    זו רק אחת מהיכולות של מטפל אונליין. לאחר כל פגישה, הקליטו או סכמו בקצרה, ואנו נדאג שתקבלו סיכום AI אוטומטי, תוכניות טיפול, תזכורות למטופלים ועוד.
-                  </div>
-                </>
-              )}
-            </>
-          )}
-
-          {/* Error banner */}
           {error && (
             <div className="mt-4 bg-red-950 border border-red-800 text-red-400 text-sm px-4 py-3 rounded-lg">
               {error}
@@ -418,7 +434,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
           )}
         </div>
 
-        {/* Footer / actions */}
+        {/* Footer */}
         <div className="px-6 pb-5 pt-3 border-t border-gray-800 flex-shrink-0">
           {step === 1 && (
             <div className="flex flex-col gap-2">
@@ -427,7 +443,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 disabled={loading}
                 className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
-                {loading ? <Spinner /> : 'הוספה והמשך'}
+                {loading ? <Spinner /> : 'מעבר לשלב 2'}
               </button>
               <div className="text-left">
                 <button onClick={skip} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
@@ -444,7 +460,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 disabled={loading}
                 className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
-                {loading ? <Spinner /> : 'הוספה והמשך'}
+                {loading ? <Spinner /> : 'מעבר לשלב 3'}
               </button>
               <div className="flex justify-between items-center">
                 <button
@@ -467,7 +483,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 disabled={loading}
                 className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
-                {loading ? <Spinner /> : 'סיימתי, פתח את המערכת'}
+                {loading ? <Spinner /> : 'כניסה למערכת'}
               </button>
               <div className="text-left">
                 <button onClick={skip} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
@@ -477,12 +493,12 @@ export default function OnboardingWizard({ onComplete }: Props) {
             </div>
           )}
 
-          {step === 4 && !aiLoading && (
+          {step === 4 && (
             <button
               onClick={finishWizard}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition-colors text-sm tracking-wide"
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition-colors text-sm"
             >
-              — ברוכים הבאים למטפל אונליין —
+              התחל להשתמש במערכת ←
             </button>
           )}
         </div>
@@ -491,55 +507,11 @@ export default function OnboardingWizard({ onComplete }: Props) {
   )
 }
 
-// ── Spinner helper ────────────────────────────────────────────────────────────
 function Spinner() {
   return (
     <span className="flex items-center justify-center gap-2">
       <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
       רגע...
     </span>
-  )
-}
-
-// ── Prep brief display ────────────────────────────────────────────────────────
-function PrepBriefDisplay({ brief }: { brief: PrepBrief | null }) {
-  if (!brief) return null
-
-  const sections: { key: keyof PrepBrief; label: string; color: string }[] = [
-    { key: 'history_summary', label: 'רקע המטופל/ת', color: 'text-sky-400' },
-    { key: 'focus_for_today', label: 'מיקוד לפגישה', color: 'text-indigo-400' },
-    { key: 'tasks_to_check', label: 'בדקו בתחילת הפגישה', color: 'text-emerald-400' },
-    { key: 'watch_out_for', label: 'שימו לב', color: 'text-amber-400' },
-    { key: 'last_session', label: 'מהפגישה הקודמת', color: 'text-gray-400' },
-  ]
-
-  const hasContent = sections.some((s) => brief[s.key]?.length > 0)
-
-  if (!hasContent) {
-    return (
-      <div className="bg-gray-800 rounded-xl p-4 text-sm text-gray-400 text-center">
-        הפגישה נוצרה בהצלחה. ההכנה ה-AI תהיה זמינה לאחר הוספת סיכום פגישה ראשונה.
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-3">
-      {sections
-        .filter((s) => brief[s.key]?.length > 0)
-        .map((s) => (
-          <div key={s.key} className="bg-gray-800 rounded-xl px-4 py-3">
-            <p className={`text-xs font-semibold uppercase tracking-wide mb-2 ${s.color}`}>{s.label}</p>
-            <ul className="space-y-1">
-              {brief[s.key].map((item, i) => (
-                <li key={i} className="text-sm text-gray-300 flex gap-2">
-                  <span className="text-gray-600 mt-0.5 flex-shrink-0">•</span>
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-    </div>
   )
 }
