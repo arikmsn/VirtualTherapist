@@ -3,6 +3,7 @@
  * Shown once to new therapists after completing the AI style onboarding.
  *
  * Steps:
+ *  0 — Welcome screen (not counted in progress dots)
  *  1 — Add first patient
  *  2 — Add second patient (skippable)
  *  3 — Schedule a session
@@ -10,6 +11,8 @@
  */
 
 import { useState, useEffect } from 'react'
+import DatePicker from 'react-datepicker'
+import 'react-datepicker/dist/react-datepicker.css'
 import { patientsAPI, sessionsAPI, therapistAPI } from '@/lib/api'
 
 interface Props {
@@ -25,7 +28,8 @@ interface PatientForm {
 
 interface SessionForm {
   patient_id: string
-  session_datetime: string
+  session_date: Date | null
+  session_time: string   // "HH:MM"
   duration_minutes: string
   notes: string
 }
@@ -43,6 +47,15 @@ const DURATIONS = [
   { value: '60', label: '60 דקות' },
   { value: '90', label: '90 דקות' },
 ]
+
+// 15-minute time slots 07:00 → 22:00
+const TIME_SLOTS: string[] = []
+for (let h = 7; h <= 22; h++) {
+  for (let m = 0; m < 60; m += 15) {
+    if (h === 22 && m > 0) break
+    TIME_SLOTS.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+  }
+}
 
 // Label map for therapy approach values
 const APPROACH_LABELS: Record<string, string> = {
@@ -106,7 +119,9 @@ function PatientFields({
         />
       </div>
       <div>
-        <label className={labelCls}>גיל *</label>
+        <label className={labelCls}>
+          גיל <span className="text-gray-500 font-normal">(אופציונלי)</span>
+        </label>
         <input
           type="number"
           className={inputCls}
@@ -160,22 +175,22 @@ const PREVIEW_CARDS = [
   {
     icon: '📋',
     title: 'רקע המטופל',
-    text: 'סיכום מצטבר של כל הפגישות הקודמות, כתוב בצורה ברורה ומובנית, כדי שתיכנס לכל פגישה עם תמונה מלאה של המטופל.',
+    text: 'סיכום מצטבר של כל הפגישות הקודמות, כתוב בצורה ברורה ומובנית, כדי שתיכנסו לכל פגישה עם תמונה מלאה על מצב המטופל.',
   },
   {
     icon: '🎯',
     title: 'מיקוד לפגישה הקרובה',
-    text: 'נושאים מרכזיים לדיון על בסיס מה שעלה בפגישה הקודמת, משימות פתוחות ודברים שביקשת לבדוק — הכל מוכן מראש.',
+    text: 'נושאים מרכזיים לדיון על בסיס מה שעלה בפגישות קודמות, משימות פתוחות ודברים כלליים שביקשתם לבדוק, הכל מוכן ומסוכם מראש.',
   },
   {
     icon: '✅',
     title: 'תזכורות ומשימות פתוחות',
-    text: 'רשימת משימות שהוגדרו בפגישות קודמות, כדי שלא תפספסי דבר ותוכלי להמשיך בדיוק מהנקודה שעצרת.',
+    text: 'רשימת משימות שהוגדרו בפגישות קודמות, כדי שלא תפספסו דבר ותוכלו להמשיך בדיוק מהנקודה שעצרתם.',
   },
   {
     icon: '📝',
     title: 'סיכום פגישה בלחיצה אחת',
-    text: 'בסיום כל פגישה, המערכת תייצר עבורך סיכום מפורט שתוכל לערוך ולאשר — חוסך לך דקות יקרות של תיעוד.',
+    text: 'בסיום כל פגישה, המערכת תייצר עבורכם סיכום מפורט שתוכלו לערוך ולאשר, חוסך זמן יקר של אדמיניסטרציה ותיעוד.',
   },
 ]
 
@@ -193,7 +208,7 @@ function PlatformPreview() {
       ))}
       <div className="bg-indigo-950/60 border border-indigo-700/50 rounded-xl px-4 py-3.5 text-sm text-indigo-200 leading-relaxed">
         <span className="font-semibold">💡 </span>
-        ככל שתשתמש במערכת יותר, כך ההכנות והסיכומים יהיו מדויקים ומותאמים יותר עבורך.
+        ככל שתשתמשו במערכת יותר, כך הסיכומים והתכניות יהיו מדויקים ומותאמים יותר עבורך לטובת המטופל והעבודה השוטפת.
       </div>
     </div>
   )
@@ -201,13 +216,14 @@ function PlatformPreview() {
 
 // ── Main wizard ───────────────────────────────────────────────────────────────
 export default function OnboardingWizard({ onComplete }: Props) {
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(0)
   const [patient1, setPatient1] = useState<PatientForm>(emptyPatient())
   const [patient2, setPatient2] = useState<PatientForm>(emptyPatient())
   const [createdIds, setCreatedIds] = useState<{ id: number; name: string }[]>([])
   const [session, setSession] = useState<SessionForm>({
     patient_id: '',
-    session_datetime: '',
+    session_date: null,
+    session_time: '10:00',
     duration_minutes: '50',
     notes: '',
   })
@@ -261,12 +277,13 @@ export default function OnboardingWizard({ onComplete }: Props) {
 
   const validatePatient = (p: PatientForm): string => {
     if (!p.full_name.trim()) return 'יש להזין שם מלא'
-    if (!p.age || isNaN(Number(p.age)) || Number(p.age) < 1) return 'יש להזין גיל תקין'
+    // Age is optional — skip age validation
     if (!p.primary_concerns.trim()) return 'יש להזין סיבת פנייה'
     return ''
   }
 
-  const buildPrimaryConcerns = (p: PatientForm) => `גיל: ${p.age}\n${p.primary_concerns}`
+  const buildPrimaryConcerns = (p: PatientForm) =>
+    p.age ? `גיל: ${p.age}\n${p.primary_concerns}` : p.primary_concerns
 
   const createPatient = async (p: PatientForm) =>
     patientsAPI.create({
@@ -312,14 +329,18 @@ export default function OnboardingWizard({ onComplete }: Props) {
 
   const submitStep3 = async () => {
     if (!session.patient_id) { setError('יש לבחור מטופל/ת'); return }
-    if (!session.session_datetime) { setError('יש לבחור תאריך ושעה'); return }
+    if (!session.session_date) { setError('יש לבחור תאריך'); return }
     setError('')
     setLoading(true)
     try {
-      const dt = new Date(session.session_datetime)
+      // Combine selected date + time into ISO datetime
+      const [hh, mm] = session.session_time.split(':').map(Number)
+      const dt = new Date(session.session_date)
+      dt.setHours(hh, mm, 0, 0)
+      const sessionDateStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
       await sessionsAPI.create({
         patient_id: Number(session.patient_id),
-        session_date: dt.toISOString().split('T')[0],
+        session_date: sessionDateStr,
         start_time: dt.toISOString(),
         duration_minutes: Number(session.duration_minutes),
       })
@@ -346,7 +367,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
 
         {/* Header */}
         <div className="px-6 pt-6 pb-4 border-b border-gray-800 flex-shrink-0">
-          {step <= 3 && (
+          {step >= 1 && step <= 3 && (
             <>
               <StepDots current={step} total={3} />
               <p className="text-center text-xs text-gray-500 mt-1">שלב {step} מתוך 3</p>
@@ -362,6 +383,21 @@ export default function OnboardingWizard({ onComplete }: Props) {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
+
+          {/* Step 0 — Welcome */}
+          {step === 0 && (
+            <div className="space-y-5 py-2">
+              <p className="text-2xl font-bold text-white leading-snug text-center">
+                ברוכים הבאים למטפל אונליין 👋
+              </p>
+              <p className="text-sm text-gray-300 leading-relaxed">
+                כדי שהמערכת תוכל לעבוד עבורכם מהיום הראשון, נבקש מכם להכניס פרטים של מטופל אחד-שניים ופגישה קרובה איתם.
+                <br /><br />
+                זה לוקח כ-2 דקות, ובסיומם תראו בדיוק איך המערכת עוזרת לכם להתכונן לכל פגישה.
+              </p>
+            </div>
+          )}
+
           {step === 1 && (
             <>
               <h2 className="text-lg font-bold text-white mb-1">בואו נתחיל — הוסיפו את המטופל הראשון שלכם</h2>
@@ -396,15 +432,36 @@ export default function OnboardingWizard({ onComplete }: Props) {
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className={labelCls}>תאריך ושעה *</label>
-                  <input
-                    type="datetime-local"
-                    className={inputCls}
-                    value={session.session_datetime}
-                    onChange={(e) => setSession({ ...session, session_datetime: e.target.value })}
-                  />
+
+                {/* Date + time — two separate fields */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelCls}>תאריך *</label>
+                    <DatePicker
+                      selected={session.session_date}
+                      onChange={(date: Date | null) => setSession({ ...session, session_date: date })}
+                      dateFormat="dd/MM/yyyy"
+                      minDate={new Date()}
+                      placeholderText="DD/MM/YYYY"
+                      className={inputCls + ' cursor-pointer'}
+                      wrapperClassName="w-full"
+                      popperPlacement="bottom-start"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>שעה *</label>
+                    <select
+                      className={inputCls}
+                      value={session.session_time}
+                      onChange={(e) => setSession({ ...session, session_time: e.target.value })}
+                    >
+                      {TIME_SLOTS.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+
                 <div>
                   <label className={labelCls}>משך הפגישה</label>
                   <select
@@ -442,6 +499,22 @@ export default function OnboardingWizard({ onComplete }: Props) {
 
         {/* Footer */}
         <div className="px-6 pb-5 pt-3 border-t border-gray-800 flex-shrink-0">
+          {step === 0 && (
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => setStep(1)}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
+              >
+                בואו נתחיל ←
+              </button>
+              <div className="text-center">
+                <button onClick={skip} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
+                  אין צורך, אכניס בעצמי בתוך המערכת
+                </button>
+              </div>
+            </div>
+          )}
+
           {step === 1 && (
             <div className="flex flex-col gap-2">
               <button
@@ -449,7 +522,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 disabled={loading}
                 className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
-                {loading ? <Spinner /> : 'מעבר לשלב 2'}
+                {loading ? <Spinner /> : 'המשך'}
               </button>
               <div className="text-left">
                 <button onClick={skip} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
@@ -466,7 +539,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 disabled={loading}
                 className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
-                {loading ? <Spinner /> : 'מעבר לשלב 3'}
+                {loading ? <Spinner /> : 'מסך אחרון ודי..'}
               </button>
               <div className="flex justify-between items-center">
                 <button
@@ -504,7 +577,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
               onClick={finishWizard}
               className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition-colors text-sm"
             >
-              התחל להשתמש במערכת ←
+              כניסה למערכת
             </button>
           )}
         </div>

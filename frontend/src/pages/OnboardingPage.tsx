@@ -13,6 +13,9 @@ import {
 
 const DRAFT_KEY = 'metapel_setup_draft'
 
+// TODO: consider merging Step 0 (Profession) and Step 1 (Therapy Modes) into a single screen.
+// Both are button-grid selectors. On desktop they would fit comfortably; on mobile (~360px)
+// the combined grid (~18 options) would require scrolling. Leave separate for now.
 const STEPS = [
   { title: 'מקצוע', description: 'מהו תפקידך המקצועי? (בחירה יחידה)' },
   { title: 'שיטות טיפול', description: 'בחר את הגישות הטיפוליות שבהן אתה עובד (בחירה מרובה)' },
@@ -108,7 +111,9 @@ export default function OnboardingPage() {
     setError('')
     try {
       if (step === 0) {
-        // Save profession (encode "other:text" if needed)
+        // TODO: verify if profession is used downstream before removing.
+        // Currently stored in therapist_profiles.profession but NOT injected into
+        // any AI system prompt or logic — only returned in the profile API response.
         await therapistAPI.updateTwinControls({
           profession: encodeProfession(form.profession, professionOtherText),
         })
@@ -130,6 +135,8 @@ export default function OnboardingPage() {
           terminology: form.terminology,
         })
       } else if (step === 3) {
+        // All four fields below ARE used in AI system prompt (agent.py lines 260-263).
+        // education, certifications, years_of_experience, areas_of_expertise are all injected.
         await therapistAPI.updateTwinControls({
           education: form.education || null,
           certifications: form.certifications || null,
