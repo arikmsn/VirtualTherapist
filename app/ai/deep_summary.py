@@ -175,7 +175,7 @@ def _build_chunk_extraction_user(summaries: list[dict], chunk_index: int, total_
     for s in summaries:
         date_str = str(s.get("session_date", ""))
         num = s.get("session_number", "?")
-        text = s.get("full_summary", "")[:3000]
+        text = s.get("full_summary", "")  # full text — no input truncation
         parts.append(f"\n[Session #{num} — {date_str}]\n{text}")
     parts.append("--- End ---")
     parts.append(f"\nFill partial JSON schema:\n{_SCHEMA_STR}")
@@ -266,6 +266,8 @@ def _build_render_user(
         "Render it as a complete formal Hebrew clinical narrative.\n\n"
         f"Structured summary:\n{json.dumps(summary_json, ensure_ascii=False, indent=2)}\n"
         f"{vault_section}\n"
+        "כתוב סיכום עומק ממוקד ומקיף, עד כ‑5,000 תווים, תוך שמירה על עיקרי הרצף הטיפולי. "
+        "אל תחרוג מאורך זה.\n\n"
         "Write the complete deep summary narrative in Hebrew now."
     )
 

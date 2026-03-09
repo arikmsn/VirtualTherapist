@@ -114,6 +114,17 @@ _SCHEMA_STR = json.dumps(FORMAL_RECORD_JSON_SCHEMA, ensure_ascii=False, indent=2
 
 # ── Record-type specific instructions ─────────────────────────────────────────
 
+# Hebrew output-length guidance per record type — appended to the render user prompt.
+# Moves the "stay focused" constraint to the output side rather than hard-slicing the input.
+_RECORD_LENGTH_GUIDANCE_HE: dict[RecordType, str] = {
+    RecordType.INTAKE_SUMMARY: "המסמך צריך להיות תמציתי, עד כ‑2,000 תווים לכל היותר.",
+    RecordType.PROGRESS_NOTE: "המסמך צריך להיות קצר ומדויק, עד כ‑1,500 תווים לכל היותר.",
+    RecordType.TERMINATION_SUMMARY: "המסמך צריך להיות מקיף אך תמציתי, עד כ‑4,000 תווים לכל היותר.",
+    RecordType.REFERRAL_LETTER: "המכתב צריך להיות תמציתי וממוקד, עד כ‑1,500 תווים לכל היותר.",
+    RecordType.SUPERVISOR_NOTE: "הדיווח צריך להיות קצר ולעניין, עד כ‑1,000 תווים לכל היותר.",
+}
+
+
 _RECORD_TYPE_INSTRUCTIONS: dict[RecordType, str] = {
     RecordType.INTAKE_SUMMARY: (
         "This is an INTAKE SUMMARY (סיכום קבלה). "
@@ -194,7 +205,7 @@ def _build_extraction_user_prompt(inp: FormalRecordInput) -> str:
     for i, s in enumerate(inp.approved_summaries, 1):
         date_str = str(s.get("session_date", ""))
         num = s.get("session_number", i)
-        text = s.get("full_summary", "")[:3000]
+        text = s.get("full_summary", "")  # full text — no input truncation
         parts.append(f"\n[Session #{num} — {date_str}]\n{text}")
     parts.append("--- End of summaries ---")
 
@@ -236,10 +247,12 @@ def _build_render_system_prompt(inp: FormalRecordInput) -> str:
 
 
 def _build_render_user_prompt(inp: FormalRecordInput, record_json: dict) -> str:
+    length_guidance = _RECORD_LENGTH_GUIDANCE_HE.get(inp.record_type, "")
     return (
         "The structured clinical data has been extracted. "
         "Render it as a formal clinical document in the required Hebrew register.\n\n"
         f"Structured record data:\n{json.dumps(record_json, ensure_ascii=False, indent=2)}\n\n"
+        f"{length_guidance}\n\n"
         "Write the complete formal record now. Do not include any disclaimer — it will be appended."
     )
 

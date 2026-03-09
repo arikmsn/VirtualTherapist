@@ -832,7 +832,14 @@ async def stream_prep_v2(
             _fp_summaries = session_service._load_approved_summaries_for_prep(session.patient_id)
             _fp = compute_fingerprint({
                 "mode": mode.value,
-                "summaries": [s["full_summary"] for s in _fp_summaries],
+                "summaries": [
+                    {
+                        "summary_id": s.get("summary_id"),
+                        "approved_at": s.get("approved_at"),
+                        "full_summary": s["full_summary"],
+                    }
+                    for s in _fp_summaries
+                ],
                 "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
             })
             if (
@@ -911,7 +918,14 @@ async def stream_prep_v2(
             session.prep_generated_at = _dt.utcnow()
             session.prep_input_fingerprint = compute_fingerprint({
                 "mode": mode.value,
-                "summaries": [s.get("full_summary") for s in approved_summaries],
+                "summaries": [
+                    {
+                        "summary_id": s.get("summary_id"),
+                        "approved_at": s.get("approved_at"),
+                        "full_summary": s.get("full_summary"),
+                    }
+                    for s in approved_summaries
+                ],
                 "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
             })
             session.prep_input_fingerprint_version = FINGERPRINT_VERSION

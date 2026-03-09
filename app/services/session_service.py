@@ -1176,7 +1176,11 @@ class SessionService:
                     .all()
                 )
                 _approved_fp = [
-                    s.summary.full_summary
+                    {
+                        "summary_id": s.summary.id,
+                        "approved_at": str(s.summary.approved_at) if s.summary.approved_at else None,
+                        "full_summary": s.summary.full_summary,
+                    }
                     for s in _sessions_q_fp
                     if s.summary and s.summary.approved_by_therapist
                 ][-10:]
@@ -1256,7 +1260,14 @@ class SessionService:
         from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
         session.prep_input_fingerprint = compute_fingerprint({
             "mode": mode.value,
-            "summaries": [s["full_summary"] for s in approved_summaries],
+            "summaries": [
+                {
+                    "summary_id": s.get("summary_id"),
+                    "approved_at": s.get("approved_at"),
+                    "full_summary": s["full_summary"],
+                }
+                for s in approved_summaries
+            ],
             "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
         })
         session.prep_input_fingerprint_version = FINGERPRINT_VERSION
@@ -1335,6 +1346,8 @@ class SessionService:
             summary = s.summary
             if summary and summary.approved_by_therapist:
                 result.append({
+                    "summary_id": summary.id,
+                    "approved_at": str(summary.approved_at) if summary.approved_at else None,
                     "session_date": str(s.session_date),
                     "session_number": s.session_number,
                     "full_summary": summary.full_summary,

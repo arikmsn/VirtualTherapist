@@ -15,7 +15,7 @@ from typing import Any
 
 # Bump this when the fingerprint schema changes (e.g. new fields added to inputs).
 # A version mismatch forces cache invalidation regardless of hash equality.
-FINGERPRINT_VERSION = 1
+FINGERPRINT_VERSION = 2
 
 
 def compute_fingerprint(payload: Any) -> str:

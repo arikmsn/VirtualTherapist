@@ -142,6 +142,15 @@ _MODE_TOKEN_GUIDANCE: dict[PrepMode, str] = {
     PrepMode.GAP_ANALYSIS: "Focus exclusively on what is missing, untouched, or regressing (~500 tokens total).",
 }
 
+# Hebrew output-length guidance appended to each mode's render user prompt.
+# Moves the "stay focused" constraint to the output side rather than hard-slicing the input.
+_MODE_LENGTH_GUIDANCE_HE: dict[PrepMode, str] = {
+    PrepMode.CONCISE: "סכם באופן תמציתי, עד כ‑1,500 תווים לכל היותר. אל תחרוג מאורך זה.",
+    PrepMode.DEEP: "כתוב הכנה מעמיקה ומפורטת, עד כ‑4,000 תווים לכל היותר.",
+    PrepMode.BY_MODALITY: "התמקד בגישה הטיפולית הרלוונטית, עד כ‑3,000 תווים לכל היותר.",
+    PrepMode.GAP_ANALYSIS: "פרט את הפערים והרגרסיות בלבד, עד כ‑2,000 תווים לכל היותר.",
+}
+
 
 # ── Prompt builders ───────────────────────────────────────────────────────────
 
@@ -204,7 +213,7 @@ def _build_extraction_user_prompt(inp: PrepInput) -> str:
     for i, s in enumerate(inp.approved_summaries, 1):
         date_str = str(s.get("session_date", ""))
         num = s.get("session_number", i)
-        text = s.get("full_summary", "")[:2000]  # cap per summary
+        text = s.get("full_summary", "")  # full text — no input truncation
         parts.append(f"\n[Session #{num} — {date_str}]\n{text}")
     parts.append("--- End of summaries ---")
 
@@ -232,12 +241,14 @@ def _build_render_system_prompt(inp: PrepInput) -> str:
 
 def _build_render_user_prompt(inp: PrepInput, prep_json: dict) -> str:
     token_guidance = _MODE_TOKEN_GUIDANCE.get(inp.mode, "")
+    length_guidance = _MODE_LENGTH_GUIDANCE_HE.get(inp.mode, "")
     cbt_block = f"\n\n{_CBT_RENDER_ADDON.strip()}" if inp.modality.lower() == "cbt" else ""
     return (
         f"Mode: {inp.mode.value} — {token_guidance}{cbt_block}\n\n"
         "The structured prep data has been extracted. Render it as a ready-to-use "
         "pre-session brief that the therapist can scan in under 60 seconds.\n\n"
         f"Structured prep data:\n{json.dumps(prep_json, ensure_ascii=False, indent=2)}\n\n"
+        f"{length_guidance}\n\n"
         "Write the pre-session brief now."
     )
 
