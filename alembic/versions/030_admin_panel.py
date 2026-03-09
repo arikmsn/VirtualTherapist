@@ -23,13 +23,20 @@ depends_on = None
 
 
 def upgrade():
-    # Add admin columns to therapists
-    with op.batch_alter_table("therapists") as batch_op:
-        batch_op.add_column(sa.Column("is_admin", sa.Boolean(), server_default="0", nullable=False))
-        batch_op.add_column(sa.Column("is_blocked", sa.Boolean(), server_default="0", nullable=False))
-        batch_op.add_column(sa.Column("last_login", sa.DateTime(), nullable=True))
+    conn = op.get_bind()
 
-    # Create admin_alerts table
+    # Add columns only if they don't exist (idempotent — Supabase may have them already)
+    conn.execute(sa.text(
+        "ALTER TABLE therapists ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;"
+    ))
+    conn.execute(sa.text(
+        "ALTER TABLE therapists ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE;"
+    ))
+    conn.execute(sa.text(
+        "ALTER TABLE therapists ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;"
+    ))
+
+    # Create admin_alerts table if not exists
     op.create_table(
         "admin_alerts",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
@@ -38,6 +45,7 @@ def upgrade():
         sa.Column("therapist_id", sa.Integer(), sa.ForeignKey("therapists.id", ondelete="SET NULL"), nullable=True),
         sa.Column("is_read", sa.Boolean(), server_default="0", nullable=False),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+        if_not_exists=True,
     )
 
 
