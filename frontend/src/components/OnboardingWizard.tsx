@@ -217,6 +217,7 @@ function PlatformPreview() {
 // ── Main wizard ───────────────────────────────────────────────────────────────
 export default function OnboardingWizard({ onComplete }: Props) {
   const [step, setStep] = useState(0)
+  console.log('[OnboardingWizard] render — current step:', step)
   const [patient1, setPatient1] = useState<PatientForm>(emptyPatient())
   const [patient2, setPatient2] = useState<PatientForm>(emptyPatient())
   const [createdIds, setCreatedIds] = useState<{ id: number; name: string }[]>([])
@@ -233,6 +234,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
 
   // On mount: check for existing patients + load therapist's therapy methods
   useEffect(() => {
+    console.log('[OnboardingWizard] mounted — initial step:', step)
     patientsAPI.list().then((patients: any[]) => {
       console.log('[OnboardingWizard] patient count on mount:', patients.length)
       if (patients.length > 0) {
