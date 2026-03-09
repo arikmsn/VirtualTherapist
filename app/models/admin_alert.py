@@ -11,6 +11,9 @@ class AdminAlert(BaseModel):
 
     __tablename__ = "admin_alerts"
 
+    # Suppress the inherited updated_at column — admin_alerts table was created without it
+    updated_at = None  # type: ignore[assignment]
+
     type = Column(String(64), nullable=False)   # "new_signup", "ai_error", "blocked_login"
     message = Column(Text, nullable=False)
     therapist_id = Column(Integer, ForeignKey("therapists.id", ondelete="SET NULL"), nullable=True)
