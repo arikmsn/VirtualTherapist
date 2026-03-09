@@ -28,7 +28,7 @@ import ChangePasswordModal from './components/ChangePasswordModal'
 import OnboardingWizard from './components/OnboardingWizard'
 
 function AppRoutes() {
-  const { isAuthenticated, isReady, onboardingCompleted, mustChangePassword, introWizardCompleted, markIntroWizardComplete } = useAuth()
+  const { isAuthenticated, isReady, onboardingCompleted, mustChangePassword, introWizardCompleted, profileSetupCompleted, markIntroWizardComplete } = useAuth()
   const [showPasswordToast, setShowPasswordToast] = useState(false)
 
   // Wait for auth to initialize from localStorage before rendering routes.
@@ -107,8 +107,8 @@ function AppRoutes() {
         </Routes>
       </Router>
 
-      {/* First-time data onboarding wizard — only for authenticated users with wizard explicitly not done */}
-      {isAuthenticated === true && introWizardCompleted === false && !mustChangePassword && (
+      {/* First-time data onboarding wizard — Step 2 must be done before Step 3 can show */}
+      {isAuthenticated === true && profileSetupCompleted === true && introWizardCompleted === false && !mustChangePassword && (
         <OnboardingWizard onComplete={markIntroWizardComplete} />
       )}
 

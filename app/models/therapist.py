@@ -41,6 +41,7 @@ class Therapist(BaseModel):
     last_login = Column(DateTime, nullable=True)
     must_change_password = Column(Boolean, default=False)
     intro_wizard_completed = Column(Boolean, default=False)
+    profile_setup_completed = Column(Boolean, default=False)
 
     # OAuth
     auth_provider = Column(String(50), default="email")   # "email" | "google"

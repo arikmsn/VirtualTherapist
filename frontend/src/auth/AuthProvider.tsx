@@ -27,6 +27,7 @@ export interface AuthContextValue {
   onboardingCompleted: boolean | null  // null = not yet loaded
   mustChangePassword: boolean
   introWizardCompleted: boolean | null  // null = not yet loaded from profile
+  profileSetupCompleted: boolean | null  // null = not yet loaded; false = still on Step 2
   login: (token: string, user: AuthUser, onboardingCompleted?: boolean, mustChangePassword?: boolean) => void
   logout: () => void
   markOnboardingComplete: () => void
@@ -46,6 +47,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null)
   const [mustChangePassword, setMustChangePassword] = useState(false)
   const [introWizardCompleted, setIntroWizardCompleted] = useState<boolean | null>(null)
+  const [profileSetupCompleted, setProfileSetupCompleted] = useState<boolean | null>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearRefreshTimer = useCallback(() => {
@@ -64,6 +66,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     setOnboardingCompleted(null)
     setMustChangePassword(false)
     setIntroWizardCompleted(null)
+    setProfileSetupCompleted(null)
   }, [clearRefreshTimer])
 
   // scheduleRefresh is defined after logout so it can reference it
@@ -117,9 +120,9 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     }
     if (completed !== undefined) {
       setOnboardingCompleted(completed)
-      // Registration path: always force introWizardCompleted = false so the
-      // first-time wizard always appears, regardless of any previous state.
-      console.log('[AuthProvider] login() registration path — forcing introWizardCompleted = false')
+      // Registration path: Step 2 and Step 3 not yet done — force both to false
+      console.log('[AuthProvider] login() registration path — forcing profileSetupCompleted & introWizardCompleted = false')
+      setProfileSetupCompleted(false)
       setIntroWizardCompleted(false)
     } else {
       // Callers should always pass `completed`; this fetch is a safety net so
@@ -128,9 +131,11 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       therapistAPI.getProfile().then((profile) => {
         setOnboardingCompleted(profile.onboarding_completed ?? true)
         setMustChangePassword(profile.must_change_password ?? false)
+        setProfileSetupCompleted(profile.profile_setup_completed ?? false)
         setIntroWizardCompleted(profile.intro_wizard_completed ?? false)
       }).catch(() => {
         setOnboardingCompleted(true)
+        setProfileSetupCompleted(true)
         setIntroWizardCompleted(true)
       })
     }
@@ -139,6 +144,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const markOnboardingComplete = useCallback(() => {
     setOnboardingCompleted(true)
+    setProfileSetupCompleted(true)
   }, [])
 
   const clearMustChangePassword = useCallback(() => {
@@ -164,10 +170,12 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
           therapistAPI.getProfile().then((profile) => {
             setOnboardingCompleted(profile.onboarding_completed ?? true)
             setMustChangePassword(profile.must_change_password ?? false)
+            setProfileSetupCompleted(profile.profile_setup_completed ?? false)
             setIntroWizardCompleted(profile.intro_wizard_completed ?? false)
           }).catch(() => {
             // If profile fetch fails, assume onboarding done to avoid blocking the UI
             setOnboardingCompleted(true)
+            setProfileSetupCompleted(true)
             setIntroWizardCompleted(true)
           })
         } catch {
@@ -189,6 +197,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     onboardingCompleted,
     mustChangePassword,
     introWizardCompleted,
+    profileSetupCompleted,
     login,
     logout,
     markOnboardingComplete,

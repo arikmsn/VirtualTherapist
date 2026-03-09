@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { agentAPI, therapistAPI } from '@/lib/api'
 import { useAuth } from '@/auth/useAuth'
@@ -10,6 +10,8 @@ import {
   encodeProfession,
   encodeModes,
 } from '@/lib/therapistConstants'
+
+const DRAFT_KEY = 'metapel_setup_draft'
 
 const STEPS = [
   { title: 'מקצוע', description: 'מהו תפקידך המקצועי? (בחירה יחידה)' },
@@ -50,6 +52,31 @@ export default function OnboardingPage() {
   const [selectedModes, setSelectedModes] = useState<string[]>([])
   const [professionOtherText, setProfessionOtherText] = useState('')
   const [modesOtherText, setModesOtherText] = useState('')
+
+  // Restore draft from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (!raw) return
+      const draft = JSON.parse(raw)
+      if (draft.form) setForm((prev) => ({ ...prev, ...draft.form }))
+      if (draft.selectedTones) setSelectedTones(draft.selectedTones)
+      if (draft.selectedModes) setSelectedModes(draft.selectedModes)
+      if (draft.professionOtherText) setProfessionOtherText(draft.professionOtherText)
+      if (draft.modesOtherText) setModesOtherText(draft.modesOtherText)
+      if (typeof draft.step === 'number') setStep(draft.step)
+    } catch { /* corrupt draft — ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Save draft to localStorage whenever form state changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+        step, form, selectedTones, selectedModes, professionOtherText, modesOtherText,
+      }))
+    } catch { /* storage full — ignore */ }
+  }, [step, form, selectedTones, selectedModes, professionOtherText, modesOtherText])
 
   const set = (field: keyof typeof form, value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -119,6 +146,7 @@ export default function OnboardingPage() {
         }
         // Mark onboarding complete on the backend
         await therapistAPI.completeOnboarding()
+        localStorage.removeItem(DRAFT_KEY)
         markOnboardingComplete()
         navigate('/dashboard', { replace: true })
         return

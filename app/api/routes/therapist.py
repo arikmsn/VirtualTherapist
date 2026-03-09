@@ -51,6 +51,7 @@ class TherapistProfileResponse(BaseModel):
     primary_therapy_modes: List[str] = []
     must_change_password: bool = False
     intro_wizard_completed: bool = False
+    profile_setup_completed: bool = False
 
     class Config:
         from_attributes = True
@@ -159,6 +160,7 @@ def _profile_response(profile, therapist=None) -> TherapistProfileResponse:
         primary_therapy_modes=_derive_modes(profile),
         must_change_password=bool(therapist.must_change_password) if therapist else False,
         intro_wizard_completed=bool(therapist.intro_wizard_completed) if therapist else False,
+        profile_setup_completed=bool(therapist.profile_setup_completed) if therapist else False,
     )
 
 
@@ -226,7 +228,9 @@ async def complete_onboarding(
 
     if not profile.onboarding_completed:
         profile.onboarding_completed = True
-        db.commit()
+    if not current_therapist.profile_setup_completed:
+        current_therapist.profile_setup_completed = True
+    db.commit()
 
     return {"onboarding_completed": True}
 
