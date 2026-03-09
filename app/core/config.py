@@ -99,6 +99,14 @@ class Settings(BaseSettings):
     # Set a long random value in Render; leave unset to disable all admin endpoints.
     ADMIN_SECRET: str | None = None
 
+    # SendGrid (transactional email — admin password reset, notifications)
+    SENDGRID_API_KEY: str | None = None
+    SENDGRID_FROM_EMAIL: str = "admin@metapel.online"
+
+    # Supabase (for auth.admin.deleteUser when supabase_user_id is set)
+    SUPABASE_URL: str | None = None
+    SUPABASE_SERVICE_ROLE_KEY: str | None = None
+
     # CORS
     # Comma-separated list of allowed frontend origins.
     # For multiple domains: "https://app.vercel.app,https://app.metapel.online"

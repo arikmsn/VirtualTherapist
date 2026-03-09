@@ -139,4 +139,28 @@ export const adminAPI = {
     get<AlertRow[]>(`/admin-panel/alerts${unreadOnly ? '?unread_only=true' : ''}`),
   markAlertRead: (id: number) => patch<{ ok: boolean }>(`/admin-panel/alerts/${id}/read`),
   markAllRead: () => patch<{ ok: boolean }>('/admin-panel/alerts/read-all'),
+
+  deleteTherapist: async (id: number): Promise<{ deleted: boolean; therapist_id: number; email: string }> => {
+    const res = await fetch(`${BASE}/admin-panel/therapists/${id}`, {
+      method: 'DELETE',
+      headers: adminHeaders(),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(err.detail || `${res.status}`)
+    }
+    return res.json()
+  },
+
+  sendTempPassword: async (id: number): Promise<{ success: boolean; email_sent_to: string }> => {
+    const res = await fetch(`${BASE}/admin-panel/therapists/${id}/temporary-password`, {
+      method: 'POST',
+      headers: adminHeaders(),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(err.detail || `${res.status}`)
+    }
+    return res.json()
+  },
 }
