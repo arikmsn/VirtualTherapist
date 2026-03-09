@@ -727,6 +727,29 @@ class PrepResponse(BaseModel):
     generated_at: Optional[str] = None
 
 
+@router.get("/{session_id}/prep", response_model=PrepResponse)
+async def get_stored_prep(
+    session_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Return the stored prep brief for a session without regenerating."""
+    from app.models.session import Session as _SessionModel
+    session = db.query(_SessionModel).filter(
+        _SessionModel.id == session_id,
+        _SessionModel.therapist_id == current_therapist.id,
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return PrepResponse(
+        rendered_text=session.prep_rendered_text,
+        prep_json=session.prep_json,
+        mode=session.prep_mode or "concise",
+        sessions_analyzed=0,
+        generated_at=str(session.prep_generated_at) if session.prep_generated_at else None,
+    )
+
+
 @router.post("/{session_id}/prep", response_model=PrepResponse)
 async def generate_prep_v2(
     session_id: int,

@@ -387,6 +387,16 @@ export const sessionsAPI = {
     return response.data
   },
 
+  getStoredPrep: async (sessionId: number) => {
+    const response = await api.get(`/sessions/${sessionId}/prep`)
+    return response.data as {
+      rendered_text: string | null
+      prep_json: Record<string, unknown> | null
+      mode: string
+      generated_at: string | null
+    }
+  },
+
   delete: async (sessionId: number, notifyPatient = false) => {
     await api.delete(`/sessions/${sessionId}`, { params: { notify_patient: notifyPatient } })
   },

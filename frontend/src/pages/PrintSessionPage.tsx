@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { sessionsAPI, patientsAPI, therapistAPI } from '@/lib/api'
 import { formatDateIL } from '@/lib/dateUtils'
 import { sessionSummaryToText } from '@/lib/docText'
@@ -64,10 +64,13 @@ function stripAiArtifacts(text: string | null): string {
 
 export default function PrintSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
+  const [searchParams] = useSearchParams()
+  const isPrepMode = searchParams.get('doc') === 'prep'
   const id = Number(sessionId)
 
   const [session, setSession] = useState<Session | null>(null)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
+  const [prepText, setPrepText] = useState<string | null>(null)
   const [patient, setPatient] = useState<Patient | null>(null)
   const [therapistName, setTherapistName] = useState('')
   const [loading, setLoading] = useState(true)
@@ -76,19 +79,24 @@ export default function PrintSessionPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [sessionData, summaryData, profileData] = await Promise.all([
+        const [sessionData, profileData] = await Promise.all([
           sessionsAPI.get(id),
-          sessionsAPI.getSummary(id).catch(() => null),
           therapistAPI.getProfile().catch(() => null),
         ])
         setSession(sessionData)
-        setSummary(summaryData)
         if (profileData) {
-          // therapist profile doesn't expose full_name directly; use email as fallback
           setTherapistName((profileData as any).full_name || (profileData as any).email || '')
         }
         const patientData = await patientsAPI.get(sessionData.patient_id)
         setPatient(patientData)
+
+        if (isPrepMode) {
+          const prepData = await sessionsAPI.getStoredPrep(id).catch(() => null)
+          setPrepText(prepData?.rendered_text ?? null)
+        } else {
+          const summaryData = await sessionsAPI.getSummary(id).catch(() => null)
+          setSummary(summaryData)
+        }
       } catch (err: any) {
         setError(err.response?.data?.detail || 'שגיאה בטעינת הנתונים')
       } finally {
@@ -96,7 +104,7 @@ export default function PrintSessionPage() {
       }
     }
     load()
-  }, [id])
+  }, [id, isPrepMode])
 
   if (loading) {
     return (
@@ -146,7 +154,7 @@ export default function PrintSessionPage() {
 
         {/* Document meta */}
         <div className="mb-6 space-y-1">
-          <h1 className="text-2xl font-bold text-gray-900">סיכום פגישה</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{isPrepMode ? 'הכנה לפגישה' : 'סיכום פגישה'}</h1>
           <div className="text-sm text-gray-600 space-y-0.5">
             {patient && <p><span className="font-medium">מטופל/ת:</span> {patient.full_name}</p>}
             {therapistName && <p><span className="font-medium">מטפל/ת:</span> {therapistName}</p>}
@@ -172,12 +180,23 @@ export default function PrintSessionPage() {
           </div>
         </div>
 
+        {/* Prep content */}
+        {isPrepMode && (
+          prepText ? (
+            <div className="text-sm leading-relaxed text-gray-800 whitespace-pre-line">
+              {stripAiArtifacts(prepText)}
+            </div>
+          ) : (
+            <p className="text-gray-400 text-sm">אין הכנה שמורה לפגישה זו.</p>
+          )
+        )}
+
         {/* Summary content */}
-        {!summary && (
+        {!isPrepMode && !summary && (
           <p className="text-gray-400 text-sm">אין סיכום לפגישה זו.</p>
         )}
 
-        {summary && (
+        {!isPrepMode && summary && (
           <div className="space-y-6 text-sm leading-relaxed">
             {summary.full_summary && (
               <section>
