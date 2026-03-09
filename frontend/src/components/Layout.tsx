@@ -10,9 +10,10 @@
  *   - Lightbulb icon in header opens the SideNotebook drawer (available on all screens)
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/useAuth'
+import { adminAPI } from '@/lib/adminApi'
 import {
   HomeIcon,
   ChatBubbleLeftRightIcon,
@@ -33,6 +34,25 @@ export default function Layout() {
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [notebookOpen, setNotebookOpen] = useState(false)
+
+  // ── Easter egg: 5 rapid clicks on name/email within 3 seconds → admin panel ──
+  const eggClicksRef = useRef<number[]>([])
+  async function handleEggClick() {
+    const now = Date.now()
+    eggClicksRef.current = [...eggClicksRef.current.filter((t) => now - t < 3000), now]
+    if (eggClicksRef.current.length >= 5) {
+      eggClicksRef.current = []
+      const password = prompt('🔧 Admin access — enter password:')
+      if (!password) return
+      try {
+        const token = await adminAPI.getToken(user?.email || '', password)
+        sessionStorage.setItem('admin_token', token)
+        navigate('/admin')
+      } catch {
+        alert('גישה נדחתה')
+      }
+    }
+  }
 
   // Close mobile drawer whenever the route changes
   useEffect(() => {
@@ -122,7 +142,11 @@ export default function Layout() {
             <div className="flex items-center gap-2 sm:gap-3">
               {/* Therapist identity — hidden on mobile */}
               {displayName && (
-                <div className="hidden sm:block text-sm text-gray-700">
+                // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+                <div
+                  className="hidden sm:block text-sm text-gray-700 cursor-default select-none"
+                  onClick={handleEggClick}
+                >
                   <div className="font-medium">{displayName}</div>
                   {user?.fullName?.trim() && user?.email && (
                     <div className="text-xs text-gray-500">{user.email}</div>

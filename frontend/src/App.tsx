@@ -17,6 +17,12 @@ import GoogleCallbackPage from './pages/GoogleCallbackPage'
 import PrintSessionPage from './pages/PrintSessionPage'
 import PrintPatientPage from './pages/PrintPatientPage'
 import Layout from './components/Layout'
+import AdminGuard from './pages/admin/AdminGuard'
+import AdminLayout from './pages/admin/AdminLayout'
+import AdminDashboardPage from './pages/admin/AdminDashboardPage'
+import AdminTherapistsPage from './pages/admin/AdminTherapistsPage'
+import AdminUsagePage from './pages/admin/AdminUsagePage'
+import AdminAlertsPage from './pages/admin/AdminAlertsPage'
 
 function AppRoutes() {
   const { isAuthenticated, isReady, onboardingCompleted } = useAuth()
@@ -78,6 +84,16 @@ function AppRoutes() {
             <Route path="/twin" element={<TwinProfilePage />} />
             <Route path="/sessions" element={<SessionsPage />} />
             <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
+          </Route>
+        </Route>
+
+        {/* Admin panel — guarded by sessionStorage admin_token */}
+        <Route element={<AdminGuard />}>
+          <Route element={<AdminLayout />}>
+            <Route path="/admin" element={<AdminDashboardPage />} />
+            <Route path="/admin/therapists" element={<AdminTherapistsPage />} />
+            <Route path="/admin/usage" element={<AdminUsagePage />} />
+            <Route path="/admin/alerts" element={<AdminAlertsPage />} />
           </Route>
         </Route>
 

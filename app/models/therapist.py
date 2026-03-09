@@ -1,6 +1,6 @@
 """Therapist models - stores therapist information and personalized profiles"""
 
-from sqlalchemy import Column, String, Text, JSON, Boolean, Integer, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, String, Text, JSON, Boolean, Integer, DateTime, ForeignKey, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 import enum
@@ -34,6 +34,11 @@ class Therapist(BaseModel):
     # Status
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
+
+    # Admin
+    is_admin = Column(Boolean, default=False)
+    is_blocked = Column(Boolean, default=False)
+    last_login = Column(DateTime, nullable=True)
 
     # OAuth
     auth_provider = Column(String(50), default="email")   # "email" | "google"

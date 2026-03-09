@@ -12,6 +12,7 @@ from app.api.deps import get_db, get_current_therapist
 from app.services.therapist_service import TherapistService
 from app.security.auth import verify_password, get_password_hash, create_access_token
 from app.models.therapist import Therapist, TherapistProfile, TherapeuticApproach
+from app.models.admin_alert import AdminAlert
 from app.core.config import settings
 
 
@@ -87,6 +88,18 @@ async def register(
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         )
 
+        # Admin alert: new signup
+        try:
+            alert = AdminAlert(
+                alert_type="new_signup",
+                message=f"מטפל/ת חדש/ה נרשם/ה: {therapist.full_name} ({therapist.email})",
+                therapist_id=therapist.id,
+            )
+            db.add(alert)
+            db.commit()
+        except Exception:
+            pass  # non-blocking
+
         return {
             "access_token": access_token,
             "token_type": "bearer",
@@ -129,6 +142,20 @@ async def login(
             detail="Inactive account"
         )
 
+    # Check if blocked by admin
+    if therapist.is_blocked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="החשבון שלך הושהה. פנה לתמיכה.",
+        )
+
+    # Update last_login
+    try:
+        therapist.last_login = datetime.utcnow()
+        db.commit()
+    except Exception:
+        db.rollback()
+
     # Create access token
     access_token = create_access_token(
         data={"sub": str(therapist.id)},
@@ -142,6 +169,47 @@ async def login(
         "full_name": therapist.full_name,
         "email": therapist.email,
     }
+
+
+# ---------------------------------------------------------------------------
+# Admin token — issues a short-lived admin JWT for the admin panel
+# ---------------------------------------------------------------------------
+
+class AdminTokenRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AdminTokenResponse(BaseModel):
+    admin_token: str
+
+
+ADMIN_TOKEN_EXPIRE_MINUTES = 120
+
+
+@router.post("/admin-token", response_model=AdminTokenResponse)
+async def get_admin_token(
+    request: AdminTokenRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Issues a 2-hour admin JWT.
+    Only works for accounts with is_admin=True.
+    Stored in sessionStorage (never localStorage) — not a regular auth token.
+    """
+    therapist = db.query(Therapist).filter(Therapist.email == request.email).first()
+    if not therapist or not verify_password(request.password, therapist.hashed_password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+    if not therapist.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    if therapist.is_blocked or not therapist.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended")
+
+    admin_token = create_access_token(
+        data={"sub": str(therapist.id), "is_admin": True},
+        expires_delta=timedelta(minutes=ADMIN_TOKEN_EXPIRE_MINUTES),
+    )
+    return {"admin_token": admin_token}
 
 
 @router.post("/refresh", response_model=TokenResponse)

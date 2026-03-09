@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.routes import auth, agent, messages, patients, sessions, therapist, debug, exercises, admin
 from app.api.routes import formal_records, treatment_plans, deep_summaries, ui_affordances, eval as eval_routes
+from app.api.routes import admin_panel
 from app.core.scheduler import scheduler
 from app.services.message_service import deliver_due_scheduled_messages
 from loguru import logger
@@ -71,6 +72,9 @@ if settings.ENVIRONMENT != "production":
 # Set ADMIN_SECRET env var to enable; leave unset to get 503 on all admin calls.
 if settings.ADMIN_SECRET:
     app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+
+# Admin panel — always mounted, protected by admin JWT (is_admin=True claim).
+app.include_router(admin_panel.router, prefix="/api/v1/admin-panel", tags=["Admin Panel"])
 
 
 @app.on_event("startup")
