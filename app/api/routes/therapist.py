@@ -49,6 +49,7 @@ class TherapistProfileResponse(BaseModel):
     # safely iterate it without a null-guard.
     profession: Optional[str] = None
     primary_therapy_modes: List[str] = []
+    must_change_password: bool = False
 
     class Config:
         from_attributes = True
@@ -155,6 +156,7 @@ def _profile_response(profile, therapist=None) -> TherapistProfileResponse:
         cbt_active=is_cbt_active(profile),
         profession=profile.profession,
         primary_therapy_modes=_derive_modes(profile),
+        must_change_password=bool(therapist.must_change_password) if therapist else False,
     )
 
 

@@ -705,8 +705,9 @@ async def send_temporary_password(
 
     temp_pw = _generate_temp_password()
 
-    # Update hashed password
+    # Update hashed password and flag for forced change
     t.hashed_password = get_password_hash(temp_pw)
+    t.must_change_password = True
     db.commit()
 
     # Send email

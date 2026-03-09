@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { useState } from 'react'
 import AuthProvider from './auth/AuthProvider'
 import { useAuth } from './auth/useAuth'
 import ProtectedRoute from './auth/ProtectedRoute'
@@ -23,9 +24,11 @@ import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminTherapistsPage from './pages/admin/AdminTherapistsPage'
 import AdminUsagePage from './pages/admin/AdminUsagePage'
 import AdminAlertsPage from './pages/admin/AdminAlertsPage'
+import ChangePasswordModal from './components/ChangePasswordModal'
 
 function AppRoutes() {
-  const { isAuthenticated, isReady, onboardingCompleted } = useAuth()
+  const { isAuthenticated, isReady, onboardingCompleted, mustChangePassword } = useAuth()
+  const [showPasswordToast, setShowPasswordToast] = useState(false)
 
   // Wait for auth to initialize from localStorage before rendering routes.
   // Without this, the initial isAuthenticated=false triggers a redirect
@@ -54,53 +57,75 @@ function AppRoutes() {
   const needsOnboarding = isAuthenticated && onboardingCompleted === false
 
   return (
-    <Router>
-      <Routes>
-        {/* Public routes — redirect to dashboard if already logged in */}
-        <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" />} />
-        <Route path="/register" element={!isAuthenticated ? <RegisterPage /> : <Navigate to="/dashboard" />} />
-        {/* Google OAuth callback — always public, handles its own auth state */}
-        <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
+    <>
+      <Router>
+        <Routes>
+          {/* Public routes — redirect to dashboard if already logged in */}
+          <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" />} />
+          <Route path="/register" element={!isAuthenticated ? <RegisterPage /> : <Navigate to="/dashboard" />} />
+          {/* Google OAuth callback — always public, handles its own auth state */}
+          <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
 
-        {/* Onboarding — full-screen, no sidebar/nav, inside ProtectedRoute but outside Layout */}
-        <Route element={<ProtectedRoute />}>
-          <Route path="/onboarding" element={<OnboardingPage />} />
-        </Route>
-
-        {/* Print views — full-screen, no sidebar/nav */}
-        <Route element={<ProtectedRoute />}>
-          <Route path="/sessions/:sessionId/print" element={<PrintSessionPage />} />
-          <Route path="/patients/:patientId/print" element={<PrintPatientPage />} />
-        </Route>
-
-        {/* Protected routes — redirect to /onboarding if not completed */}
-        <Route element={<ProtectedRoute />}>
-          <Route element={needsOnboarding ? <Navigate to="/onboarding" replace /> : <Layout />}>
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/messages" element={<MessagesPage />} />
-            <Route path="/patients" element={<PatientsPage />} />
-            <Route path="/patients/:patientId" element={<PatientProfilePage />} />
-            <Route path="/patients/:patientId/summaries" element={<PatientSummariesPage />} />
-            <Route path="/twin" element={<TwinProfilePage />} />
-            <Route path="/sessions" element={<SessionsPage />} />
-            <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
+          {/* Onboarding — full-screen, no sidebar/nav, inside ProtectedRoute but outside Layout */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/onboarding" element={<OnboardingPage />} />
           </Route>
-        </Route>
 
-        {/* Admin panel — guarded by sessionStorage admin_token */}
-        <Route element={<AdminGuard />}>
-          <Route element={<AdminLayout />}>
-            <Route path="/admin" element={<AdminDashboardPage />} />
-            <Route path="/admin/therapists" element={<AdminTherapistsPage />} />
-            <Route path="/admin/usage" element={<AdminUsagePage />} />
-            <Route path="/admin/alerts" element={<AdminAlertsPage />} />
+          {/* Print views — full-screen, no sidebar/nav */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/sessions/:sessionId/print" element={<PrintSessionPage />} />
+            <Route path="/patients/:patientId/print" element={<PrintPatientPage />} />
           </Route>
-        </Route>
 
-        {/* Default redirect */}
-        <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} />} />
-      </Routes>
-    </Router>
+          {/* Protected routes — redirect to /onboarding if not completed */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={needsOnboarding ? <Navigate to="/onboarding" replace /> : <Layout />}>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/messages" element={<MessagesPage />} />
+              <Route path="/patients" element={<PatientsPage />} />
+              <Route path="/patients/:patientId" element={<PatientProfilePage />} />
+              <Route path="/patients/:patientId/summaries" element={<PatientSummariesPage />} />
+              <Route path="/twin" element={<TwinProfilePage />} />
+              <Route path="/sessions" element={<SessionsPage />} />
+              <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
+            </Route>
+          </Route>
+
+          {/* Admin panel — guarded by sessionStorage admin_token */}
+          <Route element={<AdminGuard />}>
+            <Route element={<AdminLayout />}>
+              <Route path="/admin" element={<AdminDashboardPage />} />
+              <Route path="/admin/therapists" element={<AdminTherapistsPage />} />
+              <Route path="/admin/usage" element={<AdminUsagePage />} />
+              <Route path="/admin/alerts" element={<AdminAlertsPage />} />
+            </Route>
+          </Route>
+
+          {/* Default redirect */}
+          <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} />} />
+        </Routes>
+      </Router>
+
+      {/* Force password change modal — shown over everything, cannot be dismissed */}
+      {isAuthenticated && mustChangePassword && (
+        <ChangePasswordModal
+          onSuccess={() => {
+            setShowPasswordToast(true)
+            setTimeout(() => setShowPasswordToast(false), 4500)
+          }}
+        />
+      )}
+
+      {/* Success toast */}
+      {showPasswordToast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-green-800 border border-green-600 text-green-100 text-sm px-5 py-3 rounded-xl shadow-lg"
+          dir="rtl"
+        >
+          הסיסמה עודכנה בהצלחה ✓
+        </div>
+      )}
+    </>
   )
 }
 

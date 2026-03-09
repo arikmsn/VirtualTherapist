@@ -39,6 +39,7 @@ class Therapist(BaseModel):
     is_admin = Column(Boolean, default=False)
     is_blocked = Column(Boolean, default=False)
     last_login = Column(DateTime, nullable=True)
+    must_change_password = Column(Boolean, default=False)
 
     # OAuth
     auth_provider = Column(String(50), default="email")   # "email" | "google"

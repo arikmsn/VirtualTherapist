@@ -76,6 +76,14 @@ export const authAPI = {
     return response.data
   },
 
+  changePassword: async (currentPassword: string, newPassword: string): Promise<{ success: boolean }> => {
+    const response = await api.post('/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    })
+    return response.data
+  },
+
   // Fetch an HMAC-signed OAuth state token from the backend for CSRF protection.
   // Called by GoogleSignInButton before redirecting to Google.
   googleState: async (): Promise<{ state: string }> => {

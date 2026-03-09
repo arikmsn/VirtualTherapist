@@ -20,7 +20,7 @@ export default function LoginPage() {
 
     try {
       const data = await authAPI.login(email, password)
-      login(data.access_token, { id: data.therapist_id, email: data.email, fullName: data.full_name }, data.is_onboarding_completed)
+      login(data.access_token, { id: data.therapist_id, email: data.email, fullName: data.full_name }, data.is_onboarding_completed, data.must_change_password)
       // Return to the page the user was on before the session expired
       const redirectTo = sessionStorage.getItem('redirect_after_login') || '/dashboard'
       sessionStorage.removeItem('redirect_after_login')

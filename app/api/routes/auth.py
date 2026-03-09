@@ -73,6 +73,7 @@ class TokenResponse(BaseModel):
     therapist_id: int
     full_name: str
     email: str
+    must_change_password: bool = False
 
 
 class RegisterRequest(BaseModel):
@@ -117,7 +118,7 @@ async def register(
         # Admin alert: new signup
         try:
             alert = AdminAlert(
-                alert_type="new_signup",
+                type="new_signup",
                 message=f"מטפל/ת חדש/ה נרשם/ה: {therapist.full_name} ({therapist.email})",
                 therapist_id=therapist.id,
             )
@@ -195,6 +196,7 @@ async def login(
         "therapist_id": therapist.id,
         "full_name": therapist.full_name,
         "email": therapist.email,
+        "must_change_password": bool(therapist.must_change_password),
     }
 
 
@@ -260,6 +262,45 @@ async def refresh_token(
         "full_name": current_therapist.full_name,
         "email": current_therapist.email,
     }
+
+
+# ---------------------------------------------------------------------------
+# Change password — required after admin-issued temporary password
+# ---------------------------------------------------------------------------
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/change-password", status_code=200)
+async def change_password(
+    body: ChangePasswordRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """
+    Allow a therapist to change their password.
+    Used after an admin sends a temporary password (must_change_password=True).
+    Also available as a general self-service password change.
+    """
+    if len(body.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="הסיסמה החדשה חייבת להכיל לפחות 8 תווים",
+        )
+
+    if not verify_password(body.current_password, current_therapist.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="הסיסמה הזמנית שגויה",
+        )
+
+    current_therapist.hashed_password = get_password_hash(body.new_password)
+    current_therapist.must_change_password = False
+    db.commit()
+
+    return {"success": True}
 
 
 # ---------------------------------------------------------------------------
