@@ -50,6 +50,7 @@ class TherapistProfileResponse(BaseModel):
     profession: Optional[str] = None
     primary_therapy_modes: List[str] = []
     must_change_password: bool = False
+    intro_wizard_completed: bool = False
 
     class Config:
         from_attributes = True
@@ -157,6 +158,7 @@ def _profile_response(profile, therapist=None) -> TherapistProfileResponse:
         profession=profile.profession,
         primary_therapy_modes=_derive_modes(profile),
         must_change_password=bool(therapist.must_change_password) if therapist else False,
+        intro_wizard_completed=bool(therapist.intro_wizard_completed) if therapist else False,
     )
 
 
@@ -227,6 +229,21 @@ async def complete_onboarding(
         db.commit()
 
     return {"onboarding_completed": True}
+
+
+@router.post("/intro-wizard-complete", status_code=200)
+async def complete_intro_wizard(
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Mark the first-time data onboarding wizard as complete.
+    Idempotent — safe to call multiple times (including skip).
+    """
+    if not current_therapist.intro_wizard_completed:
+        current_therapist.intro_wizard_completed = True
+        db.commit()
+    return {"success": True}
 
 
 @router.post("/profile/reset", response_model=TherapistProfileResponse)

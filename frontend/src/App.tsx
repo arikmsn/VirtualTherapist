@@ -25,9 +25,10 @@ import AdminTherapistsPage from './pages/admin/AdminTherapistsPage'
 import AdminUsagePage from './pages/admin/AdminUsagePage'
 import AdminAlertsPage from './pages/admin/AdminAlertsPage'
 import ChangePasswordModal from './components/ChangePasswordModal'
+import OnboardingWizard from './components/OnboardingWizard'
 
 function AppRoutes() {
-  const { isAuthenticated, isReady, onboardingCompleted, mustChangePassword } = useAuth()
+  const { isAuthenticated, isReady, onboardingCompleted, mustChangePassword, introWizardCompleted, markIntroWizardComplete } = useAuth()
   const [showPasswordToast, setShowPasswordToast] = useState(false)
 
   // Wait for auth to initialize from localStorage before rendering routes.
@@ -105,6 +106,11 @@ function AppRoutes() {
           <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} />} />
         </Routes>
       </Router>
+
+      {/* First-time data onboarding wizard — shown after style onboarding, once, cannot be dismissed */}
+      {isAuthenticated && onboardingCompleted === true && introWizardCompleted === false && !mustChangePassword && (
+        <OnboardingWizard onComplete={markIntroWizardComplete} />
+      )}
 
       {/* Force password change modal — shown over everything, cannot be dismissed */}
       {isAuthenticated && mustChangePassword && (

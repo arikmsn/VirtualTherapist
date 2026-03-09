@@ -666,6 +666,11 @@ export const therapistAPI = {
     return response.data as { onboarding_completed: boolean }
   },
 
+  completeIntroWizard: async () => {
+    const response = await api.post('/therapist/intro-wizard-complete')
+    return response.data as { success: boolean }
+  },
+
   getSignatureProfile: async () => {
     const response = await api.get('/therapist/signature-profile')
     return response.data as {

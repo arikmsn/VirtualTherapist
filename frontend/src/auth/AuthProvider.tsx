@@ -26,10 +26,12 @@ export interface AuthContextValue {
   user: AuthUser | null
   onboardingCompleted: boolean | null  // null = not yet loaded
   mustChangePassword: boolean
+  introWizardCompleted: boolean | null  // null = not yet loaded from profile
   login: (token: string, user: AuthUser, onboardingCompleted?: boolean, mustChangePassword?: boolean) => void
   logout: () => void
   markOnboardingComplete: () => void
   clearMustChangePassword: () => void
+  markIntroWizardComplete: () => void
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)
@@ -43,6 +45,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false)
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null)
   const [mustChangePassword, setMustChangePassword] = useState(false)
+  const [introWizardCompleted, setIntroWizardCompleted] = useState<boolean | null>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearRefreshTimer = useCallback(() => {
@@ -60,6 +63,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
     setOnboardingCompleted(null)
     setMustChangePassword(false)
+    setIntroWizardCompleted(null)
   }, [clearRefreshTimer])
 
   // scheduleRefresh is defined after logout so it can reference it
@@ -120,8 +124,10 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       therapistAPI.getProfile().then((profile) => {
         setOnboardingCompleted(profile.onboarding_completed ?? true)
         setMustChangePassword(profile.must_change_password ?? false)
+        setIntroWizardCompleted(profile.intro_wizard_completed ?? false)
       }).catch(() => {
         setOnboardingCompleted(true)
+        setIntroWizardCompleted(true)
       })
     }
     scheduleRefresh(newToken)
@@ -133,6 +139,10 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearMustChangePassword = useCallback(() => {
     setMustChangePassword(false)
+  }, [])
+
+  const markIntroWizardComplete = useCallback(() => {
+    setIntroWizardCompleted(true)
   }, [])
 
   // On mount: restore token from localStorage and schedule refresh if still valid
@@ -150,9 +160,11 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
           therapistAPI.getProfile().then((profile) => {
             setOnboardingCompleted(profile.onboarding_completed ?? true)
             setMustChangePassword(profile.must_change_password ?? false)
+            setIntroWizardCompleted(profile.intro_wizard_completed ?? false)
           }).catch(() => {
             // If profile fetch fails, assume onboarding done to avoid blocking the UI
             setOnboardingCompleted(true)
+            setIntroWizardCompleted(true)
           })
         } catch {
           localStorage.removeItem('auth_user')
@@ -172,10 +184,12 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     user,
     onboardingCompleted,
     mustChangePassword,
+    introWizardCompleted,
     login,
     logout,
     markOnboardingComplete,
     clearMustChangePassword,
+    markIntroWizardComplete,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
