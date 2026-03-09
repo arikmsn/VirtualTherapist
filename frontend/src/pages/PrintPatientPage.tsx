@@ -117,11 +117,12 @@ export default function PrintPatientPage() {
   // Extract from the clinical plan_json schema (primary_goals / interventions_planned / milestones / risk_considerations)
   const pj = (plan?.plan_json ?? {}) as Record<string, unknown>
   const planPresentingProblem = pj.presenting_problem as string | undefined
+  const planFocusAreas = (pj.focus_areas ?? []) as string[]
   const planPrimaryGoals = (pj.primary_goals ?? []) as Array<{ goal_id?: string; description?: string; priority?: string; status?: string }>
   const planInterventionsPlanned = (pj.interventions_planned ?? []) as Array<{ intervention?: string; frequency?: string }>
   const planMilestones = (pj.milestones ?? []) as Array<{ description?: string; target_by_session?: number; achieved?: boolean }>
   const planRisks = (pj.risk_considerations ?? []) as string[]
-  const hasPlanContent = !!(planPresentingProblem || planPrimaryGoals.length || planInterventionsPlanned.length || planMilestones.length || planRisks.length)
+  const hasPlanContent = !!(planPresentingProblem || planFocusAreas.length || planPrimaryGoals.length || planInterventionsPlanned.length || planMilestones.length || planRisks.length)
 
   const PRIORITY_HE: Record<string, string> = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' }
   const STATUS_HE: Record<string, string> = { not_started: 'לא החלה', in_progress: 'בתהליך', achieved: 'הושגה', dropped: 'הופסקה' }
@@ -245,9 +246,20 @@ export default function PrintPatientPage() {
                   </section>
                 )}
 
+                {planFocusAreas.length > 0 && (
+                  <section>
+                    <h3 className="font-bold text-gray-900 mb-1.5">🔍 תחומי התמקדות</h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {planFocusAreas.map((area, i) => (
+                        <span key={i} className="px-2 py-0.5 border border-indigo-200 text-indigo-800 rounded-full text-xs">{area}</span>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
                 {planPrimaryGoals.length > 0 && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-2">🎯 מטרות טיפול</h3>
+                    <h3 className="font-bold text-gray-900 mb-2">🎯 מטרות טיפוליות</h3>
                     <div className="space-y-2">
                       {planPrimaryGoals.map((g, i) => (
                         <div key={i} className="border border-gray-100 rounded p-3">

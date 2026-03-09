@@ -126,6 +126,75 @@ export function treatmentPlanToText(plan: TreatmentPlan): string {
   return parts.join('\n').trim()
 }
 
+// ─── Clinical Treatment Plan (saved plan_json from TreatmentPlanPipeline) ───
+
+export function clinicalPlanToText(pj: Record<string, unknown>): string {
+  const parts: string[] = []
+
+  const presenting = pj.presenting_problem as string | undefined
+  if (presenting) {
+    parts.push('בעיה מוצגת')
+    parts.push(presenting)
+  }
+
+  const focusAreas = (pj.focus_areas ?? []) as string[]
+  if (focusAreas.length > 0) {
+    parts.push('\nתחומי התמקדות')
+    parts.push(focusAreas.map((a) => `• ${a}`).join('\n'))
+  }
+
+  type Goal = { goal_id?: string; description?: string; priority?: string; status?: string; target_sessions?: number }
+  const goals = (pj.primary_goals ?? []) as Goal[]
+  if (goals.length > 0) {
+    parts.push('\nמטרות טיפוליות')
+    const PRIORITY_HE: Record<string, string> = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' }
+    const STATUS_HE: Record<string, string> = {
+      not_started: 'לא החלה', in_progress: 'בתהליך', achieved: 'הושגה', dropped: 'הופסקה'
+    }
+    parts.push(
+      goals.map((g, i) => {
+        const id = g.goal_id ?? `G${i + 1}`
+        const pri = g.priority ? ` | עדיפות: ${PRIORITY_HE[g.priority] ?? g.priority}` : ''
+        const sts = g.status ? ` | סטטוס: ${STATUS_HE[g.status] ?? g.status}` : ''
+        return `• [${id}] ${g.description ?? ''}${pri}${sts}`
+      }).join('\n')
+    )
+  }
+
+  type Intervention = { intervention?: string; frequency?: string }
+  const interventions = (pj.interventions_planned ?? []) as Intervention[]
+  if (interventions.length > 0) {
+    parts.push('\nהתערבויות מתוכננות')
+    parts.push(
+      interventions.map((iv) => {
+        const freq = iv.frequency ? ` (${iv.frequency})` : ''
+        return `• ${iv.intervention ?? ''}${freq}`
+      }).join('\n')
+    )
+  }
+
+  type Milestone = { description?: string; target_by_session?: number; achieved?: boolean }
+  const milestones = (pj.milestones ?? []) as Milestone[]
+  if (milestones.length > 0) {
+    parts.push('\nאבני דרך')
+    parts.push(
+      milestones.map((m) => {
+        const by = m.target_by_session ? ` — פגישה ${m.target_by_session}` : ''
+        const done = m.achieved ? ' ✓' : ''
+        return `• ${m.description ?? ''}${by}${done}`
+      }).join('\n')
+    )
+  }
+
+  const risks = (pj.risk_considerations ?? []) as string[]
+  if (risks.length > 0) {
+    parts.push('\nשיקולי סיכון')
+    parts.push(risks.map((r) => `• ${r}`).join('\n'))
+  }
+
+  return parts.join('\n').trim()
+}
+
 // ─── Session Summary ─────────────────────────────────────────────────────────
 
 function stripAiArtifacts(text: string | null | undefined): string {

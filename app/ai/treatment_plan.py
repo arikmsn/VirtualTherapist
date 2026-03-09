@@ -66,6 +66,7 @@ class DriftResult:
 
 TREATMENT_PLAN_JSON_SCHEMA: dict = {
     "presenting_problem": "",
+    "focus_areas": [],
     "primary_goals": [
         {
             "goal_id": "G1",
@@ -190,7 +191,9 @@ def _build_extraction_user_prompt(inp: TreatmentPlanInput) -> str:
     parts.append(
         f"Fill the JSON schema below. Set version={version}. "
         f"Set created_at_session={session_count}. "
-        "Set confidence to your confidence level (0.0–1.0)."
+        "Set confidence to your confidence level (0.0–1.0). "
+        "Populate focus_areas as a list of short Hebrew strings (2–5 words each) "
+        "describing the primary therapeutic focus areas."
     )
     parts.append(f"\nJSON schema:\n{_SCHEMA_STR}")
     return "\n".join(parts)
@@ -357,7 +360,7 @@ class TreatmentPlanPipeline:
             model=model_id,
             flow_type=FlowType.TREATMENT_PLAN,
             route_reason=route_reason,
-            max_tokens=4096,
+            max_tokens=8192,
         )
         self._last_render_result = result
         return result.content

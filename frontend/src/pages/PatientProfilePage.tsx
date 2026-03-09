@@ -37,7 +37,7 @@ import { patientsAPI, sessionsAPI, patientSummariesAPI, exercisesAPI, patientNot
 import { usePrepStream } from '@/hooks/usePrepStream'
 import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
 import CopyButton from '@/components/CopyButton'
-import { deepSummaryToText, treatmentPlanToText } from '@/lib/docText'
+import { deepSummaryToText, clinicalPlanToText } from '@/lib/docText'
 
 const SESSION_TYPES = [
   { value: 'individual', label: 'פרטני' },
@@ -113,18 +113,6 @@ interface DeepSummary {
   patterns?: string[]
   risks?: string[]
   suggestions_for_next_sessions?: string[]
-}
-
-interface TreatmentPlanGoal {
-  id: string
-  title: string
-  description: string
-}
-
-interface TreatmentPlan {
-  goals: TreatmentPlanGoal[]
-  focus_areas: string[]
-  suggested_interventions: string[]
 }
 
 interface NoteItem {
@@ -232,13 +220,10 @@ export default function PatientProfilePage() {
   } | null>(null)
 
   // Treatment plan
-  const [treatmentPlan, setTreatmentPlan] = useState<TreatmentPlan | null>(null)
   const [planLoading, setPlanLoading] = useState(false)
   const [planError, setPlanError] = useState('')
-  // Saved plan versions
   const [savedPlan, setSavedPlan] = useState<TreatmentPlanVersion | null>(null)
   const [planHistory, setPlanHistory] = useState<TreatmentPlanVersion[]>([])
-  const [savingPlan, setSavingPlan] = useState(false)
   const [planSaveSuccess, setPlanSaveSuccess] = useState(false)
   const [planHistoryLoading, setPlanHistoryLoading] = useState(false)
   const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null)
@@ -502,20 +487,6 @@ export default function PatientProfilePage() {
   const handleGeneratePlan = async () => {
     setPlanLoading(true)
     setPlanError('')
-    setTreatmentPlan(null)
-    try {
-      const result = await treatmentPlanAPI.preview(pid)
-      setTreatmentPlan(result)
-    } catch (err: any) {
-      setPlanError(err.response?.data?.detail || 'שגיאה ביצירת התוכנית הטיפולית')
-    } finally {
-      setPlanLoading(false)
-    }
-  }
-
-  const handleSavePlan = async () => {
-    setSavingPlan(true)
-    setPlanError('')
     try {
       let saved: TreatmentPlanVersion
       if (savedPlan && savedPlan.status === 'active') {
@@ -526,14 +497,13 @@ export default function PatientProfilePage() {
       setSavedPlan(saved)
       setPlanSaveSuccess(true)
       setTimeout(() => setPlanSaveSuccess(false), 3000)
-      // Optimistic update: show the new version immediately
+      // Optimistic update then background refresh for canonical order + plan_json
       setPlanHistory((prev) => {
         const without = prev.filter((p) => p.plan_id !== saved.plan_id)
         return [saved, ...without].sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         )
       })
-      // Background refresh to get server-canonical order + plan_json
       try {
         const history = await treatmentPlanAPI.getHistory(pid)
         setPlanHistory(history as TreatmentPlanVersion[])
@@ -558,13 +528,13 @@ export default function PatientProfilePage() {
             setPlanHistory(history as TreatmentPlanVersion[])
           } catch { /* non-critical */ }
         } catch (err2: any) {
-          setPlanError(err2.response?.data?.detail || 'שגיאה בשמירת התוכנית')
+          setPlanError(err2.response?.data?.detail || 'שגיאה בעדכון התוכנית')
         }
       } else {
-        setPlanError(msg || 'שגיאה בשמירת התוכנית')
+        setPlanError(msg || 'שגיאה ביצירת התוכנית הטיפולית')
       }
     } finally {
-      setSavingPlan(false)
+      setPlanLoading(false)
     }
   }
 
@@ -1182,14 +1152,16 @@ export default function PatientProfilePage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <ClipboardDocumentListIcon className="h-5 w-5 text-indigo-600" />
                 <h2 className="text-lg font-bold text-indigo-900">תוכנית טיפולית</h2>
-                <span className="text-xs text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">הצעת AI</span>
                 {isCbtActive && (
                   <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">במבנה CBT</span>
                 )}
+                {savedPlan && planSaveSuccess && (
+                  <span className="text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded-full">✓ נשמר</span>
+                )}
               </div>
               <div className="flex gap-2 flex-wrap items-center self-start">
-                {treatmentPlan && (
-                  <CopyButton text={treatmentPlanToText(treatmentPlan)} />
+                {savedPlan && (
+                  <CopyButton text={clinicalPlanToText((savedPlan.plan_json ?? {}) as Record<string, unknown>)} />
                 )}
                 {savedPlan && (
                   <button
@@ -1200,7 +1172,7 @@ export default function PatientProfilePage() {
                     🖨 הדפסה
                   </button>
                 )}
-                {treatmentPlan && (
+                {savedPlan && (
                   <button
                     onClick={handleGeneratePlan}
                     disabled={planLoading}
@@ -1210,27 +1182,14 @@ export default function PatientProfilePage() {
                     רענון
                   </button>
                 )}
-                {treatmentPlan && (
-                  <button
-                    onClick={handleSavePlan}
-                    disabled={savingPlan}
-                    className={`flex items-center gap-1.5 text-sm text-white rounded-lg px-3 py-2 transition-colors min-h-[40px] touch-manipulation disabled:opacity-50 ${
-                      planSaveSuccess
-                        ? 'bg-green-600 hover:bg-green-700'
-                        : 'bg-indigo-600 hover:bg-indigo-700'
-                    }`}
-                  >
-                    {savingPlan ? 'שומר...' : planSaveSuccess ? '✓ נשמר' : 'שמור תוכנית'}
-                  </button>
-                )}
               </div>
             </div>
 
-            {!treatmentPlan && !planLoading && !planError && (
+            {!savedPlan && !planLoading && !planError && (
               <div className="text-center py-8">
                 <ClipboardDocumentListIcon className="h-12 w-12 text-indigo-300 mx-auto mb-3" />
                 <p className="text-indigo-700 text-sm mb-4">
-                  עדיין אין תוכנית טיפולית. לחץ על הכפתור ליצירת הצעת תוכנית המבוססת על ההיסטוריה הקלינית.
+                  עדיין אין תוכנית טיפולית. לחץ על הכפתור ליצירת תוכנית המבוססת על ההיסטוריה הקלינית.
                 </p>
                 <button
                   onClick={handleGeneratePlan}
@@ -1238,7 +1197,7 @@ export default function PatientProfilePage() {
                   className="btn-primary flex items-center gap-2 mx-auto disabled:opacity-50 min-h-[44px] touch-manipulation"
                 >
                   <SparklesIcon className="h-4 w-4" />
-                  הצג הצעת תוכנית טיפולית מה‑AI
+                  צור תוכנית טיפולית
                 </button>
               </div>
             )}
@@ -1246,7 +1205,7 @@ export default function PatientProfilePage() {
             {planLoading && (
               <div className="flex items-center justify-center py-12 gap-3">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-                <span className="text-indigo-700 text-sm">מייצר סיכום מלא. זה עשוי לקחת דקה</span>
+                <span className="text-indigo-700 text-sm">מייצר ושומר תוכנית טיפולית. זה עשוי לקחת דקה...</span>
               </div>
             )}
 
@@ -1263,66 +1222,132 @@ export default function PatientProfilePage() {
               </div>
             )}
 
-            {treatmentPlan && !planLoading && (
-              <div className="space-y-4 mt-2">
-                {/* Goals */}
-                {(treatmentPlan.goals || []).length > 0 && (
-                  <div>
-                    <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
-                      <span className="text-base">🎯</span> מטרות טיפול
-                    </h3>
-                    <div className="space-y-2">
-                      {(treatmentPlan.goals || []).map((goal) => (
-                        <div key={goal.id} className="bg-white rounded-lg p-3 border border-indigo-100">
-                          <p className="font-medium text-gray-900 text-sm">{goal.title}</p>
-                          <p className="text-gray-600 text-sm mt-0.5 leading-relaxed">{goal.description}</p>
-                        </div>
-                      ))}
+            {savedPlan && !planLoading && (() => {
+              const pj = (savedPlan.plan_json ?? {}) as Record<string, unknown>
+              const presenting = pj.presenting_problem as string | undefined
+              const focusAreas = (pj.focus_areas ?? []) as string[]
+              type Goal = { goal_id?: string; description?: string; priority?: string; status?: string }
+              const goals = (pj.primary_goals ?? []) as Goal[]
+              type Intervention = { intervention?: string; frequency?: string }
+              const interventions = (pj.interventions_planned ?? []) as Intervention[]
+              type Milestone = { description?: string; target_by_session?: number; achieved?: boolean }
+              const milestones = (pj.milestones ?? []) as Milestone[]
+              const risks = (pj.risk_considerations ?? []) as string[]
+              const PRIORITY_HE: Record<string, string> = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' }
+              const STATUS_HE: Record<string, string> = { not_started: 'לא החלה', in_progress: 'בתהליך', achieved: 'הושגה', dropped: 'הופסקה' }
+              return (
+                <div className="space-y-4 mt-2">
+                  {presenting && (
+                    <div>
+                      <h3 className="font-semibold text-indigo-900 mb-1.5 flex items-center gap-1.5">
+                        <span className="text-base">📋</span> בעיה מוצגת
+                      </h3>
+                      <p className="text-sm text-gray-700 bg-white rounded-lg p-3 border border-indigo-100 whitespace-pre-line">{presenting}</p>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Focus areas */}
-                {(treatmentPlan.focus_areas || []).length > 0 && (
-                  <div>
-                    <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
-                      <span className="text-base">🔍</span> נושאים מרכזיים לעבודה
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {(treatmentPlan.focus_areas || []).map((area, i) => (
-                        <span
-                          key={i}
-                          className="px-3 py-1.5 bg-white border border-indigo-200 text-indigo-800 rounded-full text-sm"
-                        >
-                          {area}
-                        </span>
-                      ))}
+                  {focusAreas.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-indigo-900 mb-2 flex items-center gap-1.5">
+                        <span className="text-base">🔍</span> תחומי התמקדות
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {focusAreas.map((area, i) => (
+                          <span key={i} className="px-3 py-1.5 bg-white border border-indigo-200 text-indigo-800 rounded-full text-sm">
+                            {area}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Suggested interventions */}
-                {(treatmentPlan.suggested_interventions || []).length > 0 && (
-                  <div>
-                    <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
-                      <span className="text-base">🛠️</span> סוגי התערבויות מוצעות
-                    </h3>
-                    <ul className="space-y-1.5">
-                      {(treatmentPlan.suggested_interventions || []).map((item, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                          <CheckCircleIcon className="h-4 w-4 text-indigo-400 flex-shrink-0 mt-0.5" />
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                  {goals.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
+                        <span className="text-base">🎯</span> מטרות טיפוליות
+                      </h3>
+                      <div className="space-y-2">
+                        {goals.map((g, i) => (
+                          <div key={g.goal_id ?? i} className="bg-white rounded-lg p-3 border border-indigo-100">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm text-gray-800 leading-relaxed flex-1">{g.description}</p>
+                              <div className="flex gap-1 flex-shrink-0 flex-wrap">
+                                {g.priority && (
+                                  <span className={`text-xs px-1.5 py-0.5 rounded ${g.priority === 'high' ? 'bg-red-100 text-red-700' : g.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
+                                    {PRIORITY_HE[g.priority] ?? g.priority}
+                                  </span>
+                                )}
+                                {g.status && (
+                                  <span className={`text-xs px-1.5 py-0.5 rounded ${g.status === 'achieved' ? 'bg-green-100 text-green-700' : g.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                                    {STATUS_HE[g.status] ?? g.status}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-                <p className="text-xs text-indigo-500 pt-2 border-t border-indigo-100">
-                  * הצעת AI בלבד — מבוססת על סיכומים מאושרים ומשימות. כל החלטה טיפולית נתונה לשיקול דעת המטפל.
-                </p>
-              </div>
-            )}
+                  {interventions.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
+                        <span className="text-base">🛠️</span> התערבויות מתוכננות
+                      </h3>
+                      <ul className="space-y-1.5">
+                        {interventions.map((iv, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                            <CheckCircleIcon className="h-4 w-4 text-indigo-400 flex-shrink-0 mt-0.5" />
+                            <span>{iv.intervention}{iv.frequency && <span className="text-gray-400"> — {iv.frequency}</span>}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {milestones.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
+                        <span className="text-base">🏁</span> אבני דרך
+                      </h3>
+                      <ul className="space-y-1.5">
+                        {milestones.map((m, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                            <span className={m.achieved ? 'text-green-500' : 'text-gray-300'}>●</span>
+                            <span>
+                              {m.description}
+                              {m.target_by_session && <span className="text-gray-400"> — פגישה {m.target_by_session}</span>}
+                              {m.achieved && <span className="text-green-600"> ✓</span>}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {risks.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
+                        <span className="text-base">⚠️</span> שיקולי סיכון
+                      </h3>
+                      <ul className="space-y-1">
+                        {risks.map((r, i) => (
+                          <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                            <ExclamationTriangleIcon className="h-4 w-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                            {r}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-indigo-500 pt-2 border-t border-indigo-100">
+                    * מבוסס על סיכומים מאושרים. כל החלטה טיפולית נתונה לשיקול דעת המטפל.
+                  </p>
+                </div>
+              )
+            })()}
           </div>
 
           {/* Saved plan version history */}
@@ -1370,17 +1395,28 @@ export default function PatientProfilePage() {
                       const vGoals = (pjv.primary_goals ?? []) as Array<{ goal_id?: string; description?: string; priority?: string; status?: string }>
                       const vIntvs = (pjv.interventions_planned ?? []) as Array<{ intervention?: string; frequency?: string }>
                       const vMiles = (pjv.milestones ?? []) as Array<{ description?: string; target_by_session?: number; achieved?: boolean }>
-                      const vRisks = (pjv.risk_considerations ?? []) as string[]
+                      const vRisks = (pjv.risk_consideration ?? pjv.risk_considerations ?? []) as string[]
                       const vPresenting = pjv.presenting_problem as string | undefined
+                      const vFocusAreas = (pjv.focus_areas ?? []) as string[]
                       const PRIO: Record<string, string> = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' }
                       const STAT: Record<string, string> = { not_started: 'לא החלה', in_progress: 'בתהליך', achieved: 'הושגה', dropped: 'הופסקה' }
-                      const hasContent = !!(vPresenting || vGoals.length || vIntvs.length || vMiles.length || vRisks.length)
+                      const hasContent = !!(vPresenting || vFocusAreas.length || vGoals.length || vIntvs.length || vMiles.length || vRisks.length)
                       return hasContent ? (
                         <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
                           {vPresenting && (
                             <div>
                               <p className="text-xs font-semibold text-gray-500 mb-1">בעיה מוצגת</p>
                               <p className="text-sm text-gray-700 whitespace-pre-line">{vPresenting}</p>
+                            </div>
+                          )}
+                          {vFocusAreas.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-1">תחומי התמקדות</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {vFocusAreas.map((a, ai) => (
+                                  <span key={ai} className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-full text-xs">{a}</span>
+                                ))}
+                              </div>
                             </div>
                           )}
                           {vGoals.length > 0 && (
