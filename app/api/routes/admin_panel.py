@@ -103,7 +103,7 @@ class TherapistRow(BaseModel):
 
 class AlertRow(BaseModel):
     id: int
-    alert_type: str
+    type: str
     message: str
     therapist_id: Optional[int]
     therapist_name: Optional[str]
@@ -490,7 +490,7 @@ def list_alerts(
                 therapist_name = t.full_name
         result.append(AlertRow(
             id=a.id,
-            alert_type=a.alert_type,
+            type=a.type,
             message=a.message,
             therapist_id=a.therapist_id,
             therapist_name=therapist_name,

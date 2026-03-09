@@ -79,7 +79,7 @@ export interface TherapistRow {
 
 export interface AlertRow {
   id: number
-  alert_type: string
+  type: string
   message: string
   therapist_id: number | null
   therapist_name: string | null

@@ -82,8 +82,8 @@ export default function AdminAlertsPage() {
 
   const filtered = alerts.filter((a) => {
     if (tab === 'unread') return !a.is_read
-    if (tab === 'system') return SYSTEM_TYPES.has(a.alert_type)
-    if (tab === 'users') return USER_TYPES.has(a.alert_type)
+    if (tab === 'system') return SYSTEM_TYPES.has(a.type)
+    if (tab === 'users') return USER_TYPES.has(a.type)
     return true
   })
 
@@ -150,11 +150,11 @@ export default function AdminAlertsPage() {
       ) : (
         <div className="space-y-2">
           {filtered.map((alert) => {
-            const meta = ALERT_META[alert.alert_type] || {
-              label: alert.alert_type, icon: '📌', color: 'bg-gray-700 text-gray-300',
+            const meta = ALERT_META[alert.type] || {
+              label: alert.type, icon: '📌', color: 'bg-gray-700 text-gray-300',
             }
             const isExpanded = expanded.has(alert.id)
-            const isSystemError = alert.alert_type === 'system_error'
+            const isSystemError = alert.type === 'system_error'
 
             return (
               <div

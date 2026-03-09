@@ -34,7 +34,7 @@ def create_alert(
             exists = (
                 db.query(AdminAlert)
                 .filter(
-                    AdminAlert.alert_type == alert_type,
+                    AdminAlert.type == alert_type,
                     AdminAlert.therapist_id == therapist_id,
                     AdminAlert.created_at >= today_start,
                 )
@@ -44,7 +44,7 @@ def create_alert(
                 return
 
         alert = AdminAlert(
-            alert_type=alert_type,
+            type=alert_type,
             message=message,
             therapist_id=therapist_id,
         )
