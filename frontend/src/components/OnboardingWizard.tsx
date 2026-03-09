@@ -218,12 +218,18 @@ export default function OnboardingWizard({ onComplete }: Props) {
   // On mount: check for existing patients + load therapist's therapy methods
   useEffect(() => {
     patientsAPI.list().then((patients: any[]) => {
+      console.log('[OnboardingWizard] patient count on mount:', patients.length)
       if (patients.length > 0) {
+        // Therapist already has patients — silently complete the wizard
+        console.log('[OnboardingWizard] existing patients found — auto-completing wizard')
         therapistAPI.completeIntroWizard().catch(() => {})
         onComplete()
+      } else {
+        console.log('[OnboardingWizard] no patients — showing wizard')
       }
-    }).catch(() => {
-      onComplete()
+    }).catch((err: any) => {
+      // List failed — do NOT complete the wizard; just show it
+      console.log('[OnboardingWizard] patient list failed (will show wizard):', err?.message ?? err)
     })
 
     therapistAPI.getProfile().then((profile: any) => {
