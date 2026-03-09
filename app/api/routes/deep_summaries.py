@@ -173,6 +173,30 @@ async def get_deep_summary_history(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete(
+    "/deep-summaries/{summary_id}",
+    status_code=204,
+)
+async def delete_deep_summary(
+    summary_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Hard-delete a deep summary. Returns 404 if not found or wrong owner."""
+    summary_service = DeepSummaryService(db)
+    try:
+        summary_service.delete_deep_summary(
+            summary_id=summary_id,
+            therapist_id=current_therapist.id,
+        )
+        db.commit()
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(f"delete_deep_summary summary={summary_id} failed: {e!r}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.patch(
     "/deep-summaries/{summary_id}/approve",
     response_model=DeepSummaryResponse,

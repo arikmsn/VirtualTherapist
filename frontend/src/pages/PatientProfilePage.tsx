@@ -218,6 +218,7 @@ export default function PatientProfilePage() {
   const [viewingDeepSummary, setViewingDeepSummary] = useState<{
     created_at: string; rendered_text: string | null; summary_json: Record<string, unknown> | null
   } | null>(null)
+  const [deletingDeepSummaryId, setDeletingDeepSummaryId] = useState<number | null>(null)
 
   // Treatment plan
   const [planLoading, setPlanLoading] = useState(false)
@@ -227,6 +228,7 @@ export default function PatientProfilePage() {
   const [planSaveSuccess, setPlanSaveSuccess] = useState(false)
   const [planHistoryLoading, setPlanHistoryLoading] = useState(false)
   const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null)
+  const [deletingPlanId, setDeletingPlanId] = useState<number | null>(null)
 
   // Prep brief modal
   const [prepModalSession, setPrepModalSession] = useState<PrepModalSession | null>(null)
@@ -305,6 +307,14 @@ export default function PatientProfilePage() {
     }
     load()
     loadDeepHistory()
+    // Load latest saved deep summary so it shows without requiring AI generation
+    patientSummariesAPI.getLatestDeepSummary(pid)
+      .then((resp) => {
+        if (resp.summary_json && !insight) {
+          setInsight(resp.summary_json as unknown as DeepSummary)
+        }
+      })
+      .catch(() => { /* no summary yet — that's fine */ })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pid, tab])
 
@@ -472,15 +482,49 @@ export default function PatientProfilePage() {
   const handleGenerateInsight = async () => {
     setInsightLoading(true)
     setInsightError('')
-    setInsight(null)
     try {
       const result = await patientSummariesAPI.generateDeepSummary(pid)
-      setInsight(result)
+      if (result.summary_json) {
+        setInsight(result.summary_json as unknown as DeepSummary)
+      }
       loadDeepHistory()
     } catch (err: any) {
       setInsightError(err.response?.data?.detail || 'שגיאה ביצירת סיכום העומק')
     } finally {
       setInsightLoading(false)
+    }
+  }
+
+  const handleDeleteDeepSummary = async (summaryId: number) => {
+    try {
+      await patientSummariesAPI.deleteDeepSummary(summaryId)
+      setDeepHistory((prev) => prev.filter((s) => s.summary_id !== summaryId))
+      // If the deleted summary was the latest, reload the next one
+      const remaining = deepHistory.filter((s) => s.summary_id !== summaryId)
+      if (remaining.length > 0) {
+        const next = remaining[0]
+        if (next.summary_json) setInsight(next.summary_json as unknown as DeepSummary)
+      } else {
+        setInsight(null)
+      }
+    } catch (err: any) {
+      console.error('Failed to delete deep summary:', err)
+    } finally {
+      setDeletingDeepSummaryId(null)
+    }
+  }
+
+  const handleDeletePlan = async (planId: number) => {
+    try {
+      await treatmentPlanAPI.deletePlan(planId)
+      setPlanHistory((prev) => prev.filter((p) => p.plan_id !== planId))
+      if (savedPlan?.plan_id === planId) {
+        setSavedPlan(null)
+      }
+    } catch (err: any) {
+      console.error('Failed to delete treatment plan:', err)
+    } finally {
+      setDeletingPlanId(null)
     }
   }
 
@@ -869,6 +913,8 @@ export default function PatientProfilePage() {
                     <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white flex-shrink-0"></span>
                     מייצר סיכום מלא. זה עשוי לקחת דקה
                   </>
+                ) : insight ? (
+                  'יצירת סיכום מעודכן'
                 ) : (
                   'צור סיכום עומק'
                 )}
@@ -983,17 +1029,52 @@ export default function PatientProfilePage() {
                 {deepHistoryLoading && <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-purple-400 mr-auto" />}
               </h3>
               <div className="space-y-2">
-                {deepHistory.map((item) => (
+                {deepHistory.map((item, idx) => (
                   <div key={item.summary_id} className="rounded-lg border border-purple-100 bg-purple-50 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-gray-500">{formatDateIL(item.created_at)}</span>
-                      <button
-                        type="button"
-                        onClick={() => setViewingDeepSummary(item)}
-                        className="text-xs text-purple-600 hover:text-purple-800 shrink-0"
-                      >
-                        הצג
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-gray-500">{formatDateIL(item.created_at)}</span>
+                        {idx === 0 ? (
+                          <span className="text-xs bg-purple-600 text-white px-1.5 py-0.5 rounded-full">פעילה</span>
+                        ) : (
+                          <span className="text-xs bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full">ארכיון</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setViewingDeepSummary(item)}
+                          className="text-xs text-purple-600 hover:text-purple-800"
+                        >
+                          הצג
+                        </button>
+                        {deletingDeepSummaryId === item.summary_id ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDeepSummary(item.summary_id)}
+                              className="text-xs text-red-600 hover:text-red-800 font-medium"
+                            >
+                              אשר מחיקה
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingDeepSummaryId(null)}
+                              className="text-xs text-gray-500 hover:text-gray-700"
+                            >
+                              ביטול
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDeletingDeepSummaryId(item.summary_id)}
+                            className="text-xs text-gray-400 hover:text-red-500"
+                          >
+                            מחיקה
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {item.rendered_text && (
                       <p className="text-xs text-gray-600 mt-1 line-clamp-2 leading-relaxed">
@@ -1179,7 +1260,7 @@ export default function PatientProfilePage() {
                     className="flex items-center gap-1.5 text-sm text-indigo-700 hover:text-indigo-900 border border-indigo-300 hover:border-indigo-500 bg-white rounded-lg px-3 py-2 transition-colors disabled:opacity-50 min-h-[40px] touch-manipulation"
                   >
                     <ArrowPathIcon className={`h-4 w-4 ${planLoading ? 'animate-spin' : ''}`} />
-                    רענון
+                    יצירת תכנית מעודכנת
                   </button>
                 )}
               </div>
@@ -1382,13 +1463,41 @@ export default function PatientProfilePage() {
                         )}
                         <span className="text-xs text-gray-400">{formatDateIL(v.created_at)}</span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setExpandedHistoryId(expandedHistoryId === v.plan_id ? null : v.plan_id)}
-                        className="text-xs text-indigo-600 hover:text-indigo-800 shrink-0"
-                      >
-                        {expandedHistoryId === v.plan_id ? 'סגור' : 'הצג'}
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedHistoryId(expandedHistoryId === v.plan_id ? null : v.plan_id)}
+                          className="text-xs text-indigo-600 hover:text-indigo-800"
+                        >
+                          {expandedHistoryId === v.plan_id ? 'סגור' : 'הצג'}
+                        </button>
+                        {deletingPlanId === v.plan_id ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePlan(v.plan_id)}
+                              className="text-xs text-red-600 hover:text-red-800 font-medium"
+                            >
+                              אשר מחיקה
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingPlanId(null)}
+                              className="text-xs text-gray-500 hover:text-gray-700"
+                            >
+                              ביטול
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDeletingPlanId(v.plan_id)}
+                            className="text-xs text-gray-400 hover:text-red-500"
+                          >
+                            מחיקה
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {expandedHistoryId === v.plan_id && (() => {
                       const pjv = (v.plan_json ?? {}) as Record<string, unknown>

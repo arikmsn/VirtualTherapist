@@ -450,13 +450,26 @@ export const patientSummariesAPI = {
   },
 
   generateDeepSummary: async (patientId: number) => {
-    const response = await api.post(`/patients/${patientId}/deep-summary`)
+    const response = await api.post(`/clients/${patientId}/deep-summary`)
     return response.data as {
-      overall_treatment_picture: string
-      timeline_highlights: string[]
-      goals_and_tasks: string
-      measurable_progress: string
-      directions_for_next_phase: string
+      summary_id: number
+      status: string
+      sessions_covered: number | null
+      summary_json: Record<string, unknown> | null
+      rendered_text: string | null
+      created_at: string
+    }
+  },
+
+  getLatestDeepSummary: async (patientId: number) => {
+    const response = await api.get(`/clients/${patientId}/deep-summary`)
+    return response.data as {
+      summary_id: number
+      status: string
+      sessions_covered: number | null
+      summary_json: Record<string, unknown> | null
+      rendered_text: string | null
+      created_at: string
     }
   },
 
@@ -470,6 +483,10 @@ export const patientSummariesAPI = {
       rendered_text: string | null
       summary_json: Record<string, unknown> | null
     }>
+  },
+
+  deleteDeepSummary: async (summaryId: number) => {
+    await api.delete(`/deep-summaries/${summaryId}`)
   },
 }
 
@@ -539,6 +556,10 @@ export const treatmentPlanAPI = {
     // so callers who need to restore a version use getHistory + get.
     const response = await api.get(`/treatment-plans/${planId}`)
     return response.data as TreatmentPlanVersion
+  },
+
+  deletePlan: async (planId: number) => {
+    await api.delete(`/treatment-plans/${planId}`)
   },
 }
 

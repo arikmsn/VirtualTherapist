@@ -270,6 +270,30 @@ async def check_drift(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete(
+    "/treatment-plans/{plan_id}",
+    status_code=204,
+)
+async def delete_treatment_plan(
+    plan_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Hard-delete a treatment plan version. Returns 404 if not found or wrong owner."""
+    plan_service = TreatmentPlanService(db)
+    try:
+        plan_service.delete_plan(
+            plan_id=plan_id,
+            therapist_id=current_therapist.id,
+        )
+        db.commit()
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception(f"delete_treatment_plan plan={plan_id} failed: {e!r}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.patch(
     "/treatment-plans/{plan_id}/approve",
     response_model=TreatmentPlanResponse,

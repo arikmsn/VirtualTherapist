@@ -307,6 +307,17 @@ class DeepSummaryService:
         self.db.flush()
         return summary
 
+    def delete_deep_summary(self, summary_id: int, therapist_id: int) -> None:
+        """Hard-delete a deep summary. Raises ValueError if not found or wrong owner."""
+        summary = self.db.query(DeepSummary).filter(
+            DeepSummary.id == summary_id,
+            DeepSummary.therapist_id == therapist_id,
+        ).first()
+        if not summary:
+            raise ValueError("Deep summary not found or does not belong to this therapist")
+        self.db.delete(summary)
+        self.db.flush()
+
     # ── Vault operations ──────────────────────────────────────────────────────
 
     async def _extract_and_store_vault_entries(

@@ -384,6 +384,17 @@ class TreatmentPlanService:
         self.db.flush()
         return plan
 
+    def delete_plan(self, plan_id: int, therapist_id: int) -> None:
+        """Hard-delete a treatment plan version. Raises ValueError if not found or wrong owner."""
+        plan = self.db.query(TreatmentPlan).filter(
+            TreatmentPlan.id == plan_id,
+            TreatmentPlan.therapist_id == therapist_id,
+        ).first()
+        if not plan:
+            raise ValueError("Treatment plan not found or does not belong to this therapist")
+        self.db.delete(plan)
+        self.db.flush()
+
     async def run_drift_check(
         self,
         patient_id: int,
