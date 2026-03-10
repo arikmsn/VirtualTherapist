@@ -43,6 +43,9 @@ class Therapist(BaseModel):
     intro_wizard_completed = Column(Boolean, default=False)
     profile_setup_completed = Column(Boolean, default=False)
 
+    # Marketing attribution — set from ?plan= query param on /register
+    intended_plan = Column(String(50), nullable=True)      # e.g. 'pro'; NULL = no plan param
+
     # OAuth
     auth_provider = Column(String(50), default="email")   # "email" | "google"
     google_sub = Column(String(255), unique=True, index=True)  # Google user ID (nullable)

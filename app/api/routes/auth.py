@@ -81,6 +81,7 @@ class RegisterRequest(BaseModel):
     password: str
     full_name: str
     phone: str | None = None
+    intended_plan: str | None = None  # marketing attribution from ?plan= URL param
 
 
 @router.post("/register", response_model=TokenResponse)
@@ -108,6 +109,11 @@ async def register(
             full_name=request.full_name,
             phone=phone
         )
+
+        # Persist marketing attribution if provided (only accepted values stored)
+        if request.intended_plan == 'pro':
+            therapist.intended_plan = 'pro'
+            db.commit()
 
         # Create access token
         access_token = create_access_token(

@@ -124,6 +124,7 @@ export default function AdminTherapistsPage() {
   const [error, setError] = useState('')
   const [blocking, setBlocking] = useState<number | null>(null)
   const [search, setSearch] = useState('')
+  const [planFilter, setPlanFilter] = useState<string>('')
 
   const [deleteTarget, setDeleteTarget] = useState<TherapistRow | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -134,12 +135,13 @@ export default function AdminTherapistsPage() {
   const showToast = (message: string, type: 'success' | 'error') => setToast({ message, type })
 
   useEffect(() => {
+    setLoading(true)
     adminAPI
-      .getTherapists()
+      .getTherapists(planFilter || undefined)
       .then(setTherapists)
       .catch((e) => setError(`שגיאה בטעינת מטפלים (${e.message})`))
       .finally(() => setLoading(false))
-  }, [])
+  }, [planFilter])
 
   async function toggleBlock(t: TherapistRow) {
     setBlocking(t.id)
@@ -192,6 +194,8 @@ export default function AdminTherapistsPage() {
       t.email.toLowerCase().includes(search.toLowerCase()),
   )
 
+  const proCount = therapists.filter((t) => t.intended_plan === 'pro').length
+
   if (loading) {
     return (
       <div className="p-8">
@@ -226,16 +230,33 @@ export default function AdminTherapistsPage() {
       )}
 
       <h1 className="text-2xl font-bold text-white mb-1">מטפלים</h1>
-      <p className="text-sm text-gray-400 mb-6">{therapists.length} חשבונות רשומים</p>
+      <p className="text-sm text-gray-400 mb-6">
+        {therapists.length} חשבונות רשומים
+        {proCount > 0 && (
+          <span className="mr-2 text-xs bg-indigo-900 text-indigo-300 px-2 py-0.5 rounded-full">
+            {proCount} pro
+          </span>
+        )}
+      </p>
 
-      <input
-        type="text"
-        placeholder="חיפוש לפי שם או אימייל..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="mb-6 w-full max-w-sm bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        dir="rtl"
-      />
+      <div className="flex flex-wrap gap-3 mb-6">
+        <input
+          type="text"
+          placeholder="חיפוש לפי שם או אימייל..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full max-w-sm bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          dir="rtl"
+        />
+        <select
+          value={planFilter}
+          onChange={(e) => setPlanFilter(e.target.value)}
+          className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+          <option value="">כל התוכניות</option>
+          <option value="pro">pro בלבד</option>
+        </select>
+      </div>
 
       {error && <p className="text-red-400 mb-4 text-sm">{error}</p>}
 
@@ -249,6 +270,7 @@ export default function AdminTherapistsPage() {
               <th className="text-center px-4 py-3 font-medium">מטופלים פעילים</th>
               <th className="text-center px-4 py-3 font-medium">פגישות</th>
               <th className="text-center px-4 py-3 font-medium">AI</th>
+              <th className="text-center px-4 py-3 font-medium">תוכנית</th>
               <th className="text-center px-4 py-3 font-medium">סטטוס</th>
               <th className="text-center px-4 py-3 font-medium">פעולות</th>
             </tr>
@@ -279,6 +301,13 @@ export default function AdminTherapistsPage() {
                 </td>
                 <td className="px-4 py-3 text-center text-gray-300">{t.session_count}</td>
                 <td className="px-4 py-3 text-center text-gray-300">{t.ai_call_count}</td>
+                <td className="px-4 py-3 text-center">
+                  {t.intended_plan === 'pro' ? (
+                    <span className="text-xs bg-indigo-900 text-indigo-300 px-2 py-0.5 rounded-full font-medium">pro</span>
+                  ) : (
+                    <span className="text-gray-600 text-xs">—</span>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-center">
                   {t.is_blocked ? (
                     <span className="text-xs bg-red-900/60 text-red-300 px-2 py-0.5 rounded-full">מושהה</span>

@@ -4,7 +4,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from jose import JWTError, jwt
 from loguru import logger
 from pydantic import BaseModel
@@ -99,6 +99,7 @@ class TherapistRow(BaseModel):
     session_count: int
     ai_call_count: int
     active_patients: int
+    intended_plan: Optional[str] = None
 
 
 class AlertRow(BaseModel):
@@ -280,8 +281,12 @@ def admin_dashboard(
 def list_therapists(
     admin: Therapist = Depends(get_admin_therapist),
     db: DBSession = Depends(get_db),
+    intended_plan: Optional[str] = Query(None, description="Filter by intended_plan value (e.g. 'pro')"),
 ):
-    therapists = db.query(Therapist).order_by(Therapist.created_at.desc()).all()
+    query = db.query(Therapist)
+    if intended_plan is not None:
+        query = query.filter(Therapist.intended_plan == intended_plan)
+    therapists = query.order_by(Therapist.created_at.desc()).all()
     result = []
     for t in therapists:
         try:
@@ -324,6 +329,7 @@ def list_therapists(
             session_count=session_count,
             ai_call_count=ai_count,
             active_patients=active_patients,
+            intended_plan=t.intended_plan,
         ))
     return result
 
@@ -387,6 +393,7 @@ def block_therapist(
         is_active=bool(t.is_active), is_admin=bool(t.is_admin), is_blocked=bool(t.is_blocked),
         last_login=t.last_login, created_at=t.created_at,
         session_count=session_count, ai_call_count=ai_count, active_patients=active_patients,
+        intended_plan=t.intended_plan,
     )
 
 

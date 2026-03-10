@@ -58,12 +58,13 @@ export const authAPI = {
     return response.data
   },
 
-  register: async (email: string, password: string, fullName: string, phone?: string) => {
+  register: async (email: string, password: string, fullName: string, phone?: string, intendedPlan?: string) => {
     const response = await api.post('/auth/register', {
       email,
       password,
       full_name: fullName,
       phone,
+      ...(intendedPlan ? { intended_plan: intendedPlan } : {}),
     })
     return response.data
   },

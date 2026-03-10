@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/auth/useAuth'
 import { authAPI } from '@/lib/api'
 import PhoneInput from '@/components/PhoneInput'
@@ -9,6 +9,8 @@ import GoogleSignInButton from '@/components/auth/GoogleSignInButton'
 export default function RegisterPage() {
   const navigate = useNavigate()
   const { login } = useAuth()
+  const [searchParams] = useSearchParams()
+  const intendedPlan = searchParams.get('plan') === 'pro' ? 'pro' : undefined
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -40,7 +42,8 @@ export default function RegisterPage() {
         formData.email,
         formData.password,
         formData.fullName,
-        formData.phone
+        formData.phone,
+        intendedPlan
       )
       login(data.access_token, { id: data.therapist_id, email: data.email, fullName: data.full_name }, false)
       navigate('/onboarding')

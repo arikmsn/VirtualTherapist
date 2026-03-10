@@ -75,6 +75,7 @@ export interface TherapistRow {
   session_count: number
   ai_call_count: number
   active_patients: number
+  intended_plan: string | null
 }
 
 export interface AlertRow {
@@ -131,7 +132,8 @@ export const adminAPI = {
   },
 
   getDashboard: () => get<DashboardExtended>('/admin-panel/dashboard'),
-  getTherapists: () => get<TherapistRow[]>('/admin-panel/therapists'),
+  getTherapists: (intendedPlan?: string) =>
+    get<TherapistRow[]>(`/admin-panel/therapists${intendedPlan ? `?intended_plan=${encodeURIComponent(intendedPlan)}` : ''}`),
   blockTherapist: (id: number, is_blocked: boolean) =>
     patch<TherapistRow>(`/admin-panel/therapists/${id}/block`, { is_blocked }),
   getUsage: (days = 30) => get<UsageStats>(`/admin-panel/usage?days=${days}`),
