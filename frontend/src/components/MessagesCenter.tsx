@@ -25,7 +25,7 @@ import {
   ExclamationTriangleIcon,
   PlusIcon,
 } from '@heroicons/react/24/outline'
-import { messagesAPI, sessionsAPI } from '@/lib/api'
+import { messagesAPI, sessionsAPI, patientsAPI } from '@/lib/api'
 import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
 import PhoneInput from '@/components/PhoneInput'
 
@@ -127,6 +127,14 @@ export default function MessagesCenter({
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editContent, setEditContent] = useState('')
   const [editSaving, setEditSaving] = useState(false)
+
+  // Missing-phone modal
+  const [showMissingPhone, setShowMissingPhone] = useState(false)
+  const [pendingSendAt, setPendingSendAt] = useState<string | null>(null)
+  const [addedPhone, setAddedPhone] = useState(patientPhone || '')
+  const [addedEmail, setAddedEmail] = useState('')
+  const [savingPhone, setSavingPhone] = useState(false)
+  const [savePhoneError, setSavePhoneError] = useState('')
 
 
   const loadHistory = useCallback(async () => {
@@ -242,7 +250,7 @@ export default function MessagesCenter({
     if (messageType === 'task_reminder' && !content.trim()) return
     setConfirming(true)
     setConfirmError('')
-    const recipientPhone = useCustomPhone ? customPhone : (patientPhone || undefined)
+    const recipientPhone = useCustomPhone ? customPhone : (addedPhone || patientPhone || undefined)
     try {
       await messagesAPI.compose({
         patient_id: patientId,
@@ -255,7 +263,13 @@ export default function MessagesCenter({
       resetComposer()
       await loadHistory()
     } catch (err: any) {
-      setConfirmError(err.response?.data?.detail || 'שגיאה בשליחה')
+      const detail = err.response?.data?.detail || ''
+      if (detail === 'missing_phone') {
+        setPendingSendAt(sendAt)
+        setShowMissingPhone(true)
+      } else {
+        setConfirmError(detail || 'שגיאה בשליחה')
+      }
     } finally {
       setConfirming(false)
     }
@@ -304,6 +318,7 @@ export default function MessagesCenter({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
+    <>
     <div className="space-y-5">
       {/* Header row: message count (right in RTL) + new message button (left in RTL) */}
       <div className="flex items-center justify-between">
@@ -315,7 +330,7 @@ export default function MessagesCenter({
         {!composerOpen && (
           <button
             onClick={() => setComposerOpen(true)}
-            className="btn-primary flex items-center gap-2 min-h-[44px] touch-manipulation"
+            className="btn-primary flex items-center gap-2 text-sm min-h-[44px] touch-manipulation"
           >
             <PlusIcon className="h-5 w-5" />
             הודעה חדשה
@@ -761,5 +776,80 @@ export default function MessagesCenter({
         )}
       </div>
     </div>
+
+    {/* ── Missing Phone Modal ── */}
+
+    {showMissingPhone && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir="rtl">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <h2 className="text-base font-bold text-gray-900">חסר מספר טלפון</h2>
+            <button
+              onClick={() => { setShowMissingPhone(false); setSavePhoneError('') }}
+              className="text-gray-400 hover:text-gray-600 p-1"
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="px-5 py-4 space-y-4">
+            <p className="text-sm text-gray-600">
+              למטופל/ת זה אין מספר טלפון שמור. הוסיפו מספר כדי לשלוח הודעות WhatsApp.
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">טלפון (חובה)</label>
+              <PhoneInput
+                value={addedPhone}
+                onChange={setAddedPhone}
+                placeholder="05X-XXXXXXX"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">אימייל (אופציונלי)</label>
+              <input
+                type="email"
+                value={addedEmail}
+                onChange={(e) => setAddedEmail(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-therapy-calm"
+                placeholder="example@email.com"
+              />
+            </div>
+            {savePhoneError && (
+              <p className="text-sm text-red-600">{savePhoneError}</p>
+            )}
+          </div>
+          <div className="flex gap-3 px-5 py-4 border-t border-gray-100">
+            <button
+              disabled={!addedPhone.trim() || savingPhone}
+              onClick={async () => {
+                setSavingPhone(true)
+                setSavePhoneError('')
+                try {
+                  await patientsAPI.update(patientId, {
+                    phone: addedPhone.trim(),
+                    ...(addedEmail.trim() ? { email: addedEmail.trim() } : {}),
+                  })
+                  setShowMissingPhone(false)
+                  await handleConfirm(pendingSendAt)
+                } catch (err: any) {
+                  setSavePhoneError(err.response?.data?.detail || 'שגיאה בשמירה')
+                } finally {
+                  setSavingPhone(false)
+                }
+              }}
+              className="btn-primary flex-1 min-h-[44px] disabled:opacity-50"
+            >
+              {savingPhone ? 'שומר...' : 'שמור ושלח'}
+            </button>
+            <button
+              onClick={() => { setShowMissingPhone(false); setSavePhoneError('') }}
+              className="btn-secondary flex-1 min-h-[44px]"
+            >
+              ביטול
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

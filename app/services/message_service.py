@@ -435,6 +435,16 @@ class MessageService:
             now.isoformat(),
             "immediate" if (send_at is None or send_at <= now) else f"schedule_at={send_at.isoformat()}",
         )
+        # Validate that a phone will be available at delivery time
+        final_phone = message.recipient_phone
+        if not final_phone:
+            from app.security.encryption import decrypt_data
+            patient = self.db.query(Patient).filter(Patient.id == message.patient_id).first()
+            if patient and patient.phone_encrypted:
+                final_phone = decrypt_data(patient.phone_encrypted)
+        if not final_phone:
+            raise ValueError("missing_phone")
+
         if send_at is None or send_at <= now:
             # Send immediately
             self.db.commit()

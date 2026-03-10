@@ -26,6 +26,7 @@ import AdminUsagePage from './pages/admin/AdminUsagePage'
 import AdminAlertsPage from './pages/admin/AdminAlertsPage'
 import ChangePasswordModal from './components/ChangePasswordModal'
 import OnboardingWizard from './components/OnboardingWizard'
+import ScrollToTop from './components/ScrollToTop'
 
 function AppRoutes() {
   const { isAuthenticated, isReady, onboardingCompleted, mustChangePassword, introWizardCompleted, profileSetupCompleted, markIntroWizardComplete } = useAuth()
@@ -60,6 +61,7 @@ function AppRoutes() {
   return (
     <>
       <Router>
+        <ScrollToTop />
         <Routes>
           {/* Public routes — redirect to dashboard if already logged in */}
           <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" />} />

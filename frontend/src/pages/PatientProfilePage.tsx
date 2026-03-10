@@ -227,8 +227,8 @@ export default function PatientProfilePage() {
   const [planHistory, setPlanHistory] = useState<TreatmentPlanVersion[]>([])
   const [planSaveSuccess, setPlanSaveSuccess] = useState(false)
   const [planHistoryLoading, setPlanHistoryLoading] = useState(false)
-  const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null)
   const [deletingPlanId, setDeletingPlanId] = useState<number | null>(null)
+  const [viewingPlanVersion, setViewingPlanVersion] = useState<TreatmentPlanVersion | null>(null)
 
   // Prep brief modal
   const [prepModalSession, setPrepModalSession] = useState<PrepModalSession | null>(null)
@@ -240,10 +240,10 @@ export default function PatientProfilePage() {
 
   // Lock body scroll when any modal is open
   useEffect(() => {
-    const locked = showEditPatient || showInactiveConfirm || showNewSession || prepModalSession !== null
+    const locked = showEditPatient || showInactiveConfirm || showNewSession || prepModalSession !== null || viewingPlanVersion !== null
     document.body.style.overflow = locked ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
-  }, [showEditPatient, showInactiveConfirm, showNewSession, prepModalSession])
+  }, [showEditPatient, showInactiveConfirm, showNewSession, prepModalSession, viewingPlanVersion])
 
   // Load patient + therapist profile on mount
   useEffect(() => {
@@ -794,7 +794,7 @@ export default function PatientProfilePage() {
             </p>
             <button
               onClick={() => setShowNewSession(true)}
-              className="btn-primary flex items-center gap-2 text-sm"
+              className="btn-primary flex items-center gap-2 text-sm min-h-[44px] touch-manipulation"
             >
               <PlusIcon className="h-4 w-4" />
               פגישה חדשה
@@ -939,82 +939,37 @@ export default function PatientProfilePage() {
             )}
 
             {insight && (
-              <div className="space-y-3 mt-4">
-                {/* Structured deep summary (new format) */}
-                {insight.overall_treatment_picture ? (
-                  <>
-                    <div className="bg-white rounded-lg p-4">
-                      <h3 className="font-bold text-gray-800 mb-2">תמונת מצב כללית של הטיפול</h3>
-                      <p className="text-gray-700 whitespace-pre-line leading-relaxed">{insight.overall_treatment_picture}</p>
-                    </div>
-                    {(insight.timeline_highlights || []).length > 0 && (
-                      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-                        <h3 className="font-bold text-blue-900 mb-2">אבני דרך לאורך הדרך</h3>
-                        <ul className="list-disc list-inside space-y-1.5 text-blue-800">
-                          {(insight.timeline_highlights || []).map((item, i) => <li key={i}>{item}</li>)}
-                        </ul>
-                      </div>
+              <div className="rounded-lg border border-purple-200 bg-white p-3 mt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {deepHistory[0] && (
+                      <span className="text-xs text-gray-500">{formatDateIL(deepHistory[0].created_at)}</span>
                     )}
-                    {insight.goals_and_tasks && (
-                      <div className="bg-white rounded-lg p-4 border border-orange-100">
-                        <h3 className="font-bold text-gray-800 mb-2">מטרות ומשימות</h3>
-                        <p className="text-gray-700 whitespace-pre-line leading-relaxed">{insight.goals_and_tasks}</p>
-                      </div>
+                    <span className="text-xs bg-purple-600 text-white px-1.5 py-0.5 rounded-full">פעילה</span>
+                    {deepHistory[0]?.rendered_text && (
+                      <span className="text-xs text-gray-500 line-clamp-1 max-w-xs">
+                        {deepHistory[0].rendered_text.replace(/^```(?:json)?\s*[\s\S]*?```\s*/g, '').trim().slice(0, 80)}
+                      </span>
                     )}
-                    {insight.measurable_progress && (
-                      <div className="bg-green-50 border border-green-100 rounded-lg p-4">
-                        <h3 className="font-bold text-green-800 mb-2">סימני התקדמות</h3>
-                        <p className="text-green-800 whitespace-pre-line leading-relaxed">{insight.measurable_progress}</p>
-                      </div>
-                    )}
-                    {insight.directions_for_next_phase && (
-                      <div className="bg-purple-50 border border-purple-100 rounded-lg p-4">
-                        <h3 className="font-bold text-purple-900 mb-2">כיוונים להמשך</h3>
-                        <p className="text-purple-800 whitespace-pre-line leading-relaxed">{insight.directions_for_next_phase}</p>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  /* Fallback: old plain-text insight format */
-                  <>
-                    {insight.overview && (
-                      <div className="bg-white rounded-lg p-4">
-                        <h3 className="font-bold text-gray-800 mb-2">סקירה כללית</h3>
-                        <p className="text-gray-700 whitespace-pre-line">{insight.overview}</p>
-                      </div>
-                    )}
-                    {insight.progress && (
-                      <div className="bg-white rounded-lg p-4">
-                        <h3 className="font-bold text-gray-800 mb-2">התקדמות לאורך זמן</h3>
-                        <p className="text-gray-700 whitespace-pre-line">{insight.progress}</p>
-                      </div>
-                    )}
-                    {(insight.patterns ?? []).length > 0 && (
-                      <div className="bg-white rounded-lg p-4">
-                        <h3 className="font-bold text-gray-800 mb-2">דפוסים מרכזיים</h3>
-                        <ul className="list-disc list-inside space-y-1 text-gray-700">
-                          {(insight.patterns ?? []).map((p, i) => <li key={i}>{p}</li>)}
-                        </ul>
-                      </div>
-                    )}
-                    {(insight.risks ?? []).length > 0 && (
-                      <div className="bg-white rounded-lg p-4 border border-amber-200">
-                        <h3 className="font-bold text-amber-800 mb-2">נקודות סיכון למעקב</h3>
-                        <ul className="list-disc list-inside space-y-1 text-amber-700">
-                          {(insight.risks ?? []).map((r, i) => <li key={i}>{r}</li>)}
-                        </ul>
-                      </div>
-                    )}
-                    {(insight.suggestions_for_next_sessions ?? []).length > 0 && (
-                      <div className="bg-white rounded-lg p-4 border border-green-200">
-                        <h3 className="font-bold text-green-800 mb-2">רעיונות לפגישות הבאות</h3>
-                        <ul className="list-disc list-inside space-y-1 text-green-700">
-                          {(insight.suggestions_for_next_sessions ?? []).map((s, i) => <li key={i}>{s}</li>)}
-                        </ul>
-                      </div>
-                    )}
-                  </>
-                )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (deepHistory[0]) {
+                        setViewingDeepSummary(deepHistory[0])
+                      } else {
+                        setViewingDeepSummary({
+                          created_at: new Date().toISOString(),
+                          rendered_text: null,
+                          summary_json: insight as unknown as Record<string, unknown>,
+                        })
+                      }
+                    }}
+                    className="text-xs text-purple-600 hover:text-purple-800 shrink-0"
+                  >
+                    הצג
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -1464,13 +1419,15 @@ export default function PatientProfilePage() {
                         <span className="text-xs text-gray-400">{formatDateIL(v.created_at)}</span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setExpandedHistoryId(expandedHistoryId === v.plan_id ? null : v.plan_id)}
-                          className="text-xs text-indigo-600 hover:text-indigo-800"
-                        >
-                          {expandedHistoryId === v.plan_id ? 'סגור' : 'הצג'}
-                        </button>
+                        {v.status === 'archived' && (
+                          <button
+                            type="button"
+                            onClick={() => setViewingPlanVersion(v)}
+                            className="text-xs text-indigo-600 hover:text-indigo-800"
+                          >
+                            הצג
+                          </button>
+                        )}
                         {deletingPlanId === v.plan_id ? (
                           <>
                             <button
@@ -1499,89 +1456,6 @@ export default function PatientProfilePage() {
                         )}
                       </div>
                     </div>
-                    {expandedHistoryId === v.plan_id && (() => {
-                      const pjv = (v.plan_json ?? {}) as Record<string, unknown>
-                      const vGoals = (pjv.primary_goals ?? []) as Array<{ goal_id?: string; description?: string; priority?: string; status?: string }>
-                      const vIntvs = (pjv.interventions_planned ?? []) as Array<{ intervention?: string; frequency?: string }>
-                      const vMiles = (pjv.milestones ?? []) as Array<{ description?: string; target_by_session?: number; achieved?: boolean }>
-                      const vRisks = (pjv.risk_consideration ?? pjv.risk_considerations ?? []) as string[]
-                      const vPresenting = pjv.presenting_problem as string | undefined
-                      const vFocusAreas = (pjv.focus_areas ?? []) as string[]
-                      const PRIO: Record<string, string> = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' }
-                      const STAT: Record<string, string> = { not_started: 'לא החלה', in_progress: 'בתהליך', achieved: 'הושגה', dropped: 'הופסקה' }
-                      const hasContent = !!(vPresenting || vFocusAreas.length || vGoals.length || vIntvs.length || vMiles.length || vRisks.length)
-                      return hasContent ? (
-                        <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
-                          {vPresenting && (
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 mb-1">בעיה מוצגת</p>
-                              <p className="text-sm text-gray-700 whitespace-pre-line">{vPresenting}</p>
-                            </div>
-                          )}
-                          {vFocusAreas.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 mb-1">תחומי התמקדות</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {vFocusAreas.map((a, ai) => (
-                                  <span key={ai} className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-full text-xs">{a}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {vGoals.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 mb-1">מטרות טיפול</p>
-                              <ul className="space-y-1">
-                                {vGoals.map((g, gi) => (
-                                  <li key={gi} className="text-sm text-gray-700">
-                                    {g.description}
-                                    {(g.priority || g.status) && (
-                                      <span className="text-xs text-gray-400 mr-1">
-                                        {g.priority ? ` | ${PRIO[g.priority] ?? g.priority}` : ''}
-                                        {g.status ? ` | ${STAT[g.status] ?? g.status}` : ''}
-                                      </span>
-                                    )}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {vIntvs.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 mb-1">התערבויות</p>
-                              <ul className="space-y-0.5">
-                                {vIntvs.map((it, ii) => (
-                                  <li key={ii} className="text-sm text-gray-700">
-                                    {it.intervention}{it.frequency && <span className="text-gray-400"> — {it.frequency}</span>}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {vMiles.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 mb-1">אבני דרך</p>
-                              <ul className="space-y-0.5">
-                                {vMiles.map((m, mi) => (
-                                  <li key={mi} className="text-sm text-gray-700">
-                                    {m.description}
-                                    {m.achieved && <span className="text-green-600 mr-1"> ✓</span>}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {vRisks.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 mb-1">שיקולי סיכון</p>
-                              <ul className="space-y-0.5">
-                                {vRisks.map((r, ri) => <li key={ri} className="text-sm text-gray-700">{r}</li>)}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      ) : null
-                    })()}
                   </div>
                 ))}
               </div>
@@ -1953,6 +1827,112 @@ export default function PatientProfilePage() {
           </div>
         </div>
       )}
+
+      {/* ── Plan Version Modal ── */}
+      {viewingPlanVersion && (() => {
+        const pjv = (viewingPlanVersion.plan_json ?? {}) as Record<string, unknown>
+        const vGoals = (pjv.primary_goals ?? []) as Array<{ goal_id?: string; description?: string; priority?: string; status?: string }>
+        const vIntvs = (pjv.interventions_planned ?? []) as Array<{ intervention?: string; frequency?: string }>
+        const vMiles = (pjv.milestones ?? []) as Array<{ description?: string; target_by_session?: number; achieved?: boolean }>
+        const vRisks = (pjv.risk_consideration ?? pjv.risk_considerations ?? []) as string[]
+        const vPresenting = pjv.presenting_problem as string | undefined
+        const vFocusAreas = (pjv.focus_areas ?? []) as string[]
+        const PRIO: Record<string, string> = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' }
+        const STAT: Record<string, string> = { not_started: 'לא החלה', in_progress: 'בתהליך', achieved: 'הושגה', dropped: 'הופסקה' }
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir="rtl">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh]">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-indigo-100 flex-shrink-0 bg-indigo-50 rounded-t-2xl">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <ClipboardDocumentListIcon className="h-5 w-5 text-indigo-600" />
+                  <h2 className="text-base font-bold text-indigo-900">
+                    תוכנית טיפולית — גרסה {viewingPlanVersion.version}
+                  </h2>
+                  <span className="text-xs text-indigo-500">{formatDateIL(viewingPlanVersion.created_at)}</span>
+                </div>
+                <button onClick={() => setViewingPlanVersion(null)} className="text-gray-400 hover:text-gray-700 p-1">
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-5 space-y-4">
+                {vPresenting && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">בעיה מוצגת</p>
+                    <p className="text-sm text-gray-700 whitespace-pre-line">{vPresenting}</p>
+                  </div>
+                )}
+                {vFocusAreas.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">תחומי התמקדות</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {vFocusAreas.map((a, ai) => (
+                        <span key={ai} className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-full text-xs">{a}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {vGoals.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">מטרות טיפול</p>
+                    <ul className="space-y-1">
+                      {vGoals.map((g, gi) => (
+                        <li key={gi} className="text-sm text-gray-700">
+                          {g.description}
+                          {(g.priority || g.status) && (
+                            <span className="text-xs text-gray-400 mr-1">
+                              {g.priority ? ` | ${PRIO[g.priority] ?? g.priority}` : ''}
+                              {g.status ? ` | ${STAT[g.status] ?? g.status}` : ''}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {vIntvs.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">התערבויות</p>
+                    <ul className="space-y-0.5">
+                      {vIntvs.map((it, ii) => (
+                        <li key={ii} className="text-sm text-gray-700">
+                          {it.intervention}{it.frequency && <span className="text-gray-400"> — {it.frequency}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {vMiles.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">אבני דרך</p>
+                    <ul className="space-y-0.5">
+                      {vMiles.map((m, mi) => (
+                        <li key={mi} className="text-sm text-gray-700">
+                          {m.description}
+                          {m.achieved && <span className="text-green-600 mr-1"> ✓</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {vRisks.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">שיקולי סיכון</p>
+                    <ul className="space-y-0.5">
+                      {vRisks.map((r, ri) => <li key={ri} className="text-sm text-gray-700">{r}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {!(vPresenting || vFocusAreas.length || vGoals.length || vIntvs.length || vMiles.length || vRisks.length) && (
+                  <p className="text-sm text-gray-400">אין תוכן שמור לגרסה זו</p>
+                )}
+              </div>
+              <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
+                <button onClick={() => setViewingPlanVersion(null)} className="btn-secondary w-full min-h-[44px]">סגור</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── View Note Modal ── */}
       {viewingNote && (
