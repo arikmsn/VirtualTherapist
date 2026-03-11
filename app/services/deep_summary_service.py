@@ -17,6 +17,13 @@ from app.ai.deep_summary import (
 )
 from app.ai.models import FlowType
 from app.ai.signature import SignatureEngine, inject_into_prompt
+from app.core.ai_cache import (
+    CACHE_TTL_DAYS,
+    cache_valid_until,
+    deep_summary_fingerprint,
+    is_cache_valid,
+)
+from app.core.fingerprint import FINGERPRINT_VERSION
 from app.models.ai_log import AIGenerationLog
 from app.models.deep_summary import DeepSummary, DeepSummaryStatus
 from app.models.patient import Patient
@@ -160,6 +167,32 @@ class DeepSummaryService:
                 "Approve at least one session summary before generating a deep summary."
             )
 
+        # Cache check: if background precompute stored a valid result → use it (no LLM call)
+        _fp = deep_summary_fingerprint(approved_summaries)
+        if (
+            patient.deep_summary_cache_fingerprint == _fp
+            and patient.deep_summary_cache_fingerprint_version == FINGERPRINT_VERSION
+            and is_cache_valid(patient.deep_summary_cache_valid_until)
+            and patient.deep_summary_cache_json is not None
+        ):
+            logger.info(
+                f"[deep_summary] CACHE HIT patient={patient_id} "
+                f"sessions={len(approved_summaries)} — returning from precompute cache"
+            )
+            deep_summary = DeepSummary(
+                patient_id=patient_id,
+                therapist_id=therapist_id,
+                summary_json=patient.deep_summary_cache_json,
+                rendered_text=patient.deep_summary_cache_rendered_text,
+                sessions_covered=patient.deep_summary_cache_sessions_covered or len(approved_summaries),
+                status=DeepSummaryStatus.DRAFT.value,
+                model_used=patient.deep_summary_cache_model_used,
+                tokens_used=None,
+            )
+            self.db.add(deep_summary)
+            self.db.flush()
+            return deep_summary
+
         therapist_profile = self._build_therapist_profile_dict(therapist_id)
         modality = therapist_profile.get("modality", "")
         treatment_plan = self._get_active_plan_json(patient_id, therapist_id)
@@ -241,6 +274,16 @@ class DeepSummaryService:
         self.db.add(deep_summary)
         self.db.flush()
 
+        # Warm the patient cache so the next call can return without an LLM call
+        patient.deep_summary_cache_json = result.summary_json
+        patient.deep_summary_cache_rendered_text = result.rendered_text
+        patient.deep_summary_cache_fingerprint = _fp
+        patient.deep_summary_cache_fingerprint_version = FINGERPRINT_VERSION
+        patient.deep_summary_cache_valid_until = cache_valid_until()
+        patient.deep_summary_cache_sessions_covered = len(approved_summaries)
+        patient.deep_summary_cache_model_used = result.model_used
+        self.db.flush()
+
         logger.info(
             f"[deep_summary] GENERATE patient={patient_id} "
             f"sessions={len(approved_summaries)} tokens={result.tokens_used} "
@@ -305,6 +348,17 @@ class DeepSummaryService:
         summary.status = DeepSummaryStatus.APPROVED.value
         summary.approved_at = datetime.utcnow()
         self.db.flush()
+
+        # Precompute treatment plan in background after deep summary approval
+        try:
+            import asyncio
+            from app.services.precompute_jobs import precompute_treatment_plan
+            asyncio.create_task(
+                precompute_treatment_plan(summary.patient_id, therapist_id)
+            )
+        except RuntimeError:
+            pass  # no event loop in tests
+
         return summary
 
     def delete_deep_summary(self, summary_id: int, therapist_id: int) -> None:
@@ -317,6 +371,98 @@ class DeepSummaryService:
             raise ValueError("Deep summary not found or does not belong to this therapist")
         self.db.delete(summary)
         self.db.flush()
+
+    # ── Precompute cache ──────────────────────────────────────────────────────
+
+    async def _precompute_to_cache(
+        self,
+        patient_id: int,
+        therapist_id: int,
+        provider,  # AIProvider
+    ) -> None:
+        """
+        Run the deep summary pipeline and store the result in patient cache columns.
+        Called by background precompute jobs.  Skips if the cache is already valid
+        for the current set of approved summaries.  Never raises.
+        """
+        try:
+            patient = self.db.query(Patient).filter(
+                Patient.id == patient_id,
+                Patient.therapist_id == therapist_id,
+            ).first()
+            if not patient:
+                logger.debug(f"[precompute_deep_summary] patient={patient_id} not found — skip")
+                return
+
+            approved_summaries = self._fetch_approved_summaries(patient_id, therapist_id)
+            if not approved_summaries:
+                logger.debug(f"[precompute_deep_summary] patient={patient_id} — no approved summaries")
+                return
+
+            _fp = deep_summary_fingerprint(approved_summaries)
+            if (
+                patient.deep_summary_cache_fingerprint == _fp
+                and patient.deep_summary_cache_fingerprint_version == FINGERPRINT_VERSION
+                and is_cache_valid(patient.deep_summary_cache_valid_until)
+            ):
+                logger.debug(
+                    f"[precompute_deep_summary] patient={patient_id} — cache still valid, skip"
+                )
+                return
+
+            # Build pipeline inputs (mirrors generate_deep_summary)
+            therapist_profile = self._build_therapist_profile_dict(therapist_id)
+            modality = therapist_profile.get("modality", "")
+            treatment_plan = self._get_active_plan_json(patient_id, therapist_id)
+
+            retriever = VaultRetriever(self.db)
+            vault_entries = await retriever.get_relevant_entries(
+                client_id=patient_id,
+                therapist_id=therapist_id,
+                query_tags=[],
+                limit=8,
+            )
+            vault_context: Optional[str] = None
+            if vault_entries:
+                vault_context = "\n".join(
+                    f"[{e['entry_type']}] {e['content']}" for e in vault_entries
+                )
+
+            sig_engine = SignatureEngine(self.db)
+            sig_profile = await sig_engine.get_active_profile(therapist_id)
+            signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
+
+            inp = DeepSummaryInput(
+                client_id=patient_id,
+                therapist_id=therapist_id,
+                modality=modality,
+                approved_summaries=approved_summaries,
+                treatment_plan=treatment_plan,
+                therapist_signature=signature_prompt,
+            )
+
+            pipeline = DeepSummaryPipeline(provider)
+            result: DeepSummaryResult = await pipeline.run(inp, vault_context=vault_context)
+
+            # Update patient cache columns
+            patient.deep_summary_cache_json = result.summary_json
+            patient.deep_summary_cache_rendered_text = result.rendered_text
+            patient.deep_summary_cache_fingerprint = _fp
+            patient.deep_summary_cache_fingerprint_version = FINGERPRINT_VERSION
+            patient.deep_summary_cache_valid_until = cache_valid_until()
+            patient.deep_summary_cache_sessions_covered = len(approved_summaries)
+            patient.deep_summary_cache_model_used = result.model_used
+            self.db.flush()
+
+            logger.info(
+                f"[precompute_deep_summary] patient={patient_id} "
+                f"sessions={len(approved_summaries)} tokens={result.tokens_used} — cached"
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[precompute_deep_summary] _precompute_to_cache patient={patient_id} "
+                f"failed (non-blocking): {exc!r}"
+            )
 
     # ── Vault operations ──────────────────────────────────────────────────────
 

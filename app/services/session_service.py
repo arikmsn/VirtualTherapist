@@ -493,6 +493,23 @@ class SessionService:
         if not session:
             raise ValueError("Session not found or does not belong to this therapist")
 
+        # Session summary dedup guard: identical notes submitted within TTL → skip LLM
+        from app.core.ai_cache import summary_dedup_fingerprint, CACHE_TTL_DAYS
+        from app.core.fingerprint import FINGERPRINT_VERSION as _FP_VER
+        _style_v = getattr(agent.profile, "style_version", 1) if agent.profile else 1
+        _notes_fp = summary_dedup_fingerprint(therapist_notes, _style_v)
+        if (
+            session.summary is not None
+            and session.summary.ai_input_fingerprint == _notes_fp
+            and session.summary.ai_input_fingerprint_version == _FP_VER
+            and session.summary.created_at is not None
+            and (datetime.utcnow() - session.summary.created_at).days < CACHE_TTL_DAYS
+        ):
+            logger.info(
+                f"[summary] session={session_id} — dedup cache hit (same notes, fingerprint match)"
+            )
+            return session.summary
+
         # Summary 2.0: two-call pipeline (extraction → rendering)
         summary_input = await self._assemble_summary_input(
             session=session,
@@ -534,6 +551,9 @@ class SessionService:
             ai_prompt_version="2.0",
             ai_confidence=ai_confidence,
             modality_pack_id=modality_pack_id,
+            # Store dedup fingerprint so repeated identical notes return this row
+            ai_input_fingerprint=_notes_fp,
+            ai_input_fingerprint_version=_FP_VER,
         )
 
         self.db.add(summary)
@@ -674,6 +694,21 @@ class SessionService:
             )
         except RuntimeError:
             pass  # no event loop in tests — skip silently
+
+        # AI precompute triggers — warm caches after each approval (fire-and-forget)
+        try:
+            from app.services.precompute_jobs import (
+                precompute_prep_for_patient,
+                precompute_deep_summary,
+            )
+            asyncio.create_task(
+                precompute_prep_for_patient(session.patient_id, therapist_id)
+            )
+            asyncio.create_task(
+                precompute_deep_summary(session.patient_id, therapist_id)
+            )
+        except RuntimeError:
+            pass  # no event loop in tests
 
         # Audit log
         await self.audit_service.log_action(
@@ -1164,6 +1199,7 @@ class SessionService:
             # (avoids redundant AI call when therapist repeatedly clicks "generate")
             if session.prep_input_fingerprint:
                 from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
+                from app.core.ai_cache import is_cache_valid as _is_prep_cache_valid
                 # We need the summaries to compute the fingerprint; fetch them now
                 _sessions_q_fp = (
                     self.db.query(TherapySession)
@@ -1193,9 +1229,14 @@ class SessionService:
                     _fp == session.prep_input_fingerprint
                     and session.prep_input_fingerprint_version == FINGERPRINT_VERSION
                 ):
+                    _hit_reason = (
+                        "background precompute hit"
+                        if _is_prep_cache_valid(session.prep_cache_valid_until)
+                        else "inputs unchanged"
+                    )
                     logger.info(
                         f"[prep_v2] session={session_id} mode={mode.value} — fingerprint cache hit "
-                        f"(inputs unchanged, age={age_seconds:.0f}s)"
+                        f"({_hit_reason}, age={age_seconds:.0f}s)"
                     )
                     return self._prep_cache_response(session)
 
@@ -1271,6 +1312,9 @@ class SessionService:
             "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
         })
         session.prep_input_fingerprint_version = FINGERPRINT_VERSION
+        # Extended TTL: mark this cache as fresh for 7 days (background precompute resets clock)
+        from app.core.ai_cache import cache_valid_until as _prep_valid_until
+        session.prep_cache_valid_until = _prep_valid_until()
         self.db.flush()
 
         # Log extraction and rendering calls
@@ -1305,6 +1349,31 @@ class SessionService:
             "sessions_analyzed": len(approved_summaries),
             "generated_at": session.prep_generated_at.isoformat(),
         }
+
+    async def _precompute_prep_to_cache(
+        self,
+        session: "TherapySession",
+        therapist_id: int,
+        mode: "PrepMode",
+        agent: "TherapyAgent",
+    ) -> None:
+        """
+        Precompute a prep brief and store in the session cache.
+        Called by background precompute jobs. Delegates to generate_prep_v2
+        which handles fingerprint checks — exits quickly if inputs are unchanged.
+        Best-effort: never raises.
+        """
+        try:
+            await self.generate_prep_v2(
+                session_id=session.id,
+                therapist_id=therapist_id,
+                mode=mode,
+                agent=agent,
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[precompute_prep] session={session.id} failed (non-blocking): {exc!r}"
+            )
 
     def _prep_cache_response(self, session: "TherapySession") -> dict:
         """Build a response dict from cached session data (no LLM call)."""

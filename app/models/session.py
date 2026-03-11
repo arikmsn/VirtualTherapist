@@ -60,6 +60,8 @@ class Session(BaseModel):
     # Fingerprint caching (added migration 025)
     prep_input_fingerprint = Column(Text, nullable=True)          # SHA-256 of inputs at last gen
     prep_input_fingerprint_version = Column(Integer, nullable=True)  # fingerprint schema version
+    # Extended prep cache TTL (added migration 038)
+    prep_cache_valid_until = Column(DateTime, nullable=True)      # background precompute sets 7-day TTL
 
     # Relationships
     therapist = relationship("Therapist", back_populates="sessions")
