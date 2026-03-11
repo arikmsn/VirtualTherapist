@@ -155,7 +155,7 @@ export default function RegisterPage() {
               className="mt-0.5 h-4 w-4 rounded border-gray-300 text-therapy-calm focus:ring-therapy-calm shrink-0"
             />
             <span className="text-sm text-gray-600">
-              אני מאשר שקראתי את{' '}
+              אישור שקראתי את{' '}
               <a
                 href="https://www.metapel.online/terms"
                 target="_blank"

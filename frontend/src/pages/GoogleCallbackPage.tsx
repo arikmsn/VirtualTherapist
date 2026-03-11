@@ -160,21 +160,18 @@ export default function GoogleCallbackPage() {
               </div>
             )}
 
-            {consentError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {consentError}
-              </div>
-            )}
-
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={hasAcceptedTerms}
-                onChange={(e) => setHasAcceptedTerms(e.target.checked)}
+                onChange={(e) => {
+                  setHasAcceptedTerms(e.target.checked)
+                  if (e.target.checked) setConsentError(null)
+                }}
                 className="mt-0.5 h-4 w-4 rounded border-gray-300 text-therapy-calm focus:ring-therapy-calm shrink-0"
               />
               <span className="text-sm text-gray-600">
-                אני מאשר שקראתי את{' '}
+                אישור שקראתי את{' '}
                 <a
                   href="https://www.metapel.online/terms"
                   target="_blank"
@@ -185,6 +182,12 @@ export default function GoogleCallbackPage() {
                 </a>
               </span>
             </label>
+
+            {consentError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                {consentError}
+              </div>
+            )}
 
             <button
               type="button"
