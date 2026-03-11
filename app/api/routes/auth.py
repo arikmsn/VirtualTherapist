@@ -8,6 +8,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from typing import Optional
 from pydantic import BaseModel, EmailStr
 from app.api.deps import get_db, get_current_therapist
 from app.services.therapist_service import TherapistService
