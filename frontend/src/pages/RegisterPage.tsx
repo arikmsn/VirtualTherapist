@@ -151,7 +151,10 @@ export default function RegisterPage() {
             <input
               type="checkbox"
               checked={hasAcceptedTerms}
-              onChange={(e) => setHasAcceptedTerms(e.target.checked)}
+              onChange={(e) => {
+                setHasAcceptedTerms(e.target.checked)
+                if (e.target.checked) setError('')
+              }}
               className="mt-0.5 h-4 w-4 rounded border-gray-300 text-therapy-calm focus:ring-therapy-calm shrink-0"
             />
             <span className="text-sm text-gray-600">
@@ -190,7 +193,16 @@ export default function RegisterPage() {
             <span className="text-xs text-gray-400 whitespace-nowrap">או</span>
             <div className="flex-1 border-t border-gray-200" />
           </div>
-          <GoogleSignInButton disabled={loading} />
+          <GoogleSignInButton
+            disabled={loading}
+            onBeforeStart={() => {
+              if (!hasAcceptedTerms) {
+                setError('חובה לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.')
+                return false
+              }
+              return true
+            }}
+          />
         </div>
 
         {/* Login Link */}

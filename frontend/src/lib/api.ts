@@ -115,9 +115,9 @@ export const authAPI = {
     return response.data
   },
 
-  // Complete Google signup for new users who were redirected to the consent screen.
-  // pending_token is the short-lived JWT returned by googleCallback when needs_consent=true.
-  googleCompleteSignup: async (pendingToken: string, hasAcceptedTerms: boolean): Promise<{
+  // Complete Google signup for new users. Consent was already collected on /register
+  // before the Google OAuth flow started, so has_accepted_terms is always true here.
+  googleCompleteSignup: async (pendingToken: string): Promise<{
     access_token: string
     token_type: string
     therapist_id: number
@@ -127,7 +127,7 @@ export const authAPI = {
   }> => {
     const response = await api.post('/auth/google/complete-signup', {
       pending_token: pendingToken,
-      has_accepted_terms: hasAcceptedTerms,
+      has_accepted_terms: true,
     })
     return response.data
   },

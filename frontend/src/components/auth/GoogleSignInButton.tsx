@@ -75,17 +75,24 @@ async function startGoogleOAuth() {
 
 interface Props {
   disabled?: boolean
+  /** Called before starting OAuth. Return false to abort (e.g. consent not given). */
+  onBeforeStart?: () => boolean
 }
 
-export default function GoogleSignInButton({ disabled }: Props) {
+export default function GoogleSignInButton({ disabled, onBeforeStart }: Props) {
   // If the env var wasn't set at build time, hide the button entirely.
   // This prevents a confusing "not configured" alert in production.
   if (!GOOGLE_CLIENT_ID) return null
 
+  const handleClick = () => {
+    if (onBeforeStart && !onBeforeStart()) return
+    startGoogleOAuth()
+  }
+
   return (
     <button
       type="button"
-      onClick={startGoogleOAuth}
+      onClick={handleClick}
       disabled={disabled}
       className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
     >

@@ -531,7 +531,9 @@ async def google_callback(
 
 class GoogleCompleteSignupRequest(BaseModel):
     pending_token: str       # short-lived JWT issued by /google/callback for new users
-    has_accepted_terms: bool  # must be True
+    # has_accepted_terms is no longer required here — consent is collected on /register
+    # before the Google OAuth flow starts. We still accept it for backwards compat.
+    has_accepted_terms: bool = True
 
 
 @router.post("/google/complete-signup", response_model=GoogleTokenResponse)
@@ -540,17 +542,13 @@ async def google_complete_signup(
     db: Session = Depends(get_db),
 ):
     """
-    Finalize a Google signup after the user has accepted Terms & Privacy.
+    Finalize a Google signup for a new user.
 
     Called only for new users (existing users are handled by /google/callback directly).
     Validates the short-lived pending_token issued by /google/callback, creates the
     therapist account, sets accepted_terms_at, and returns a full JWT.
+    Consent is collected on /register before the Google OAuth flow starts.
     """
-    if not request.has_accepted_terms:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="חובה לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.",
-        )
 
     # Decode and validate the pending token
     from jose import JWTError, jwt as jose_jwt

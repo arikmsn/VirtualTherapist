@@ -11,9 +11,12 @@
  *      ID token verification — no secrets ever touch the frontend.
  *
  * Routing after success:
- *   - needs_consent = true            →  consent screen (new Google user)
- *   - is_onboarding_completed = false →  /onboarding  (new Google user after consent)
+ *   - needs_consent = true            →  confirmation screen (new Google user)
+ *   - is_onboarding_completed = false →  /onboarding  (new user after confirmation)
  *   - is_onboarding_completed = true  →  /dashboard   (returning user)
+ *
+ * Consent is collected on /register before the Google OAuth flow starts.
+ * The confirmation screen here does NOT show a second consent checkbox.
  */
 
 import { useEffect, useState } from 'react'
@@ -28,14 +31,13 @@ export default function GoogleCallbackPage() {
   const { login } = useAuth()
   const [error, setError] = useState<string | null>(null)
 
-  // Consent screen state
+  // Confirmation screen state (new users only)
   const [needsConsent, setNeedsConsent] = useState(false)
   const [pendingToken, setPendingToken] = useState<string | null>(null)
   const [consentName, setConsentName] = useState<string>('')
   const [consentEmail, setConsentEmail] = useState<string>('')
-  const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false)
-  const [consentLoading, setConsentLoading] = useState(false)
-  const [consentError, setConsentError] = useState<string | null>(null)
+  const [completing, setCompleting] = useState(false)
+  const [completeError, setCompleteError] = useState<string | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -69,7 +71,7 @@ export default function GoogleCallbackPage() {
     authAPI.googleCallback(code, redirectUri, returnedState)
       .then((data) => {
         if (data.needs_consent && data.pending_token) {
-          // New user — show consent screen before creating account
+          // New user — show confirmation screen before creating account
           setPendingToken(data.pending_token)
           setConsentName(data.full_name || '')
           setConsentEmail(data.email || '')
@@ -92,16 +94,12 @@ export default function GoogleCallbackPage() {
   }, [])
 
   const handleCompleteSignup = async () => {
-    if (!hasAcceptedTerms) {
-      setConsentError('חובה לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.')
-      return
-    }
     if (!pendingToken) return
 
-    setConsentLoading(true)
-    setConsentError(null)
+    setCompleting(true)
+    setCompleteError(null)
     try {
-      const data = await authAPI.googleCompleteSignup(pendingToken, hasAcceptedTerms)
+      const data = await authAPI.googleCompleteSignup(pendingToken)
       login(data.access_token, {
         id: data.therapist_id,
         email: data.email,
@@ -110,9 +108,9 @@ export default function GoogleCallbackPage() {
       navigate(data.is_onboarding_completed ? '/dashboard' : '/onboarding', { replace: true })
     } catch (err: any) {
       const detail = err?.response?.data?.detail
-      setConsentError(detail || 'שגיאה ביצירת החשבון. אנא נסה שוב.')
+      setCompleteError(detail || 'שגיאה ביצירת החשבון. אנא נסה שוב.')
     } finally {
-      setConsentLoading(false)
+      setCompleting(false)
     }
   }
 
@@ -160,42 +158,19 @@ export default function GoogleCallbackPage() {
               </div>
             )}
 
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={hasAcceptedTerms}
-                onChange={(e) => {
-                  setHasAcceptedTerms(e.target.checked)
-                  if (e.target.checked) setConsentError(null)
-                }}
-                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-therapy-calm focus:ring-therapy-calm shrink-0"
-              />
-              <span className="text-sm text-gray-600">
-                אישור שקראתי את{' '}
-                <a
-                  href="https://www.metapel.online/terms"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-therapy-calm hover:underline"
-                >
-                  תנאי השימוש ומדיניות הפרטיות
-                </a>
-              </span>
-            </label>
-
-            {consentError && (
+            {completeError && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {consentError}
+                {completeError}
               </div>
             )}
 
             <button
               type="button"
               onClick={handleCompleteSignup}
-              disabled={consentLoading}
+              disabled={completing}
               className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {consentLoading ? (
+              {completing ? (
                 <div className="flex items-center justify-center gap-2">
                   <div className="spinner w-5 h-5 border-2"></div>
                   יוצר חשבון...
