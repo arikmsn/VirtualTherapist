@@ -695,17 +695,22 @@ class SessionService:
         except RuntimeError:
             pass  # no event loop in tests — skip silently
 
-        # AI precompute triggers — warm caches after each approval (fire-and-forget)
+        # AI precompute triggers — aggressively warm all caches after each approval
+        # (fire-and-forget; each job opens its own DB session and never raises)
         try:
             from app.services.precompute_jobs import (
                 precompute_prep_for_patient,
                 precompute_deep_summary,
+                precompute_treatment_plan,
             )
             asyncio.create_task(
                 precompute_prep_for_patient(session.patient_id, therapist_id)
             )
             asyncio.create_task(
                 precompute_deep_summary(session.patient_id, therapist_id)
+            )
+            asyncio.create_task(
+                precompute_treatment_plan(session.patient_id, therapist_id)
             )
         except RuntimeError:
             pass  # no event loop in tests
