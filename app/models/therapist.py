@@ -46,6 +46,9 @@ class Therapist(BaseModel):
     # Marketing attribution — set from ?plan= query param on /register
     intended_plan = Column(String(50), nullable=True)      # e.g. 'pro'; NULL = no plan param
 
+    # Terms & Privacy consent — timestamp of explicit acceptance (NULL = pre-consent era)
+    accepted_terms_at = Column(DateTime, nullable=True)
+
     # OAuth
     auth_provider = Column(String(50), default="email")   # "email" | "google"
     google_sub = Column(String(255), unique=True, index=True)  # Google user ID (nullable)

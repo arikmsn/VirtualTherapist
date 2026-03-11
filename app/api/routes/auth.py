@@ -82,6 +82,7 @@ class RegisterRequest(BaseModel):
     full_name: str
     phone: str | None = None
     intended_plan: str | None = None  # marketing attribution from ?plan= URL param
+    has_accepted_terms: bool = False   # must be True or registration is rejected
 
 
 @router.post("/register", response_model=TokenResponse)
@@ -92,6 +93,13 @@ async def register(
     """Register a new therapist account"""
 
     therapist_service = TherapistService(db)
+
+    # Guard: terms acceptance is mandatory
+    if not request.has_accepted_terms:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="חובה לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.",
+        )
 
     # Normalize therapist phone to E.164 if provided
     phone = request.phone
@@ -110,10 +118,11 @@ async def register(
             phone=phone
         )
 
-        # Persist marketing attribution if provided (only accepted values stored)
+        # Persist marketing attribution and consent timestamp
+        therapist.accepted_terms_at = datetime.now(timezone.utc)
         if request.intended_plan == 'pro':
             therapist.intended_plan = 'pro'
-            db.commit()
+        db.commit()
 
         # Create access token
         access_token = create_access_token(
@@ -342,7 +351,27 @@ class GoogleTokenResponse(BaseModel):
     is_onboarding_completed: bool
 
 
-@router.post("/google/callback", response_model=GoogleTokenResponse)
+class GoogleCallbackResponse(BaseModel):
+    """Discriminated response from /google/callback.
+    Existing users: access_token and the usual fields are populated.
+    New users (needs consent): needs_consent=True + pending_token + email/full_name.
+    """
+    # Existing-user fields
+    access_token: Optional[str] = None
+    token_type: Optional[str] = None
+    therapist_id: Optional[int] = None
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    is_onboarding_completed: Optional[bool] = None
+    # New-user consent fields
+    needs_consent: bool = False
+    pending_token: Optional[str] = None
+
+
+GOOGLE_PENDING_TOKEN_EXPIRE_MINUTES = 10
+
+
+@router.post("/google/callback", response_model=GoogleCallbackResponse)
 async def google_callback(
     request: GoogleCallbackRequest,
     db: Session = Depends(get_db),
@@ -445,34 +474,28 @@ async def google_callback(
             db.refresh(therapist)
 
     if therapist is None:
-        # Brand-new user — create account with a random unusable password
-        therapist = Therapist(
-            email=email,
-            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+        # Brand-new user — require explicit Terms consent before creating the account.
+        # Issue a short-lived signed token containing the Google user info.
+        from jose import jwt as jose_jwt
+        pending_payload = {
+            "sub": google_sub,
+            "email": email,
+            "name": full_name or email.split("@")[0],
+            "is_verified": email_verified,
+            "type": "google_pending",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=GOOGLE_PENDING_TOKEN_EXPIRE_MINUTES),
+        }
+        pending_token = jose_jwt.encode(
+            pending_payload,
+            settings.SECRET_KEY,
+            algorithm=settings.JWT_ALGORITHM,
+        )
+        return GoogleCallbackResponse(
+            needs_consent=True,
+            pending_token=pending_token,
             full_name=full_name or email.split("@")[0],
-            auth_provider="google",
-            google_sub=google_sub,
-            is_active=True,
-            is_verified=email_verified,
+            email=email,
         )
-        db.add(therapist)
-        db.commit()
-        db.refresh(therapist)
-
-        # Create a blank TherapistProfile so the onboarding flow works.
-        # Without this, POST /agent/onboarding/start and /complete-step both
-        # crash with "Profile not found" (they expect a profile row to exist).
-        # This mirrors what TherapistService.create_therapist() does for
-        # email/password registrations.
-        blank_profile = TherapistProfile(
-            therapist_id=therapist.id,
-            therapeutic_approach=TherapeuticApproach.CBT,  # overridden during step 1
-            onboarding_completed=False,
-            onboarding_step=0,
-        )
-        db.add(blank_profile)
-        db.commit()
-        db.refresh(therapist)  # reload so therapist.profile is populated
 
     if not therapist.is_active:
         raise HTTPException(
@@ -486,6 +509,132 @@ async def google_callback(
     )
 
     # ── 5. Issue JWT ──────────────────────────────────────────────────────
+    access_token = create_access_token(
+        data={"sub": str(therapist.id)},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+    return GoogleCallbackResponse(
+        access_token=access_token,
+        token_type="bearer",
+        therapist_id=therapist.id,
+        full_name=therapist.full_name,
+        email=therapist.email,
+        is_onboarding_completed=onboarding_completed,
+        needs_consent=False,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Google OAuth — complete signup (new users who have accepted terms)
+# ---------------------------------------------------------------------------
+
+class GoogleCompleteSignupRequest(BaseModel):
+    pending_token: str       # short-lived JWT issued by /google/callback for new users
+    has_accepted_terms: bool  # must be True
+
+
+@router.post("/google/complete-signup", response_model=GoogleTokenResponse)
+async def google_complete_signup(
+    request: GoogleCompleteSignupRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Finalize a Google signup after the user has accepted Terms & Privacy.
+
+    Called only for new users (existing users are handled by /google/callback directly).
+    Validates the short-lived pending_token issued by /google/callback, creates the
+    therapist account, sets accepted_terms_at, and returns a full JWT.
+    """
+    if not request.has_accepted_terms:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="חובה לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.",
+        )
+
+    # Decode and validate the pending token
+    from jose import JWTError, jwt as jose_jwt
+    try:
+        payload = jose_jwt.decode(
+            request.pending_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        if payload.get("type") != "google_pending":
+            raise ValueError("Wrong token type")
+    except (JWTError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="פג תוקף הבקשה. אנא התחבר עם גוגל מחדש.",
+        )
+
+    google_sub: str = payload["sub"]
+    email: str = payload["email"]
+    full_name: str = payload.get("name", "") or email.split("@")[0]
+    is_verified: bool = payload.get("is_verified", False)
+
+    # Guard against double-submit or race: check if account was already created
+    therapist = (
+        db.query(Therapist).filter(Therapist.google_sub == google_sub).first()
+        or db.query(Therapist).filter(Therapist.email == email).first()
+    )
+
+    if therapist is None:
+        # Create the new account now, with consent timestamp
+        therapist = Therapist(
+            email=email,
+            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+            full_name=full_name,
+            auth_provider="google",
+            google_sub=google_sub,
+            is_active=True,
+            is_verified=is_verified,
+            accepted_terms_at=datetime.now(timezone.utc),
+        )
+        db.add(therapist)
+        db.commit()
+        db.refresh(therapist)
+
+        # Create blank profile (mirrors TherapistService.create_therapist)
+        blank_profile = TherapistProfile(
+            therapist_id=therapist.id,
+            therapeutic_approach=TherapeuticApproach.CBT,
+            onboarding_completed=False,
+            onboarding_step=0,
+        )
+        db.add(blank_profile)
+        db.commit()
+        db.refresh(therapist)
+
+        # Admin alert
+        try:
+            alert = AdminAlert(
+                type="new_signup",
+                message=f"מטפל/ת חדש/ה נרשם/ה (גוגל): {therapist.full_name} ({therapist.email})",
+                therapist_id=therapist.id,
+            )
+            db.add(alert)
+            db.commit()
+        except Exception:
+            pass
+    else:
+        # Edge case: account already exists — link Google if not linked yet
+        if not therapist.google_sub:
+            therapist.google_sub = google_sub
+            db.commit()
+        # Backfill consent timestamp if missing (existing user completing consent retroactively)
+        if therapist.accepted_terms_at is None:
+            therapist.accepted_terms_at = datetime.now(timezone.utc)
+            db.commit()
+
+    if not therapist.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account has been deactivated",
+        )
+
+    onboarding_completed = bool(therapist.profile and therapist.profile.onboarding_completed)
+
     access_token = create_access_token(
         data={"sub": str(therapist.id)},
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),

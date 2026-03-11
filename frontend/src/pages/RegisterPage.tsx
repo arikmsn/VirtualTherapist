@@ -20,6 +20,7 @@ export default function RegisterPage() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,6 +36,11 @@ export default function RegisterPage() {
       return
     }
 
+    if (!hasAcceptedTerms) {
+      setError('חובה לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.')
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -43,7 +49,8 @@ export default function RegisterPage() {
         formData.password,
         formData.fullName,
         formData.phone,
-        intendedPlan
+        intendedPlan,
+        hasAcceptedTerms
       )
       login(data.access_token, { id: data.therapist_id, email: data.email, fullName: data.full_name }, false)
       navigate('/onboarding')
@@ -139,6 +146,26 @@ export default function RegisterPage() {
               required
             />
           </div>
+
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hasAcceptedTerms}
+              onChange={(e) => setHasAcceptedTerms(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-therapy-calm focus:ring-therapy-calm shrink-0"
+            />
+            <span className="text-sm text-gray-600">
+              אני מאשר שקראתי את{' '}
+              <a
+                href="https://www.metapel.online/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-therapy-calm hover:underline"
+              >
+                תנאי השימוש ומדיניות הפרטיות
+              </a>
+            </span>
+          </label>
 
           <button
             type="submit"

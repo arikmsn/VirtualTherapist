@@ -58,13 +58,14 @@ export const authAPI = {
     return response.data
   },
 
-  register: async (email: string, password: string, fullName: string, phone?: string, intendedPlan?: string) => {
+  register: async (email: string, password: string, fullName: string, phone?: string, intendedPlan?: string, hasAcceptedTerms?: boolean) => {
     const response = await api.post('/auth/register', {
       email,
       password,
       full_name: fullName,
       phone,
       ...(intendedPlan ? { intended_plan: intendedPlan } : {}),
+      has_accepted_terms: hasAcceptedTerms ?? false,
     })
     return response.data
   },
@@ -95,7 +96,28 @@ export const authAPI = {
   // Exchange a Google authorization code for our JWT.
   // redirect_uri must match exactly what was used to start the OAuth flow.
   // state is the HMAC-signed value returned by googleState() — verified server-side.
+  // For new users, the backend returns needs_consent: true + pending_token instead of an access_token.
   googleCallback: async (code: string, redirectUri: string, state: string): Promise<{
+    access_token?: string
+    token_type?: string
+    therapist_id?: number
+    full_name?: string
+    email?: string
+    is_onboarding_completed?: boolean
+    needs_consent?: boolean
+    pending_token?: string
+  }> => {
+    const response = await api.post('/auth/google/callback', {
+      code,
+      redirect_uri: redirectUri,
+      state,
+    })
+    return response.data
+  },
+
+  // Complete Google signup for new users who were redirected to the consent screen.
+  // pending_token is the short-lived JWT returned by googleCallback when needs_consent=true.
+  googleCompleteSignup: async (pendingToken: string, hasAcceptedTerms: boolean): Promise<{
     access_token: string
     token_type: string
     therapist_id: number
@@ -103,10 +125,9 @@ export const authAPI = {
     email: string
     is_onboarding_completed: boolean
   }> => {
-    const response = await api.post('/auth/google/callback', {
-      code,
-      redirect_uri: redirectUri,
-      state,
+    const response = await api.post('/auth/google/complete-signup', {
+      pending_token: pendingToken,
+      has_accepted_terms: hasAcceptedTerms,
     })
     return response.data
   },
