@@ -1230,13 +1230,19 @@ class SessionService:
                     "summaries": _approved_fp,
                     "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
                 })
-                if (
-                    _fp == session.prep_input_fingerprint
-                    and session.prep_input_fingerprint_version == FINGERPRINT_VERSION
-                ):
+                _fp_match = _fp == session.prep_input_fingerprint
+                _ver_match = session.prep_input_fingerprint_version == FINGERPRINT_VERSION
+                _ttl_valid = _is_prep_cache_valid(session.prep_cache_valid_until)
+                logger.info(
+                    f"[cache] prep session={session_id} mode={mode.value} "
+                    f"fp_match={_fp_match} ver_match={_ver_match} ttl_valid={_ttl_valid} "
+                    f"valid_until={session.prep_cache_valid_until} "
+                    f"→ {'HIT' if _fp_match and _ver_match else 'MISS'}"
+                )
+                if _fp_match and _ver_match:
                     _hit_reason = (
                         "background precompute hit"
-                        if _is_prep_cache_valid(session.prep_cache_valid_until)
+                        if _ttl_valid
                         else "inputs unchanged"
                     )
                     logger.info(

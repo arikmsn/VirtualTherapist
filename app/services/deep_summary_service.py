@@ -169,12 +169,19 @@ class DeepSummaryService:
 
         # Cache check: if background precompute stored a valid result → use it (no LLM call)
         _fp = deep_summary_fingerprint(approved_summaries)
-        if (
-            patient.deep_summary_cache_fingerprint == _fp
-            and patient.deep_summary_cache_fingerprint_version == FINGERPRINT_VERSION
-            and is_cache_valid(patient.deep_summary_cache_valid_until)
-            and patient.deep_summary_cache_json is not None
-        ):
+        _ds_fp_match = patient.deep_summary_cache_fingerprint == _fp
+        _ds_ver_match = patient.deep_summary_cache_fingerprint_version == FINGERPRINT_VERSION
+        _ds_ttl_valid = is_cache_valid(patient.deep_summary_cache_valid_until)
+        _ds_has_json = patient.deep_summary_cache_json is not None
+        _ds_has_text = patient.deep_summary_cache_rendered_text is not None
+        _ds_cache_hit = _ds_fp_match and _ds_ver_match and _ds_ttl_valid and _ds_has_json and _ds_has_text
+        logger.info(
+            f"[cache] deep_summary patient={patient_id} "
+            f"fp_match={_ds_fp_match} ver_match={_ds_ver_match} ttl_valid={_ds_ttl_valid} "
+            f"has_json={_ds_has_json} has_text={_ds_has_text} "
+            f"valid_until={patient.deep_summary_cache_valid_until} → {'HIT' if _ds_cache_hit else 'MISS'}"
+        )
+        if _ds_cache_hit:
             logger.info(
                 f"[deep_summary] CACHE HIT patient={patient_id} "
                 f"sessions={len(approved_summaries)} — returning from precompute cache"
@@ -228,6 +235,20 @@ class DeepSummaryService:
 
         pipeline = DeepSummaryPipeline(provider)
         result: DeepSummaryResult = await pipeline.run(inp, vault_context=vault_context)
+
+        logger.info(
+            f"[cache] deep_summary patient={patient_id} LLM result "
+            f"has_json={bool(result.summary_json)} has_rendered={bool(result.rendered_text)} "
+            f"tokens={getattr(result, 'tokens_used', None)}"
+        )
+        if not result.summary_json:
+            raise ValueError(
+                "Deep summary pipeline returned empty summary_json — LLM call may have failed"
+            )
+        if not result.rendered_text:
+            logger.warning(
+                f"[deep_summary] patient={patient_id} — pipeline returned empty rendered_text"
+            )
 
         # Telemetry — one log per extraction/synthesis/render call
         for extraction_result in pipeline._extraction_results:
@@ -379,11 +400,12 @@ class DeepSummaryService:
         patient_id: int,
         therapist_id: int,
         provider,  # AIProvider
-    ) -> None:
+    ) -> bool:
         """
         Run the deep summary pipeline and store the result in patient cache columns.
         Called by background precompute jobs.  Skips if the cache is already valid
         for the current set of approved summaries.  Never raises.
+        Returns True on success, False on failure or skip.
         """
         try:
             patient = self.db.query(Patient).filter(
@@ -392,23 +414,25 @@ class DeepSummaryService:
             ).first()
             if not patient:
                 logger.debug(f"[precompute_deep_summary] patient={patient_id} not found — skip")
-                return
+                return False
 
             approved_summaries = self._fetch_approved_summaries(patient_id, therapist_id)
             if not approved_summaries:
                 logger.debug(f"[precompute_deep_summary] patient={patient_id} — no approved summaries")
-                return
+                return False
 
             _fp = deep_summary_fingerprint(approved_summaries)
             if (
                 patient.deep_summary_cache_fingerprint == _fp
                 and patient.deep_summary_cache_fingerprint_version == FINGERPRINT_VERSION
                 and is_cache_valid(patient.deep_summary_cache_valid_until)
+                and patient.deep_summary_cache_json is not None
+                and patient.deep_summary_cache_rendered_text is not None
             ):
                 logger.debug(
                     f"[precompute_deep_summary] patient={patient_id} — cache still valid, skip"
                 )
-                return
+                return False
 
             # Build pipeline inputs (mirrors generate_deep_summary)
             therapist_profile = self._build_therapist_profile_dict(therapist_id)
@@ -458,11 +482,13 @@ class DeepSummaryService:
                 f"[precompute_deep_summary] patient={patient_id} "
                 f"sessions={len(approved_summaries)} tokens={result.tokens_used} — cached"
             )
+            return True
         except Exception as exc:
-            logger.warning(
+            logger.exception(
                 f"[precompute_deep_summary] _precompute_to_cache patient={patient_id} "
                 f"failed (non-blocking): {exc!r}"
             )
+            return False
 
     # ── Vault operations ──────────────────────────────────────────────────────
 

@@ -115,6 +115,7 @@ async def create_treatment_plan(
             provider=agent.provider,
         )
         db.commit()
+        db.refresh(plan)
         return _plan_response(plan)
     except ValueError as e:
         msg = str(e)
@@ -153,6 +154,7 @@ async def update_treatment_plan(
             provider=agent.provider,
         )
         db.commit()
+        db.refresh(plan)
         return _plan_response(plan)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

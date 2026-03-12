@@ -42,8 +42,19 @@ async def precompute_prep_for_patient(
             .first()
         )
         if not session:
+            # Fallback: use the most-recent past session if no upcoming session exists
+            session = (
+                db.query(TherapySession)
+                .filter(
+                    TherapySession.patient_id == patient_id,
+                    TherapySession.therapist_id == therapist_id,
+                )
+                .order_by(TherapySession.session_date.desc())
+                .first()
+            )
+        if not session:
             logger.debug(
-                f"[precompute_prep] patient={patient_id} — no upcoming session, skip"
+                f"[precompute_prep] patient={patient_id} — no session found, skip"
             )
             return
 
@@ -66,7 +77,7 @@ async def precompute_prep_for_patient(
             f"[precompute_prep] patient={patient_id} session={session.id} — done"
         )
     except Exception as exc:
-        logger.warning(
+        logger.exception(
             f"[precompute_prep] patient={patient_id} failed (non-blocking): {exc!r}"
         )
         try:
@@ -97,17 +108,18 @@ async def precompute_deep_summary(
         agent = await ts.get_agent_for_therapist(therapist_id)
 
         svc = DeepSummaryService(db)
-        await svc._precompute_to_cache(
+        warmed = await svc._precompute_to_cache(
             patient_id=patient_id,
             therapist_id=therapist_id,
             provider=agent.provider,
         )
         db.commit()
-        logger.info(
-            f"[precompute_deep_summary] patient={patient_id} — done"
-        )
+        if warmed:
+            logger.info(f"[precompute_deep_summary] patient={patient_id} — done")
+        else:
+            logger.info(f"[precompute_deep_summary] patient={patient_id} — skipped (cache valid or no data)")
     except Exception as exc:
-        logger.warning(
+        logger.exception(
             f"[precompute_deep_summary] patient={patient_id} failed (non-blocking): {exc!r}"
         )
         try:
@@ -138,17 +150,18 @@ async def precompute_treatment_plan(
         agent = await ts.get_agent_for_therapist(therapist_id)
 
         svc = TreatmentPlanService(db)
-        await svc._precompute_to_cache(
+        warmed = await svc._precompute_to_cache(
             patient_id=patient_id,
             therapist_id=therapist_id,
             provider=agent.provider,
         )
         db.commit()
-        logger.info(
-            f"[precompute_treatment_plan] patient={patient_id} — done"
-        )
+        if warmed:
+            logger.info(f"[precompute_treatment_plan] patient={patient_id} — done")
+        else:
+            logger.info(f"[precompute_treatment_plan] patient={patient_id} — skipped (cache valid or no data)")
     except Exception as exc:
-        logger.warning(
+        logger.exception(
             f"[precompute_treatment_plan] patient={patient_id} failed (non-blocking): {exc!r}"
         )
         try:
