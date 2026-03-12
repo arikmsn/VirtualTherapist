@@ -337,15 +337,39 @@ class DeepSummaryService:
         self.db.add(deep_summary)
         self.db.flush()
 
-        # Warm the patient cache so the next call can return without an LLM call
-        patient.deep_summary_cache_json = result.summary_json
-        patient.deep_summary_cache_rendered_text = result.rendered_text
-        patient.deep_summary_cache_fingerprint = _fp
-        patient.deep_summary_cache_fingerprint_version = FINGERPRINT_VERSION
-        patient.deep_summary_cache_valid_until = cache_valid_until()
-        patient.deep_summary_cache_sessions_covered = len(approved_summaries)
-        patient.deep_summary_cache_model_used = result.model_used
-        self.db.flush()
+        # Warm the patient cache only if result has real clinical content.
+        # Prevents caching LLM refusals / "no data" generic text.
+        _content_keys = {
+            "arc_narrative", "presenting_problem_evolution", "treatment_phases",
+            "goals_outcome", "clinical_patterns_identified", "turning_points",
+            "what_worked", "what_didnt_work", "current_status",
+            "recommendations_going_forward",
+            # Legacy keys
+            "overall_treatment_picture", "timeline_highlights",
+            "goals_and_tasks", "measurable_progress", "directions_for_next_phase",
+        }
+        _has_real_content = (
+            isinstance(result.summary_json, dict)
+            and any(
+                (isinstance(v, str) and len(v) > 20) or (isinstance(v, list) and len(v) > 0)
+                for k, v in result.summary_json.items()
+                if k in _content_keys
+            )
+        )
+        if _has_real_content:
+            patient.deep_summary_cache_json = result.summary_json
+            patient.deep_summary_cache_rendered_text = result.rendered_text
+            patient.deep_summary_cache_fingerprint = _fp
+            patient.deep_summary_cache_fingerprint_version = FINGERPRINT_VERSION
+            patient.deep_summary_cache_valid_until = cache_valid_until()
+            patient.deep_summary_cache_sessions_covered = len(approved_summaries)
+            patient.deep_summary_cache_model_used = result.model_used
+            self.db.flush()
+        else:
+            logger.warning(
+                f"[deep_summary] patient={patient_id} — LLM result has no real clinical content "
+                f"(keys={list((result.summary_json or {}).keys())}), NOT caching"
+            )
 
         _result_keys = list((result.summary_json or {}).keys())
         logger.info(

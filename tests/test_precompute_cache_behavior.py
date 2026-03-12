@@ -614,7 +614,7 @@ class TestPrepFingerprintCacheHit:
         summary_mock = MagicMock()
         summary_mock.approved_by_therapist = True
         summary_mock.id = 1
-        summary_mock.approved_at = None  # → None in fingerprint payload (see fp above)
+        summary_mock.edit_ended_at = None  # → None in fingerprint payload (see fp above)
         summary_mock.full_summary = "Summary one"
         session_row = MagicMock()
         session_row.summary = summary_mock
