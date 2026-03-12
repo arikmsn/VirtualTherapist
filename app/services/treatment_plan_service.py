@@ -230,14 +230,26 @@ class TreatmentPlanService:
         _tp_ttl_valid = is_cache_valid(patient.treatment_plan_cache_valid_until)
         _tp_has_json = patient.treatment_plan_cache_json is not None
         _tp_has_text = patient.treatment_plan_cache_rendered_text is not None
+        # Validate cached content is real (not empty/refusal from a failed LLM call)
+        _tp_has_content = (
+            _tp_has_json
+            and isinstance(patient.treatment_plan_cache_json, dict)
+            and bool(patient.treatment_plan_cache_json.get("primary_goals")
+                     or patient.treatment_plan_cache_json.get("presenting_problem")
+                     or patient.treatment_plan_cache_json.get("interventions_planned"))
+            and _tp_has_text
+            and len(patient.treatment_plan_cache_rendered_text or "") > 50
+        )
         _tp_cache_hit = (
             session_ids is None
-            and _tp_fp_match and _tp_ver_match and _tp_ttl_valid and _tp_has_json and _tp_has_text
+            and _tp_fp_match and _tp_ver_match and _tp_ttl_valid
+            and _tp_has_json and _tp_has_text and _tp_has_content
         )
         logger.info(
             f"[cache] treatment_plan CREATE patient={patient_id} "
             f"selective={session_ids is not None} fp_match={_tp_fp_match} ver_match={_tp_ver_match} "
             f"ttl_valid={_tp_ttl_valid} has_json={_tp_has_json} has_text={_tp_has_text} "
+            f"has_content={_tp_has_content} "
             f"valid_until={patient.treatment_plan_cache_valid_until} → {'HIT' if _tp_cache_hit else 'MISS'}"
         )
         if _tp_cache_hit:
@@ -363,14 +375,25 @@ class TreatmentPlanService:
         _up_ttl_valid = is_cache_valid(patient.treatment_plan_cache_valid_until)
         _up_has_json = patient.treatment_plan_cache_json is not None
         _up_has_text = patient.treatment_plan_cache_rendered_text is not None
+        _up_has_content = (
+            _up_has_json
+            and isinstance(patient.treatment_plan_cache_json, dict)
+            and bool(patient.treatment_plan_cache_json.get("primary_goals")
+                     or patient.treatment_plan_cache_json.get("presenting_problem")
+                     or patient.treatment_plan_cache_json.get("interventions_planned"))
+            and _up_has_text
+            and len(patient.treatment_plan_cache_rendered_text or "") > 50
+        )
         _up_cache_hit = (
             session_ids is None
-            and _up_fp_match and _up_ver_match and _up_ttl_valid and _up_has_json and _up_has_text
+            and _up_fp_match and _up_ver_match and _up_ttl_valid
+            and _up_has_json and _up_has_text and _up_has_content
         )
         logger.info(
             f"[cache] treatment_plan UPDATE patient={patient_id} "
             f"selective={session_ids is not None} fp_match={_up_fp_match} ver_match={_up_ver_match} "
             f"ttl_valid={_up_ttl_valid} has_json={_up_has_json} has_text={_up_has_text} "
+            f"has_content={_up_has_content} "
             f"valid_until={patient.treatment_plan_cache_valid_until} → {'HIT' if _up_cache_hit else 'MISS'}"
         )
         if _up_cache_hit:
@@ -526,6 +549,21 @@ class TreatmentPlanService:
 
             pipeline = TreatmentPlanPipeline(provider)
             result: TreatmentPlanResult = await pipeline.run(inp)
+
+            # Validate result has real clinical content before caching
+            if not result.plan_json or not isinstance(result.plan_json, dict):
+                logger.warning(
+                    f"[precompute_treatment_plan] patient={patient_id} — pipeline returned empty JSON, skipping cache"
+                )
+                return False
+            if not (result.plan_json.get("primary_goals")
+                    or result.plan_json.get("presenting_problem")
+                    or result.plan_json.get("interventions_planned")):
+                logger.warning(
+                    f"[precompute_treatment_plan] patient={patient_id} — pipeline returned no clinical content "
+                    f"(keys={list(result.plan_json.keys())}), skipping cache"
+                )
+                return False
 
             patient.treatment_plan_cache_json = result.plan_json
             patient.treatment_plan_cache_rendered_text = result.rendered_text

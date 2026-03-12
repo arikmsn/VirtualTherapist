@@ -174,11 +174,38 @@ class DeepSummaryService:
         _ds_ttl_valid = is_cache_valid(patient.deep_summary_cache_valid_until)
         _ds_has_json = patient.deep_summary_cache_json is not None
         _ds_has_text = patient.deep_summary_cache_rendered_text is not None
-        _ds_cache_hit = _ds_fp_match and _ds_ver_match and _ds_ttl_valid and _ds_has_json and _ds_has_text
+
+        # Validate that cached JSON has real clinical content, not just metadata/empty fields.
+        # A bad LLM result (refusal, empty extraction) can get cached by precompute.
+        _ds_has_content = False
+        if _ds_has_json and isinstance(patient.deep_summary_cache_json, dict):
+            _content_keys = {
+                "arc_narrative", "presenting_problem_evolution", "treatment_phases",
+                "goals_outcome", "clinical_patterns_identified", "turning_points",
+                "what_worked", "what_didnt_work", "current_status",
+                "recommendations_going_forward",
+                # Legacy keys
+                "overall_treatment_picture", "timeline_highlights",
+                "goals_and_tasks", "measurable_progress", "directions_for_next_phase",
+            }
+            for k, v in patient.deep_summary_cache_json.items():
+                if k not in _content_keys:
+                    continue
+                if isinstance(v, str) and len(v) > 20:
+                    _ds_has_content = True
+                    break
+                if isinstance(v, list) and len(v) > 0:
+                    _ds_has_content = True
+                    break
+
+        _ds_cache_hit = (
+            _ds_fp_match and _ds_ver_match and _ds_ttl_valid
+            and _ds_has_json and _ds_has_text and _ds_has_content
+        )
         logger.info(
             f"[cache] deep_summary patient={patient_id} "
             f"fp_match={_ds_fp_match} ver_match={_ds_ver_match} ttl_valid={_ds_ttl_valid} "
-            f"has_json={_ds_has_json} has_text={_ds_has_text} "
+            f"has_json={_ds_has_json} has_text={_ds_has_text} has_content={_ds_has_content} "
             f"valid_until={patient.deep_summary_cache_valid_until} → {'HIT' if _ds_cache_hit else 'MISS'}"
         )
         if _ds_cache_hit:
@@ -202,6 +229,18 @@ class DeepSummaryService:
             self.db.add(deep_summary)
             self.db.flush()
             return deep_summary
+        elif not _ds_has_content and _ds_has_json:
+            # Invalidate the bad cache so it won't be served again
+            logger.warning(
+                f"[deep_summary] INVALIDATING bad cache patient={patient_id} "
+                f"json_keys={list((patient.deep_summary_cache_json or {}).keys())} "
+                f"— cached result has no real clinical content, will regenerate"
+            )
+            patient.deep_summary_cache_json = None
+            patient.deep_summary_cache_rendered_text = None
+            patient.deep_summary_cache_fingerprint = None
+            patient.deep_summary_cache_valid_until = None
+            self.db.flush()
 
         therapist_profile = self._build_therapist_profile_dict(therapist_id)
         modality = therapist_profile.get("modality", "")
@@ -472,6 +511,30 @@ class DeepSummaryService:
 
             pipeline = DeepSummaryPipeline(provider)
             result: DeepSummaryResult = await pipeline.run(inp, vault_context=vault_context)
+
+            # Validate the result has real content before caching
+            if not result.summary_json or not isinstance(result.summary_json, dict):
+                logger.warning(
+                    f"[precompute_deep_summary] patient={patient_id} — pipeline returned empty JSON, skipping cache"
+                )
+                return False
+            _content_keys = {
+                "arc_narrative", "presenting_problem_evolution", "treatment_phases",
+                "goals_outcome", "clinical_patterns_identified", "turning_points",
+                "what_worked", "what_didnt_work", "current_status",
+                "recommendations_going_forward",
+            }
+            _has_real_content = any(
+                (isinstance(v, str) and len(v) > 20) or (isinstance(v, list) and len(v) > 0)
+                for k, v in result.summary_json.items()
+                if k in _content_keys
+            )
+            if not _has_real_content:
+                logger.warning(
+                    f"[precompute_deep_summary] patient={patient_id} — pipeline returned no clinical content "
+                    f"(keys={list(result.summary_json.keys())}), skipping cache to avoid serving bad data"
+                )
+                return False
 
             # Update patient cache columns
             patient.deep_summary_cache_json = result.summary_json

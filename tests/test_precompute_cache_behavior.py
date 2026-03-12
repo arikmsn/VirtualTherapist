@@ -137,7 +137,7 @@ class TestDeepSummaryCacheReturnValue:
             ds_fp=fp,
             ds_fp_ver=FINGERPRINT_VERSION,
             ds_valid_until=cache_valid_until(),
-            ds_json={"some": "data"},
+            ds_json={"arc_narrative": "some narrative with enough clinical content for validation"},
             ds_rendered=None,  # ← missing rendered_text should force re-run
         )
         db = self._make_db(patient, summaries)
@@ -145,7 +145,10 @@ class TestDeepSummaryCacheReturnValue:
 
         # Make the pipeline return a valid result
         fake_result = MagicMock()
-        fake_result.summary_json = {"refreshed": "data"}
+        fake_result.summary_json = {
+            "arc_narrative": "refreshed narrative with enough clinical content for validation",
+            "treatment_phases": [{"phase": "initial"}],
+        }
         fake_result.rendered_text = "refreshed rendered text"
         fake_result.model_used = "claude-3"
         fake_result.tokens_used = 100
@@ -229,15 +232,15 @@ class TestTreatmentPlanCacheReturnValue:
             tp_fp=fp,
             tp_fp_ver=FINGERPRINT_VERSION,
             tp_valid_until=cache_valid_until(),
-            tp_json={"goals": []},
+            tp_json={"primary_goals": [{"description": "goal 1"}]},
             tp_rendered=None,  # ← missing
         )
         db = self._make_db(patient, summaries)
         svc = self._make_service(db, summaries)
 
         fake_result = MagicMock()
-        fake_result.plan_json = {"goals": ["updated"]}
-        fake_result.rendered_text = "updated plan text"
+        fake_result.plan_json = {"primary_goals": [{"description": "updated goal"}]}
+        fake_result.rendered_text = "updated plan text with enough content to pass validation checks"
         fake_result.model_used = "claude-3"
         fake_result.tokens_used = 50
 
@@ -253,7 +256,7 @@ class TestTreatmentPlanCacheReturnValue:
             )
 
         assert result is True
-        assert patient.treatment_plan_cache_rendered_text == "updated plan text"
+        assert patient.treatment_plan_cache_rendered_text == "updated plan text with enough content to pass validation checks"
 
 
 # ── generate_deep_summary: null pipeline guard ────────────────────────────────
@@ -376,8 +379,11 @@ class TestDeepSummaryCacheGate:
             ds_fp=fp,
             ds_fp_ver=FINGERPRINT_VERSION,
             ds_valid_until=cache_valid_until(),
-            ds_json={"cached": "data"},
-            ds_rendered="cached rendered text",
+            ds_json={
+                "arc_narrative": "A detailed treatment arc narrative with enough clinical content to pass validation",
+                "treatment_phases": [{"phase": "initial assessment"}],
+            },
+            ds_rendered="cached rendered text with enough content to be valid",
             ds_sessions=2,
             ds_model="claude-3",
         )
@@ -404,8 +410,8 @@ class TestDeepSummaryCacheGate:
             )
 
         assert not pipeline_run_called, "LLM pipeline was called on a valid cache hit"
-        assert result.summary_json == {"cached": "data"}
-        assert result.rendered_text == "cached rendered text"
+        assert "arc_narrative" in result.summary_json
+        assert result.rendered_text == "cached rendered text with enough content to be valid"
 
 
 # ── update_plan cache check ───────────────────────────────────────────────────

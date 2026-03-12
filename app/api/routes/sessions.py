@@ -936,35 +936,55 @@ async def stream_prep_v2(
                 full_text_chunks.append(chunk)
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
 
-            # Persist rendered text BEFORE sending done/[DONE] so db.commit() runs
-            # while the client connection is still open. If committed after the
-            # final yield the client may disconnect first (GeneratorExit bypasses
-            # the except-Exception block) and the cache write is silently lost.
+            # CRITICAL: The dependency-injected `db` session is CLOSED by the time
+            # this generator runs (FastAPI closes it when the endpoint function
+            # returns StreamingResponse).  Use a fresh, independent DB session
+            # for the cache write so it actually persists.
             from datetime import datetime as _dt
             from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
-            session.prep_json = prep_json
-            session.prep_mode = mode.value
-            session.prep_rendered_text = "".join(full_text_chunks)
-            session.prep_generated_at = _dt.utcnow()
-            session.prep_input_fingerprint = compute_fingerprint({
-                "mode": mode.value,
-                "summaries": [
-                    {
-                        "summary_id": s.get("summary_id"),
-                        "approved_at": s.get("approved_at"),
-                        "full_summary": s.get("full_summary"),
-                    }
-                    for s in approved_summaries
-                ],
-                "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
-            })
-            session.prep_input_fingerprint_version = FINGERPRINT_VERSION
-            db.add(session)
-            db.commit()
-            logger.info(
-                f"[cache] prep stream WRITTEN session={session_id} mode={mode.value} "
-                f"chunks={len(full_text_chunks)} — cache ready for next request"
-            )
+            from app.core.ai_cache import cache_valid_until as _prep_cache_valid_until
+            from app.core.database import SessionLocal
+            from app.models.session import Session as _TherapySession
+
+            cache_db = SessionLocal()
+            try:
+                cache_session = cache_db.query(_TherapySession).filter(
+                    _TherapySession.id == session_id
+                ).first()
+                if cache_session:
+                    cache_session.prep_json = prep_json
+                    cache_session.prep_mode = mode.value
+                    cache_session.prep_rendered_text = "".join(full_text_chunks)
+                    cache_session.prep_generated_at = _dt.utcnow()
+                    cache_session.prep_input_fingerprint = compute_fingerprint({
+                        "mode": mode.value,
+                        "summaries": [
+                            {
+                                "summary_id": s.get("summary_id"),
+                                "approved_at": s.get("approved_at"),
+                                "full_summary": s.get("full_summary"),
+                            }
+                            for s in approved_summaries
+                        ],
+                        "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
+                    })
+                    cache_session.prep_input_fingerprint_version = FINGERPRINT_VERSION
+                    cache_session.prep_cache_valid_until = _prep_cache_valid_until()
+                    cache_db.commit()
+                    logger.info(
+                        f"[cache] prep stream WRITTEN session={session_id} mode={mode.value} "
+                        f"chunks={len(full_text_chunks)} — cache ready for next request"
+                    )
+                else:
+                    logger.warning(f"[cache] prep stream session={session_id} — session not found for cache write")
+            except Exception as cache_exc:
+                logger.warning(f"[cache] prep stream session={session_id} — cache write failed: {cache_exc!r}")
+                try:
+                    cache_db.rollback()
+                except Exception:
+                    pass
+            finally:
+                cache_db.close()
 
             yield f"data: {json.dumps({'phase': 'done', 'prep_json': prep_json, 'sessions_analyzed': len(approved_summaries)})}\n\n"
             yield "data: [DONE]\n\n"
