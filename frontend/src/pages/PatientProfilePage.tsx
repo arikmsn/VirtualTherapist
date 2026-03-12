@@ -1770,129 +1770,86 @@ export default function PatientProfilePage() {
             <div className="overflow-y-auto flex-1 p-5 space-y-4">
               {(() => {
                 const j = viewingDeepSummary.summary_json as Record<string, unknown> | null
-                // Support both legacy schema keys (older summaries) and current pipeline schema keys
-                const hasStructuredContent = j && (
+                // Key-agnostic renderer: works with ANY JSON schema the pipeline produces
+                const keyLabels: Record<string, string> = {
                   // Legacy schema
-                  j.overall_treatment_picture ||
-                  (Array.isArray(j.timeline_highlights) && j.timeline_highlights.length > 0) ||
-                  j.goals_and_tasks ||
-                  j.measurable_progress ||
-                  j.directions_for_next_phase ||
+                  overall_treatment_picture: 'תמונת מצב כללית',
+                  timeline_highlights: 'אבני דרך',
+                  goals_and_tasks: 'מטרות ומשימות',
+                  measurable_progress: 'סימני התקדמות',
+                  directions_for_next_phase: 'כיוונים להמשך',
                   // Current pipeline schema
-                  j.arc_narrative ||
-                  j.presenting_problem_evolution ||
-                  (Array.isArray(j.treatment_phases) && (j.treatment_phases as unknown[]).length > 0) ||
-                  j.current_status ||
-                  (Array.isArray(j.recommendations_going_forward) && (j.recommendations_going_forward as unknown[]).length > 0)
-                )
-                if (hasStructuredContent && j) {
+                  arc_narrative: 'נרטיב טיפולי',
+                  presenting_problem_evolution: 'התפתחות הבעיה המציגה',
+                  treatment_phases: 'שלבי הטיפול',
+                  goals_outcome: 'יעדים ותוצאות',
+                  clinical_patterns_identified: 'דפוסים קליניים',
+                  turning_points: 'נקודות מפנה',
+                  what_worked: 'מה עבד',
+                  what_didnt_work: 'מה לא עבד',
+                  current_status: 'מצב נוכחי',
+                  recommendations_going_forward: 'המלצות להמשך',
+                  // Even older schema
+                  overview: 'סקירה כללית',
+                  progress: 'התקדמות',
+                  patterns: 'דפוסים',
+                  risks: 'סיכונים',
+                  suggestions_for_next_sessions: 'הצעות לפגישות הבאות',
+                }
+                const skipKeys = new Set(['sessions_covered', 'confidence', 'version'])
+                const colors = [
+                  ['bg-white', 'border-gray-100', 'text-gray-800'],
+                  ['bg-blue-50', 'border-blue-100', 'text-blue-900'],
+                  ['bg-green-50', 'border-green-100', 'text-green-900'],
+                  ['bg-purple-50', 'border-purple-100', 'text-purple-900'],
+                  ['bg-indigo-50', 'border-indigo-100', 'text-indigo-900'],
+                  ['bg-emerald-50', 'border-emerald-100', 'text-emerald-900'],
+                  ['bg-orange-50', 'border-orange-100', 'text-orange-900'],
+                ]
+                // Check if JSON has any displayable content
+                const entries = j ? Object.entries(j).filter(([k, v]) => {
+                  if (skipKeys.has(k)) return false
+                  if (v == null || v === '') return false
+                  if (Array.isArray(v) && v.length === 0) return false
+                  return true
+                }) : []
+                if (entries.length > 0) {
                   return (
                     <>
-                      {/* Legacy schema sections */}
-                      {j.overall_treatment_picture && (
-                        <div className="bg-white rounded-lg p-4 border border-gray-100">
-                          <h3 className="font-bold text-gray-800 mb-2">תמונת מצב כללית</h3>
-                          <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.overall_treatment_picture)}</p>
-                        </div>
-                      )}
-                      {Array.isArray(j.timeline_highlights) && j.timeline_highlights.length > 0 && (
-                        <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
-                          <h3 className="font-bold text-blue-900 mb-2">אבני דרך</h3>
-                          <ul className="list-disc list-inside space-y-1 text-blue-800 text-sm">
-                            {(j.timeline_highlights as string[]).map((h, i) => <li key={i}>{h}</li>)}
-                          </ul>
-                        </div>
-                      )}
-                      {j.goals_and_tasks && (
-                        <div className="bg-white rounded-lg p-4 border border-gray-100">
-                          <h3 className="font-bold text-gray-800 mb-2">מטרות ומשימות</h3>
-                          <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.goals_and_tasks)}</p>
-                        </div>
-                      )}
-                      {j.measurable_progress && (
-                        <div className="bg-green-50 rounded-lg p-4 border border-green-100">
-                          <h3 className="font-bold text-green-800 mb-2">סימני התקדמות</h3>
-                          <p className="text-green-800 text-sm whitespace-pre-line leading-relaxed">{String(j.measurable_progress)}</p>
-                        </div>
-                      )}
-                      {j.directions_for_next_phase && (
-                        <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
-                          <h3 className="font-bold text-purple-900 mb-2">כיוונים להמשך</h3>
-                          <p className="text-purple-800 text-sm whitespace-pre-line leading-relaxed">{String(j.directions_for_next_phase)}</p>
-                        </div>
-                      )}
-                      {/* Current pipeline schema sections */}
-                      {j.arc_narrative && (
-                        <div className="bg-white rounded-lg p-4 border border-gray-100">
-                          <h3 className="font-bold text-gray-800 mb-2">נרטיב טיפולי</h3>
-                          <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.arc_narrative)}</p>
-                        </div>
-                      )}
-                      {j.presenting_problem_evolution && (
-                        <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
-                          <h3 className="font-bold text-blue-900 mb-2">התפתחות הבעיה המציגה</h3>
-                          <p className="text-blue-800 text-sm whitespace-pre-line leading-relaxed">{String(j.presenting_problem_evolution)}</p>
-                        </div>
-                      )}
-                      {Array.isArray(j.treatment_phases) && (j.treatment_phases as unknown[]).length > 0 && (
-                        <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-100">
-                          <h3 className="font-bold text-indigo-900 mb-2">שלבי הטיפול</h3>
-                          <div className="space-y-2">
-                            {(j.treatment_phases as Record<string, unknown>[]).map((phase, i) => (
-                              <div key={i} className="border-r-2 border-indigo-300 pr-2">
-                                <div className="text-sm font-medium text-indigo-800">
-                                  {String(phase.phase_label || '')}
-                                  {phase.session_range ? ` (${String(phase.session_range)})` : ''}
+                      {entries.map(([key, value], idx) => {
+                        const label = keyLabels[key] || key.replace(/_/g, ' ')
+                        const [bg, border, text] = colors[idx % colors.length]
+                        if (Array.isArray(value) && value.length > 0) {
+                          if (typeof value[0] === 'object' && value[0] !== null) {
+                            return (
+                              <div key={key} className={`${bg} rounded-lg p-4 border ${border}`}>
+                                <h3 className={`font-bold ${text} mb-2`}>{label}</h3>
+                                <div className="space-y-2">
+                                  {(value as Record<string, unknown>[]).map((item, i) => (
+                                    <div key={i} className="border-r-2 border-gray-300 pr-2 text-sm text-gray-700">
+                                      {Object.values(item).filter(Boolean).map(String).join(' — ')}
+                                    </div>
+                                  ))}
                                 </div>
-                                {!!phase.primary_focus && <div className="text-xs text-gray-600 mt-0.5">{String(phase.primary_focus)}</div>}
                               </div>
-                            ))}
+                            )
+                          }
+                          return (
+                            <div key={key} className={`${bg} rounded-lg p-4 border ${border}`}>
+                              <h3 className={`font-bold ${text} mb-2`}>{label}</h3>
+                              <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                                {(value as unknown[]).map((item, i) => <li key={i}>{String(item)}</li>)}
+                              </ul>
+                            </div>
+                          )
+                        }
+                        return (
+                          <div key={key} className={`${bg} rounded-lg p-4 border ${border}`}>
+                            <h3 className={`font-bold ${text} mb-2`}>{label}</h3>
+                            <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(value)}</p>
                           </div>
-                        </div>
-                      )}
-                      {Array.isArray(j.goals_outcome) && (j.goals_outcome as unknown[]).length > 0 && (
-                        <div className="bg-green-50 rounded-lg p-4 border border-green-100">
-                          <h3 className="font-bold text-green-900 mb-2">יעדים ותוצאות</h3>
-                          <div className="space-y-2">
-                            {(j.goals_outcome as Record<string, unknown>[]).map((g, i) => (
-                              <div key={i} className="text-sm">
-                                <span className="font-medium text-green-800">{String(g.goal || '')}</span>
-                                {!!g.outcome && <span className="text-gray-500 mr-1"> — {String(g.outcome)}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {j.current_status && (
-                        <div className="bg-white rounded-lg p-4 border border-gray-100">
-                          <h3 className="font-bold text-gray-800 mb-2">מצב נוכחי</h3>
-                          <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.current_status)}</p>
-                        </div>
-                      )}
-                      {Array.isArray(j.what_worked) && (j.what_worked as unknown[]).length > 0 && (
-                        <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-100">
-                          <h3 className="font-bold text-emerald-900 mb-2">מה עבד</h3>
-                          <ul className="list-disc list-inside space-y-1 text-emerald-800 text-sm">
-                            {(j.what_worked as string[]).map((w, i) => <li key={i}>{w}</li>)}
-                          </ul>
-                        </div>
-                      )}
-                      {Array.isArray(j.what_didnt_work) && (j.what_didnt_work as unknown[]).length > 0 && (
-                        <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
-                          <h3 className="font-bold text-orange-900 mb-2">מה לא עבד</h3>
-                          <ul className="list-disc list-inside space-y-1 text-orange-800 text-sm">
-                            {(j.what_didnt_work as string[]).map((w, i) => <li key={i}>{w}</li>)}
-                          </ul>
-                        </div>
-                      )}
-                      {Array.isArray(j.recommendations_going_forward) && (j.recommendations_going_forward as unknown[]).length > 0 && (
-                        <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
-                          <h3 className="font-bold text-purple-900 mb-2">המלצות להמשך</h3>
-                          <ul className="list-disc list-inside space-y-1 text-purple-800 text-sm">
-                            {(j.recommendations_going_forward as string[]).map((r, i) => <li key={i}>{r}</li>)}
-                          </ul>
-                        </div>
-                      )}
+                        )
+                      })}
                     </>
                   )
                 }

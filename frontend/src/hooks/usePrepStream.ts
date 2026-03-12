@@ -37,7 +37,11 @@ export function usePrepStream() {
         const token = localStorage.getItem('access_token')
         const response = await fetch(`${BASE_URL}/sessions/${sessionId}/prep/stream`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
           signal: ctrl.signal,
         })
 

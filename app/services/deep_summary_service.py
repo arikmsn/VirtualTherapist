@@ -182,9 +182,12 @@ class DeepSummaryService:
             f"valid_until={patient.deep_summary_cache_valid_until} → {'HIT' if _ds_cache_hit else 'MISS'}"
         )
         if _ds_cache_hit:
+            _cache_keys = list((patient.deep_summary_cache_json or {}).keys())
             logger.info(
                 f"[deep_summary] CACHE HIT patient={patient_id} "
-                f"sessions={len(approved_summaries)} — returning from precompute cache"
+                f"sessions={len(approved_summaries)} json_keys={_cache_keys} "
+                f"has_rendered={bool(patient.deep_summary_cache_rendered_text)} "
+                f"— returning from precompute cache"
             )
             deep_summary = DeepSummary(
                 patient_id=patient_id,
@@ -305,10 +308,12 @@ class DeepSummaryService:
         patient.deep_summary_cache_model_used = result.model_used
         self.db.flush()
 
+        _result_keys = list((result.summary_json or {}).keys())
         logger.info(
             f"[deep_summary] GENERATE patient={patient_id} "
             f"sessions={len(approved_summaries)} tokens={result.tokens_used} "
-            f"vault_entries={vault_created} id={deep_summary.id}"
+            f"vault_entries={vault_created} id={deep_summary.id} "
+            f"json_keys={_result_keys}"
         )
         return deep_summary
 

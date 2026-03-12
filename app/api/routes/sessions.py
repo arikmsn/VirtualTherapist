@@ -1,7 +1,7 @@
 """Session management routes"""
 
 import json
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DBSession
 from pydantic import BaseModel
@@ -753,7 +753,7 @@ async def get_stored_prep(
 @router.post("/{session_id}/prep", response_model=PrepResponse)
 async def generate_prep_v2(
     session_id: int,
-    request: PrepRequest,
+    request: PrepRequest = Body(default=PrepRequest()),
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
@@ -800,7 +800,7 @@ async def generate_prep_v2(
 @router.post("/{session_id}/prep/stream")
 async def stream_prep_v2(
     session_id: int,
-    request: PrepRequest,
+    request: PrepRequest = Body(default=PrepRequest()),
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):

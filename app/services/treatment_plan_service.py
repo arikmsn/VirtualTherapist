@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from loguru import logger
+from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session, joinedload
 
 from app.ai.models import FlowType
@@ -173,6 +174,18 @@ class TreatmentPlanService:
         except Exception as exc:
             logger.warning(f"treatment_plan _write_generation_log failed (non-blocking): {exc}")
 
+    def _next_version(self, patient_id: int, therapist_id: int) -> int:
+        """Return max(version) + 1 across ALL plans for this patient, or 1 if none exist."""
+        max_ver = (
+            self.db.query(sa_func.max(TreatmentPlan.version))
+            .filter(
+                TreatmentPlan.patient_id == patient_id,
+                TreatmentPlan.therapist_id == therapist_id,
+            )
+            .scalar()
+        )
+        return (max_ver or 0) + 1
+
     # ── Core operations ───────────────────────────────────────────────────────
 
     async def create_plan(
@@ -228,9 +241,10 @@ class TreatmentPlanService:
             f"valid_until={patient.treatment_plan_cache_valid_until} → {'HIT' if _tp_cache_hit else 'MISS'}"
         )
         if _tp_cache_hit:
+            _next_ver = self._next_version(patient_id, therapist_id)
             logger.info(
                 f"[treatment_plan] CACHE HIT patient={patient_id} "
-                f"summaries={len(approved_summaries)} — returning from precompute cache"
+                f"summaries={len(approved_summaries)} version={_next_ver} — returning from precompute cache"
             )
             plan = TreatmentPlan(
                 patient_id=patient_id,
@@ -238,7 +252,7 @@ class TreatmentPlanService:
                 status=PlanStatus.ACTIVE.value,
                 plan_json=patient.treatment_plan_cache_json,
                 rendered_text=patient.treatment_plan_cache_rendered_text,
-                version=1,
+                version=_next_ver,
                 parent_version_id=None,
                 model_used=patient.treatment_plan_cache_model_used,
                 tokens_used=None,
@@ -265,13 +279,14 @@ class TreatmentPlanService:
         pipeline = TreatmentPlanPipeline(provider)
         result: TreatmentPlanResult = await pipeline.run(inp)
 
+        _next_ver = self._next_version(patient_id, therapist_id)
         plan = TreatmentPlan(
             patient_id=patient_id,
             therapist_id=therapist_id,
             status=PlanStatus.ACTIVE.value,
             plan_json=result.plan_json,
             rendered_text=result.rendered_text,
-            version=result.version,
+            version=_next_ver,
             parent_version_id=None,
             model_used=result.model_used,
             tokens_used=result.tokens_used,
@@ -359,9 +374,10 @@ class TreatmentPlanService:
             f"valid_until={patient.treatment_plan_cache_valid_until} → {'HIT' if _up_cache_hit else 'MISS'}"
         )
         if _up_cache_hit:
+            _next_ver = self._next_version(patient_id, therapist_id)
             logger.info(
                 f"[treatment_plan] UPDATE CACHE HIT patient={patient_id} "
-                f"summaries={len(approved_summaries)} — returning from precompute cache"
+                f"summaries={len(approved_summaries)} version={_next_ver} — returning from precompute cache"
             )
             existing.status = PlanStatus.ARCHIVED.value
             new_plan = TreatmentPlan(
@@ -370,7 +386,7 @@ class TreatmentPlanService:
                 status=PlanStatus.ACTIVE.value,
                 plan_json=patient.treatment_plan_cache_json,
                 rendered_text=patient.treatment_plan_cache_rendered_text,
-                version=existing.version + 1,
+                version=_next_ver,
                 parent_version_id=existing.id,
                 model_used=patient.treatment_plan_cache_model_used,
                 tokens_used=None,
@@ -399,18 +415,28 @@ class TreatmentPlanService:
         # Archive old plan
         existing.status = PlanStatus.ARCHIVED.value
 
+        _next_ver = self._next_version(patient_id, therapist_id)
         new_plan = TreatmentPlan(
             patient_id=patient_id,
             therapist_id=therapist_id,
             status=PlanStatus.ACTIVE.value,
             plan_json=result.plan_json,
             rendered_text=result.rendered_text,
-            version=result.version,
+            version=_next_ver,
             parent_version_id=existing.id,
             model_used=result.model_used,
             tokens_used=result.tokens_used,
         )
         self.db.add(new_plan)
+        self.db.flush()
+
+        # Warm the patient cache so subsequent update calls return without LLM
+        patient.treatment_plan_cache_json = result.plan_json
+        patient.treatment_plan_cache_rendered_text = result.rendered_text
+        patient.treatment_plan_cache_fingerprint = _fp
+        patient.treatment_plan_cache_fingerprint_version = FINGERPRINT_VERSION
+        patient.treatment_plan_cache_valid_until = cache_valid_until()
+        patient.treatment_plan_cache_model_used = result.model_used
         self.db.flush()
 
         self._write_generation_log(
@@ -429,8 +455,9 @@ class TreatmentPlanService:
         )
 
         logger.info(
-            f"[treatment_plan] UPDATE patient={patient_id} version={result.version} "
-            f"parent={existing.id} tokens={result.tokens_used} plan_id={new_plan.id}"
+            f"[treatment_plan] UPDATE patient={patient_id} version={_next_ver} "
+            f"parent={existing.id} tokens={result.tokens_used} plan_id={new_plan.id} "
+            f"cache_warmed=True"
         )
         return new_plan
 
