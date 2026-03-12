@@ -893,6 +893,12 @@ async def stream_prep_v2(
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
     # ── End cache check ───────────────────────────────────────────────────────
+    logger.info(
+        f"[cache] prep stream MISS session={session_id} mode={mode.value} "
+        f"has_json={session.prep_json is not None} "
+        f"mode_match={(session.prep_mode == mode.value) if session.prep_json is not None else False} "
+        f"has_generated_at={session.prep_generated_at is not None} → calling LLM"
+    )
 
     # Build approved summaries via service helper (joinedload, same logic as generate_prep_v2)
     approved_summaries = session_service._load_approved_summaries_for_prep(session.patient_id)
@@ -930,10 +936,10 @@ async def stream_prep_v2(
                 full_text_chunks.append(chunk)
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
 
-            yield f"data: {json.dumps({'phase': 'done', 'prep_json': prep_json, 'sessions_analyzed': len(approved_summaries)})}\n\n"
-            yield "data: [DONE]\n\n"
-
-            # Persist rendered text so subsequent requests hit the cache
+            # Persist rendered text BEFORE sending done/[DONE] so db.commit() runs
+            # while the client connection is still open. If committed after the
+            # final yield the client may disconnect first (GeneratorExit bypasses
+            # the except-Exception block) and the cache write is silently lost.
             from datetime import datetime as _dt
             from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
             session.prep_json = prep_json
@@ -955,6 +961,13 @@ async def stream_prep_v2(
             session.prep_input_fingerprint_version = FINGERPRINT_VERSION
             db.add(session)
             db.commit()
+            logger.info(
+                f"[cache] prep stream WRITTEN session={session_id} mode={mode.value} "
+                f"chunks={len(full_text_chunks)} — cache ready for next request"
+            )
+
+            yield f"data: {json.dumps({'phase': 'done', 'prep_json': prep_json, 'sessions_analyzed': len(approved_summaries)})}\n\n"
+            yield "data: [DONE]\n\n"
         except Exception as exc:
             logger.exception(f"stream_prep_v2 session={session_id} error: {exc!r}")
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
