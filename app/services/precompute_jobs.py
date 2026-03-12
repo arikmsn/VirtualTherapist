@@ -18,10 +18,13 @@ async def precompute_prep_for_patient(
     therapist_id: int,
 ) -> None:
     """
-    Precompute a 'concise' prep brief for the next upcoming session of this patient.
+    Precompute a 'concise' prep brief for upcoming and recent sessions.
 
-    Called when a summary is approved.  If there is no upcoming session (or no
-    prior approved summaries to use), exits silently.
+    Called when a summary is approved.  Warms cache for:
+      1. All upcoming sessions (session_date >= today)
+      2. The most recent past session (fallback if no upcoming exist)
+    Each session gets its own precompute call; fingerprint checks inside
+    generate_prep_v2 skip sessions whose cache is already valid.
     """
     from app.core.database import SessionLocal
     from app.models.session import Session as TherapySession
@@ -30,8 +33,8 @@ async def precompute_prep_for_patient(
 
     db = SessionLocal()
     try:
-        # Find the next upcoming (or most-recent past) session for this patient
-        session = (
+        # Collect sessions to precompute: all upcoming + most recent past
+        sessions_to_warm = list(
             db.query(TherapySession)
             .filter(
                 TherapySession.patient_id == patient_id,
@@ -39,11 +42,12 @@ async def precompute_prep_for_patient(
                 TherapySession.session_date >= date.today(),
             )
             .order_by(TherapySession.session_date.asc())
-            .first()
+            .limit(5)  # cap at 5 upcoming to avoid runaway work
+            .all()
         )
-        if not session:
-            # Fallback: use the most-recent past session if no upcoming session exists
-            session = (
+        if not sessions_to_warm:
+            # Fallback: most recent past session
+            fallback = (
                 db.query(TherapySession)
                 .filter(
                     TherapySession.patient_id == patient_id,
@@ -52,29 +56,45 @@ async def precompute_prep_for_patient(
                 .order_by(TherapySession.session_date.desc())
                 .first()
             )
-        if not session:
+            if fallback:
+                sessions_to_warm = [fallback]
+
+        if not sessions_to_warm:
             logger.debug(
-                f"[precompute_prep] patient={patient_id} — no session found, skip"
+                f"[precompute_prep] patient={patient_id} — no sessions found, skip"
             )
             return
 
         ts = TherapistService(db)
         agent = await ts.get_agent_for_therapist(therapist_id)
 
-        # Import here to avoid circular deps at module load time
         from app.services.session_service import SessionService
         from app.ai.prep import PrepMode
 
         svc = SessionService(db)
-        await svc._precompute_prep_to_cache(
-            session=session,
-            therapist_id=therapist_id,
-            mode=PrepMode.CONCISE,
-            agent=agent,
-        )
-        db.commit()
+        warmed_ids = []
+        for session in sessions_to_warm:
+            try:
+                await svc._precompute_prep_to_cache(
+                    session=session,
+                    therapist_id=therapist_id,
+                    mode=PrepMode.CONCISE,
+                    agent=agent,
+                )
+                db.commit()
+                warmed_ids.append(session.id)
+            except Exception as exc:
+                logger.warning(
+                    f"[precompute_prep] patient={patient_id} session={session.id} "
+                    f"failed (continuing): {exc!r}"
+                )
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+
         logger.info(
-            f"[precompute_prep] patient={patient_id} session={session.id} — done"
+            f"[precompute_prep] patient={patient_id} sessions={warmed_ids} — done"
         )
     except Exception as exc:
         logger.exception(

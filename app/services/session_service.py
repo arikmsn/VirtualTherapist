@@ -947,17 +947,47 @@ class SessionService:
             summary.therapist_edited = True
 
         # Handle status change
+        newly_approved = False
         if "status" in updates:
             new_status = updates["status"]
             if new_status == "approved" or new_status == SummaryStatus.APPROVED:
+                if not summary.approved_by_therapist:
+                    newly_approved = True
                 summary.status = SummaryStatus.APPROVED
                 summary.approved_by_therapist = True
+                if not summary.approved_at:
+                    summary.approved_at = datetime.utcnow()
             elif new_status == "draft" or new_status == SummaryStatus.DRAFT:
                 summary.status = SummaryStatus.DRAFT
                 summary.approved_by_therapist = False
 
         self.db.commit()
         self.db.refresh(summary)
+
+        # Trigger precompute when a summary is newly approved via PATCH
+        # (same fire-and-forget pattern as approve_summary)
+        if newly_approved:
+            try:
+                from app.services.precompute_jobs import (
+                    precompute_prep_for_patient,
+                    precompute_deep_summary,
+                    precompute_treatment_plan,
+                )
+                asyncio.create_task(
+                    precompute_prep_for_patient(session.patient_id, therapist_id)
+                )
+                asyncio.create_task(
+                    precompute_deep_summary(session.patient_id, therapist_id)
+                )
+                asyncio.create_task(
+                    precompute_treatment_plan(session.patient_id, therapist_id)
+                )
+                logger.info(
+                    f"[precompute] triggered all 3 precompute jobs for patient={session.patient_id} "
+                    f"after summary {summary.id} approved via PATCH"
+                )
+            except RuntimeError:
+                pass  # no event loop in tests
 
         action = "approve" if summary.status == SummaryStatus.APPROVED else "edit"
         await self.audit_service.log_action(

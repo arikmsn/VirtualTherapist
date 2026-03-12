@@ -424,6 +424,8 @@ class TestTreatmentPlanUpdateCache:
         # First .filter().first() → patient; second chain → existing plan
         db.query.return_value.filter.return_value.first.side_effect = [patient, existing_plan]
         db.query.return_value.filter.return_value.order_by.return_value.first.return_value = existing_plan
+        # _next_version uses .scalar() to get max version
+        db.query.return_value.filter.return_value.scalar.return_value = existing_plan.version
         return db
 
     def _make_service(self, db, summaries):
@@ -450,8 +452,8 @@ class TestTreatmentPlanUpdateCache:
             tp_fp=fp,
             tp_fp_ver=FINGERPRINT_VERSION,
             tp_valid_until=cache_valid_until(),
-            tp_json={"goals": ["cached"]},
-            tp_rendered="cached plan text",
+            tp_json={"primary_goals": [{"description": "cached goal"}], "presenting_problem": "anxiety"},
+            tp_rendered="A comprehensive cached treatment plan with detailed clinical content for the patient.",
             tp_model="claude-3",
         )
         existing_plan = self._make_existing_plan(version=2)
@@ -476,8 +478,8 @@ class TestTreatmentPlanUpdateCache:
             )
 
         assert not pipeline_called, "LLM pipeline was called on cache hit in update_plan"
-        assert result.plan_json == {"goals": ["cached"]}
-        assert result.rendered_text == "cached plan text"
+        assert result.plan_json == {"primary_goals": [{"description": "cached goal"}], "presenting_problem": "anxiety"}
+        assert result.rendered_text == "A comprehensive cached treatment plan with detailed clinical content for the patient."
         assert result.version == 3  # version incremented from existing
         assert result.parent_version_id == 99
 
