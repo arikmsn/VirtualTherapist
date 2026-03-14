@@ -131,36 +131,6 @@ def _build_extraction_user_prompt(inp: SummaryInput) -> str:
     return "\n".join(parts)
 
 
-# ── Post-render cleanup ───────────────────────────────────────────────────────
-
-import re as _re
-
-# Patterns that the LLM sometimes adds but should NOT appear in the stored summary.
-_ARTIFACT_PATTERNS = [
-    # Disclaimer / approval notice (🔒 ... )
-    _re.compile(r"^🔒.*$", _re.MULTILINE),
-    # Confidence / trust-level line (רמת הביטחון / רמת ביטחון)
-    _re.compile(r"^.*רמת[_ ]ה?ביטחון.*$", _re.MULTILINE),
-    # "What's missing" block  (⚠️ חסר: ... )
-    _re.compile(r"^⚠️\s*חסר.*$", _re.MULTILINE),
-    # Generic "awaiting approval" lines
-    _re.compile(r"^.*ממתין לאישור.*$", _re.MULTILINE),
-    # "Missing information" header-like lines
-    _re.compile(r"^#{1,3}\s*חסר מידע.*$", _re.MULTILINE),
-    # Trailing horizontal rules left behind after stripping
-    _re.compile(r"\n---\s*$"),
-]
-
-
-def _strip_summary_artifacts(text: str) -> str:
-    """Remove LLM-generated disclaimers, confidence notes, and missing-data flags."""
-    for pat in _ARTIFACT_PATTERNS:
-        text = pat.sub("", text)
-    # Collapse multiple blank lines left by removals
-    text = _re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
-
-
 # ── Render prompt builder ─────────────────────────────────────────────────────
 
 _CBT_RENDER_SECTION = """\
@@ -170,28 +140,22 @@ _CBT_RENDER_SECTION = """\
 - תאר מחשבות אוטומטיות ועיוותים קוגניטיביים שזוהו — ציטוט ישיר אם אפשר
 - תאר התערבויות קוגניטיביות-התנהגותיות שנעשו
 - סיים עם מטלת הבית החדשה ומיקוד הפגישה הבאה
+- אם חסרים נתוני CBT (מחשבות אוטומטיות / עיוותים), סמן: ⚠️ חסר
 """
 
 
 def _build_render_prompt(inp: SummaryInput, clinical_json: dict) -> str:
     is_cbt = inp.modality_pack is not None and inp.modality_pack.name == "cbt"
     cbt_block = f"\n{_CBT_RENDER_SECTION}" if is_cbt else ""
-
-    # Strip metadata keys from clinical_json before passing to the renderer —
-    # the LLM tends to turn these into disclaimers / footer text in the summary.
-    render_json = {k: v for k, v in clinical_json.items() if k not in ("confidence",)}
-
     return (
         "The structured clinical data for this session has been extracted. "
         "Render it as a natural, cohesive session summary in the therapist's voice.\n\n"
         f"Guidelines:\n"
         "- Do NOT list fields mechanically. Integrate the content naturally.\n"
         "- Write as if the therapist is documenting their own session.\n"
-        "- Do NOT add any disclaimers, confidence scores, approval notices, "
-        "lock icons, or meta-commentary about the summary itself.\n"
-        "- Do NOT add a 'what is missing' section or flag missing elements "
-        f"with ⚠️ markers. Only document what IS present in the data.{cbt_block}\n\n"
-        f"Structured session data:\n{json.dumps(render_json, ensure_ascii=False, indent=2)}\n\n"
+        "- If the modality requires specific elements that are absent, "
+        f"flag them at the end as: ⚠️ חסר: [element]{cbt_block}\n\n"
+        f"Structured session data:\n{json.dumps(clinical_json, ensure_ascii=False, indent=2)}\n\n"
         "Write the session summary now."
     )
 
@@ -337,4 +301,4 @@ class SummaryPipeline:
         self._last_render_result = result
         # Keep agent._last_result pointing to the render result (the visible output)
         self.agent._last_result = result
-        return _strip_summary_artifacts(result.content)
+        return result.content

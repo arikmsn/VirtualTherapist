@@ -208,7 +208,6 @@ export default function PatientProfilePage() {
 
   // Deep summary (replaces old insight)
   const [insight, setInsight] = useState<DeepSummary | null>(null)
-  const [insightRenderedText, setInsightRenderedText] = useState<string | null>(null)
   const [insightLoading, setInsightLoading] = useState(false)
   const [insightError, setInsightError] = useState('')
   const [deepHistory, setDeepHistory] = useState<Array<{
@@ -488,7 +487,6 @@ export default function PatientProfilePage() {
       if (result.summary_json) {
         setInsight(result.summary_json as unknown as DeepSummary)
       }
-      setInsightRenderedText(result.rendered_text ?? null)
       loadDeepHistory()
     } catch (err: any) {
       setInsightError(err.response?.data?.detail || 'שגיאה ביצירת סיכום העומק')
@@ -962,7 +960,7 @@ export default function PatientProfilePage() {
                       } else {
                         setViewingDeepSummary({
                           created_at: new Date().toISOString(),
-                          rendered_text: insightRenderedText,
+                          rendered_text: null,
                           summary_json: insight as unknown as Record<string, unknown>,
                         })
                       }
@@ -1768,96 +1766,49 @@ export default function PatientProfilePage() {
               </button>
             </div>
             <div className="overflow-y-auto flex-1 p-5 space-y-4">
-              {(() => {
-                const j = viewingDeepSummary.summary_json as Record<string, unknown> | null
-                // Key-agnostic renderer: works with ANY JSON schema the pipeline produces
-                const keyLabels: Record<string, string> = {
-                  // Legacy schema
-                  overall_treatment_picture: 'תמונת מצב כללית',
-                  timeline_highlights: 'אבני דרך',
-                  goals_and_tasks: 'מטרות ומשימות',
-                  measurable_progress: 'סימני התקדמות',
-                  directions_for_next_phase: 'כיוונים להמשך',
-                  // Current pipeline schema
-                  arc_narrative: 'נרטיב טיפולי',
-                  presenting_problem_evolution: 'התפתחות הבעיה המציגה',
-                  treatment_phases: 'שלבי הטיפול',
-                  goals_outcome: 'יעדים ותוצאות',
-                  clinical_patterns_identified: 'דפוסים קליניים',
-                  turning_points: 'נקודות מפנה',
-                  what_worked: 'מה עבד',
-                  what_didnt_work: 'מה לא עבד',
-                  current_status: 'מצב נוכחי',
-                  recommendations_going_forward: 'המלצות להמשך',
-                  // Even older schema
-                  overview: 'סקירה כללית',
-                  progress: 'התקדמות',
-                  patterns: 'דפוסים',
-                  risks: 'סיכונים',
-                  suggestions_for_next_sessions: 'הצעות לפגישות הבאות',
-                }
-                const skipKeys = new Set(['sessions_covered', 'confidence', 'version'])
-                const colors = [
-                  ['bg-white', 'border-gray-100', 'text-gray-800'],
-                  ['bg-blue-50', 'border-blue-100', 'text-blue-900'],
-                  ['bg-green-50', 'border-green-100', 'text-green-900'],
-                  ['bg-purple-50', 'border-purple-100', 'text-purple-900'],
-                  ['bg-indigo-50', 'border-indigo-100', 'text-indigo-900'],
-                  ['bg-emerald-50', 'border-emerald-100', 'text-emerald-900'],
-                  ['bg-orange-50', 'border-orange-100', 'text-orange-900'],
-                ]
-                // Check if JSON has any displayable content
-                const entries = j ? Object.entries(j).filter(([k, v]) => {
-                  if (skipKeys.has(k)) return false
-                  if (v == null || v === '') return false
-                  if (Array.isArray(v) && v.length === 0) return false
-                  return true
-                }) : []
-                if (entries.length > 0) {
-                  return (
-                    <>
-                      {entries.map(([key, value], idx) => {
-                        const label = keyLabels[key] || key.replace(/_/g, ' ')
-                        const [bg, border, text] = colors[idx % colors.length]
-                        if (Array.isArray(value) && value.length > 0) {
-                          if (typeof value[0] === 'object' && value[0] !== null) {
-                            return (
-                              <div key={key} className={`${bg} rounded-lg p-4 border ${border}`}>
-                                <h3 className={`font-bold ${text} mb-2`}>{label}</h3>
-                                <div className="space-y-2">
-                                  {(value as Record<string, unknown>[]).map((item, i) => (
-                                    <div key={i} className="border-r-2 border-gray-300 pr-2 text-sm text-gray-700">
-                                      {Object.values(item).filter(Boolean).map(String).join(' — ')}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )
-                          }
-                          return (
-                            <div key={key} className={`${bg} rounded-lg p-4 border ${border}`}>
-                              <h3 className={`font-bold ${text} mb-2`}>{label}</h3>
-                              <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                                {(value as unknown[]).map((item, i) => <li key={i}>{String(item)}</li>)}
-                              </ul>
-                            </div>
-                          )
-                        }
-                        return (
-                          <div key={key} className={`${bg} rounded-lg p-4 border ${border}`}>
-                            <h3 className={`font-bold ${text} mb-2`}>{label}</h3>
-                            <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(value)}</p>
-                          </div>
-                        )
-                      })}
-                    </>
-                  )
-                }
-                if (viewingDeepSummary.rendered_text) {
-                  return <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{viewingDeepSummary.rendered_text}</p>
-                }
-                return <p className="text-gray-400 text-sm">אין תוכן שמור</p>
-              })()}
+              {viewingDeepSummary.summary_json ? (() => {
+                const j = viewingDeepSummary.summary_json as Record<string, unknown>
+                return (
+                  <>
+                    {j.overall_treatment_picture && (
+                      <div className="bg-white rounded-lg p-4 border border-gray-100">
+                        <h3 className="font-bold text-gray-800 mb-2">תמונת מצב כללית</h3>
+                        <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.overall_treatment_picture)}</p>
+                      </div>
+                    )}
+                    {Array.isArray(j.timeline_highlights) && j.timeline_highlights.length > 0 && (
+                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                        <h3 className="font-bold text-blue-900 mb-2">אבני דרך</h3>
+                        <ul className="list-disc list-inside space-y-1 text-blue-800 text-sm">
+                          {(j.timeline_highlights as string[]).map((h, i) => <li key={i}>{h}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {j.goals_and_tasks && (
+                      <div className="bg-white rounded-lg p-4 border border-gray-100">
+                        <h3 className="font-bold text-gray-800 mb-2">מטרות ומשימות</h3>
+                        <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.goals_and_tasks)}</p>
+                      </div>
+                    )}
+                    {j.measurable_progress && (
+                      <div className="bg-green-50 rounded-lg p-4 border border-green-100">
+                        <h3 className="font-bold text-green-800 mb-2">סימני התקדמות</h3>
+                        <p className="text-green-800 text-sm whitespace-pre-line leading-relaxed">{String(j.measurable_progress)}</p>
+                      </div>
+                    )}
+                    {j.directions_for_next_phase && (
+                      <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                        <h3 className="font-bold text-purple-900 mb-2">כיוונים להמשך</h3>
+                        <p className="text-purple-800 text-sm whitespace-pre-line leading-relaxed">{String(j.directions_for_next_phase)}</p>
+                      </div>
+                    )}
+                  </>
+                )
+              })() : viewingDeepSummary.rendered_text ? (
+                <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{viewingDeepSummary.rendered_text}</p>
+              ) : (
+                <p className="text-gray-400 text-sm">אין תוכן שמור</p>
+              )}
             </div>
             <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex gap-3">
               {viewingDeepSummary.summary_json && (

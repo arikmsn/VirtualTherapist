@@ -102,7 +102,6 @@ async def generate_deep_summary(
             provider=agent.provider,
         )
         db.commit()
-        db.refresh(summary)
         return _summary_response(summary)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session, joinedload
 
 from app.ai.models import FlowType
@@ -16,12 +15,6 @@ from app.ai.treatment_plan import (
     TreatmentPlanResult,
 )
 from app.ai.signature import SignatureEngine, inject_into_prompt
-from app.core.ai_cache import (
-    cache_valid_until,
-    is_cache_valid,
-    treatment_plan_fingerprint,
-)
-from app.core.fingerprint import FINGERPRINT_VERSION
 from app.models.ai_log import AIGenerationLog
 from app.models.patient import Patient
 from app.models.session import Session as TherapySession, SessionSummary
@@ -174,18 +167,6 @@ class TreatmentPlanService:
         except Exception as exc:
             logger.warning(f"treatment_plan _write_generation_log failed (non-blocking): {exc}")
 
-    def _next_version(self, patient_id: int, therapist_id: int) -> int:
-        """Return max(version) + 1 across ALL plans for this patient, or 1 if none exist."""
-        max_ver = (
-            self.db.query(sa_func.max(TreatmentPlan.version))
-            .filter(
-                TreatmentPlan.patient_id == patient_id,
-                TreatmentPlan.therapist_id == therapist_id,
-            )
-            .scalar()
-        )
-        return (max_ver or 0) + 1
-
     # ── Core operations ───────────────────────────────────────────────────────
 
     async def create_plan(
@@ -223,56 +204,6 @@ class TreatmentPlanService:
         therapist_profile = self._build_therapist_profile_dict(therapist_id)
         modality = therapist_profile.get("modality", "")
 
-        # Cache check: background precompute stored a valid result → use it (no LLM call)
-        _fp = treatment_plan_fingerprint(approved_summaries)
-        _tp_fp_match = patient.treatment_plan_cache_fingerprint == _fp
-        _tp_ver_match = patient.treatment_plan_cache_fingerprint_version == FINGERPRINT_VERSION
-        _tp_ttl_valid = is_cache_valid(patient.treatment_plan_cache_valid_until)
-        _tp_has_json = patient.treatment_plan_cache_json is not None
-        _tp_has_text = patient.treatment_plan_cache_rendered_text is not None
-        # Validate cached content is real (not empty/refusal from a failed LLM call)
-        _tp_has_content = (
-            _tp_has_json
-            and isinstance(patient.treatment_plan_cache_json, dict)
-            and bool(patient.treatment_plan_cache_json.get("primary_goals")
-                     or patient.treatment_plan_cache_json.get("presenting_problem")
-                     or patient.treatment_plan_cache_json.get("interventions_planned"))
-            and _tp_has_text
-            and len(patient.treatment_plan_cache_rendered_text or "") > 50
-        )
-        _tp_cache_hit = (
-            session_ids is None
-            and _tp_fp_match and _tp_ver_match and _tp_ttl_valid
-            and _tp_has_json and _tp_has_text and _tp_has_content
-        )
-        logger.info(
-            f"[cache] treatment_plan CREATE patient={patient_id} "
-            f"selective={session_ids is not None} fp_match={_tp_fp_match} ver_match={_tp_ver_match} "
-            f"ttl_valid={_tp_ttl_valid} has_json={_tp_has_json} has_text={_tp_has_text} "
-            f"has_content={_tp_has_content} "
-            f"valid_until={patient.treatment_plan_cache_valid_until} → {'HIT' if _tp_cache_hit else 'MISS'}"
-        )
-        if _tp_cache_hit:
-            _next_ver = self._next_version(patient_id, therapist_id)
-            logger.info(
-                f"[treatment_plan] CACHE HIT patient={patient_id} "
-                f"summaries={len(approved_summaries)} version={_next_ver} — returning from precompute cache"
-            )
-            plan = TreatmentPlan(
-                patient_id=patient_id,
-                therapist_id=therapist_id,
-                status=PlanStatus.ACTIVE.value,
-                plan_json=patient.treatment_plan_cache_json,
-                rendered_text=patient.treatment_plan_cache_rendered_text,
-                version=_next_ver,
-                parent_version_id=None,
-                model_used=patient.treatment_plan_cache_model_used,
-                tokens_used=None,
-            )
-            self.db.add(plan)
-            self.db.flush()
-            return plan
-
         # Signature injection
         sig_engine = SignatureEngine(self.db)
         sig_profile = await sig_engine.get_active_profile(therapist_id)
@@ -291,28 +222,18 @@ class TreatmentPlanService:
         pipeline = TreatmentPlanPipeline(provider)
         result: TreatmentPlanResult = await pipeline.run(inp)
 
-        _next_ver = self._next_version(patient_id, therapist_id)
         plan = TreatmentPlan(
             patient_id=patient_id,
             therapist_id=therapist_id,
             status=PlanStatus.ACTIVE.value,
             plan_json=result.plan_json,
             rendered_text=result.rendered_text,
-            version=_next_ver,
+            version=result.version,
             parent_version_id=None,
             model_used=result.model_used,
             tokens_used=result.tokens_used,
         )
         self.db.add(plan)
-        self.db.flush()
-
-        # Warm the patient cache so the next create call returns without LLM (if inputs unchanged)
-        patient.treatment_plan_cache_json = result.plan_json
-        patient.treatment_plan_cache_rendered_text = result.rendered_text
-        patient.treatment_plan_cache_fingerprint = _fp
-        patient.treatment_plan_cache_fingerprint_version = FINGERPRINT_VERSION
-        patient.treatment_plan_cache_valid_until = cache_valid_until()
-        patient.treatment_plan_cache_model_used = result.model_used
         self.db.flush()
 
         # Telemetry — extraction + render
@@ -368,56 +289,6 @@ class TreatmentPlanService:
         therapist_profile = self._build_therapist_profile_dict(therapist_id)
         modality = therapist_profile.get("modality", "")
 
-        # Cache check: only for full-patient plans (not filtered), same logic as create_plan
-        _fp = treatment_plan_fingerprint(approved_summaries)
-        _up_fp_match = patient.treatment_plan_cache_fingerprint == _fp
-        _up_ver_match = patient.treatment_plan_cache_fingerprint_version == FINGERPRINT_VERSION
-        _up_ttl_valid = is_cache_valid(patient.treatment_plan_cache_valid_until)
-        _up_has_json = patient.treatment_plan_cache_json is not None
-        _up_has_text = patient.treatment_plan_cache_rendered_text is not None
-        _up_has_content = (
-            _up_has_json
-            and isinstance(patient.treatment_plan_cache_json, dict)
-            and bool(patient.treatment_plan_cache_json.get("primary_goals")
-                     or patient.treatment_plan_cache_json.get("presenting_problem")
-                     or patient.treatment_plan_cache_json.get("interventions_planned"))
-            and _up_has_text
-            and len(patient.treatment_plan_cache_rendered_text or "") > 50
-        )
-        _up_cache_hit = (
-            session_ids is None
-            and _up_fp_match and _up_ver_match and _up_ttl_valid
-            and _up_has_json and _up_has_text and _up_has_content
-        )
-        logger.info(
-            f"[cache] treatment_plan UPDATE patient={patient_id} "
-            f"selective={session_ids is not None} fp_match={_up_fp_match} ver_match={_up_ver_match} "
-            f"ttl_valid={_up_ttl_valid} has_json={_up_has_json} has_text={_up_has_text} "
-            f"has_content={_up_has_content} "
-            f"valid_until={patient.treatment_plan_cache_valid_until} → {'HIT' if _up_cache_hit else 'MISS'}"
-        )
-        if _up_cache_hit:
-            _next_ver = self._next_version(patient_id, therapist_id)
-            logger.info(
-                f"[treatment_plan] UPDATE CACHE HIT patient={patient_id} "
-                f"summaries={len(approved_summaries)} version={_next_ver} — returning from precompute cache"
-            )
-            existing.status = PlanStatus.ARCHIVED.value
-            new_plan = TreatmentPlan(
-                patient_id=patient_id,
-                therapist_id=therapist_id,
-                status=PlanStatus.ACTIVE.value,
-                plan_json=patient.treatment_plan_cache_json,
-                rendered_text=patient.treatment_plan_cache_rendered_text,
-                version=_next_ver,
-                parent_version_id=existing.id,
-                model_used=patient.treatment_plan_cache_model_used,
-                tokens_used=None,
-            )
-            self.db.add(new_plan)
-            self.db.flush()
-            return new_plan
-
         sig_engine = SignatureEngine(self.db)
         sig_profile = await sig_engine.get_active_profile(therapist_id)
         signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
@@ -438,28 +309,18 @@ class TreatmentPlanService:
         # Archive old plan
         existing.status = PlanStatus.ARCHIVED.value
 
-        _next_ver = self._next_version(patient_id, therapist_id)
         new_plan = TreatmentPlan(
             patient_id=patient_id,
             therapist_id=therapist_id,
             status=PlanStatus.ACTIVE.value,
             plan_json=result.plan_json,
             rendered_text=result.rendered_text,
-            version=_next_ver,
+            version=result.version,
             parent_version_id=existing.id,
             model_used=result.model_used,
             tokens_used=result.tokens_used,
         )
         self.db.add(new_plan)
-        self.db.flush()
-
-        # Warm the patient cache so subsequent update calls return without LLM
-        patient.treatment_plan_cache_json = result.plan_json
-        patient.treatment_plan_cache_rendered_text = result.rendered_text
-        patient.treatment_plan_cache_fingerprint = _fp
-        patient.treatment_plan_cache_fingerprint_version = FINGERPRINT_VERSION
-        patient.treatment_plan_cache_valid_until = cache_valid_until()
-        patient.treatment_plan_cache_model_used = result.model_used
         self.db.flush()
 
         self._write_generation_log(
@@ -478,112 +339,10 @@ class TreatmentPlanService:
         )
 
         logger.info(
-            f"[treatment_plan] UPDATE patient={patient_id} version={_next_ver} "
-            f"parent={existing.id} tokens={result.tokens_used} plan_id={new_plan.id} "
-            f"cache_warmed=True"
+            f"[treatment_plan] UPDATE patient={patient_id} version={result.version} "
+            f"parent={existing.id} tokens={result.tokens_used} plan_id={new_plan.id}"
         )
         return new_plan
-
-    # ── Precompute cache ──────────────────────────────────────────────────────
-
-    async def _precompute_to_cache(
-        self,
-        patient_id: int,
-        therapist_id: int,
-        provider,  # AIProvider
-    ) -> bool:
-        """
-        Run the treatment plan pipeline and store the result in patient cache columns.
-        Called by background precompute jobs.  Skips if cache is already valid.
-        Never raises.
-        Returns True on success, False on failure or skip.
-        """
-        try:
-            patient = self.db.query(Patient).filter(
-                Patient.id == patient_id,
-                Patient.therapist_id == therapist_id,
-            ).first()
-            if not patient:
-                logger.debug(f"[precompute_treatment_plan] patient={patient_id} not found — skip")
-                return False
-
-            approved_summaries = self._fetch_approved_summaries(
-                patient_id=patient_id,
-                therapist_id=therapist_id,
-            )
-            if not approved_summaries:
-                logger.debug(
-                    f"[precompute_treatment_plan] patient={patient_id} — no approved summaries"
-                )
-                return False
-
-            _fp = treatment_plan_fingerprint(approved_summaries)
-            if (
-                patient.treatment_plan_cache_fingerprint == _fp
-                and patient.treatment_plan_cache_fingerprint_version == FINGERPRINT_VERSION
-                and is_cache_valid(patient.treatment_plan_cache_valid_until)
-                and patient.treatment_plan_cache_json is not None
-                and patient.treatment_plan_cache_rendered_text is not None
-            ):
-                logger.debug(
-                    f"[precompute_treatment_plan] patient={patient_id} — cache still valid, skip"
-                )
-                return False
-
-            therapist_profile = self._build_therapist_profile_dict(therapist_id)
-            modality = therapist_profile.get("modality", "")
-
-            sig_engine = SignatureEngine(self.db)
-            sig_profile = await sig_engine.get_active_profile(therapist_id)
-            signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
-
-            inp = TreatmentPlanInput(
-                client_id=patient_id,
-                therapist_id=therapist_id,
-                modality=modality,
-                approved_summaries=approved_summaries,
-                therapist_profile=therapist_profile,
-                existing_plan=None,
-                therapist_signature=signature_prompt,
-            )
-
-            pipeline = TreatmentPlanPipeline(provider)
-            result: TreatmentPlanResult = await pipeline.run(inp)
-
-            # Validate result has real clinical content before caching
-            if not result.plan_json or not isinstance(result.plan_json, dict):
-                logger.warning(
-                    f"[precompute_treatment_plan] patient={patient_id} — pipeline returned empty JSON, skipping cache"
-                )
-                return False
-            if not (result.plan_json.get("primary_goals")
-                    or result.plan_json.get("presenting_problem")
-                    or result.plan_json.get("interventions_planned")):
-                logger.warning(
-                    f"[precompute_treatment_plan] patient={patient_id} — pipeline returned no clinical content "
-                    f"(keys={list(result.plan_json.keys())}), skipping cache"
-                )
-                return False
-
-            patient.treatment_plan_cache_json = result.plan_json
-            patient.treatment_plan_cache_rendered_text = result.rendered_text
-            patient.treatment_plan_cache_fingerprint = _fp
-            patient.treatment_plan_cache_fingerprint_version = FINGERPRINT_VERSION
-            patient.treatment_plan_cache_valid_until = cache_valid_until()
-            patient.treatment_plan_cache_model_used = result.model_used
-            self.db.flush()
-
-            logger.info(
-                f"[precompute_treatment_plan] patient={patient_id} "
-                f"summaries={len(approved_summaries)} tokens={result.tokens_used} — cached"
-            )
-            return True
-        except Exception as exc:
-            logger.exception(
-                f"[precompute_treatment_plan] _precompute_to_cache patient={patient_id} "
-                f"failed (non-blocking): {exc!r}"
-            )
-            return False
 
     def get_active_plan(self, patient_id: int, therapist_id: int) -> Optional[TreatmentPlan]:
         """Return the current active plan, or None."""

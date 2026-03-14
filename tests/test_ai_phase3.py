@@ -178,12 +178,9 @@ class TestRenderPrompt:
         clinical_json = {"session_focus": "חרדה", "confidence": 0.9}
         prompt = _build_render_prompt(inp, clinical_json)
         assert "חרדה" in prompt
-        # confidence is intentionally stripped from render prompt to prevent
-        # the LLM from embedding disclaimer/confidence text in the summary
-        assert "0.9" not in prompt
+        assert "0.9" in prompt
 
-    def test_no_missing_elements_instruction(self):
-        """Render prompt should NOT instruct the LLM to flag missing elements."""
+    def test_includes_missing_elements_instruction(self):
         inp = SummaryInput(
             raw_content="notes",
             client_name="שרה",
@@ -195,7 +192,7 @@ class TestRenderPrompt:
             therapist_signature=None,
         )
         prompt = _build_render_prompt(inp, {})
-        assert "⚠️ חסר:" not in prompt
+        assert "חסר" in prompt or "missing" in prompt.lower()
 
 
 # ── SummaryPipeline ───────────────────────────────────────────────────────────

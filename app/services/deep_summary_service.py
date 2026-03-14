@@ -17,13 +17,6 @@ from app.ai.deep_summary import (
 )
 from app.ai.models import FlowType
 from app.ai.signature import SignatureEngine, inject_into_prompt
-from app.core.ai_cache import (
-    CACHE_TTL_DAYS,
-    cache_valid_until,
-    deep_summary_fingerprint,
-    is_cache_valid,
-)
-from app.core.fingerprint import FINGERPRINT_VERSION
 from app.models.ai_log import AIGenerationLog
 from app.models.deep_summary import DeepSummary, DeepSummaryStatus
 from app.models.patient import Patient
@@ -167,81 +160,6 @@ class DeepSummaryService:
                 "Approve at least one session summary before generating a deep summary."
             )
 
-        # Cache check: if background precompute stored a valid result → use it (no LLM call)
-        _fp = deep_summary_fingerprint(approved_summaries)
-        _ds_fp_match = patient.deep_summary_cache_fingerprint == _fp
-        _ds_ver_match = patient.deep_summary_cache_fingerprint_version == FINGERPRINT_VERSION
-        _ds_ttl_valid = is_cache_valid(patient.deep_summary_cache_valid_until)
-        _ds_has_json = patient.deep_summary_cache_json is not None
-        _ds_has_text = patient.deep_summary_cache_rendered_text is not None
-
-        # Validate that cached JSON has real clinical content, not just metadata/empty fields.
-        # A bad LLM result (refusal, empty extraction) can get cached by precompute.
-        _ds_has_content = False
-        if _ds_has_json and isinstance(patient.deep_summary_cache_json, dict):
-            _content_keys = {
-                "arc_narrative", "presenting_problem_evolution", "treatment_phases",
-                "goals_outcome", "clinical_patterns_identified", "turning_points",
-                "what_worked", "what_didnt_work", "current_status",
-                "recommendations_going_forward",
-                # Legacy keys
-                "overall_treatment_picture", "timeline_highlights",
-                "goals_and_tasks", "measurable_progress", "directions_for_next_phase",
-            }
-            for k, v in patient.deep_summary_cache_json.items():
-                if k not in _content_keys:
-                    continue
-                if isinstance(v, str) and len(v) > 20:
-                    _ds_has_content = True
-                    break
-                if isinstance(v, list) and len(v) > 0:
-                    _ds_has_content = True
-                    break
-
-        _ds_cache_hit = (
-            _ds_fp_match and _ds_ver_match and _ds_ttl_valid
-            and _ds_has_json and _ds_has_text and _ds_has_content
-        )
-        logger.info(
-            f"[cache] deep_summary patient={patient_id} "
-            f"fp_match={_ds_fp_match} ver_match={_ds_ver_match} ttl_valid={_ds_ttl_valid} "
-            f"has_json={_ds_has_json} has_text={_ds_has_text} has_content={_ds_has_content} "
-            f"valid_until={patient.deep_summary_cache_valid_until} → {'HIT' if _ds_cache_hit else 'MISS'}"
-        )
-        if _ds_cache_hit:
-            _cache_keys = list((patient.deep_summary_cache_json or {}).keys())
-            logger.info(
-                f"[deep_summary] CACHE HIT patient={patient_id} "
-                f"sessions={len(approved_summaries)} json_keys={_cache_keys} "
-                f"has_rendered={bool(patient.deep_summary_cache_rendered_text)} "
-                f"— returning from precompute cache"
-            )
-            deep_summary = DeepSummary(
-                patient_id=patient_id,
-                therapist_id=therapist_id,
-                summary_json=patient.deep_summary_cache_json,
-                rendered_text=patient.deep_summary_cache_rendered_text,
-                sessions_covered=patient.deep_summary_cache_sessions_covered or len(approved_summaries),
-                status=DeepSummaryStatus.DRAFT.value,
-                model_used=patient.deep_summary_cache_model_used,
-                tokens_used=None,
-            )
-            self.db.add(deep_summary)
-            self.db.flush()
-            return deep_summary
-        elif not _ds_has_content and _ds_has_json:
-            # Invalidate the bad cache so it won't be served again
-            logger.warning(
-                f"[deep_summary] INVALIDATING bad cache patient={patient_id} "
-                f"json_keys={list((patient.deep_summary_cache_json or {}).keys())} "
-                f"— cached result has no real clinical content, will regenerate"
-            )
-            patient.deep_summary_cache_json = None
-            patient.deep_summary_cache_rendered_text = None
-            patient.deep_summary_cache_fingerprint = None
-            patient.deep_summary_cache_valid_until = None
-            self.db.flush()
-
         therapist_profile = self._build_therapist_profile_dict(therapist_id)
         modality = therapist_profile.get("modality", "")
         treatment_plan = self._get_active_plan_json(patient_id, therapist_id)
@@ -277,20 +195,6 @@ class DeepSummaryService:
 
         pipeline = DeepSummaryPipeline(provider)
         result: DeepSummaryResult = await pipeline.run(inp, vault_context=vault_context)
-
-        logger.info(
-            f"[cache] deep_summary patient={patient_id} LLM result "
-            f"has_json={bool(result.summary_json)} has_rendered={bool(result.rendered_text)} "
-            f"tokens={getattr(result, 'tokens_used', None)}"
-        )
-        if not result.summary_json:
-            raise ValueError(
-                "Deep summary pipeline returned empty summary_json — LLM call may have failed"
-            )
-        if not result.rendered_text:
-            logger.warning(
-                f"[deep_summary] patient={patient_id} — pipeline returned empty rendered_text"
-            )
 
         # Telemetry — one log per extraction/synthesis/render call
         for extraction_result in pipeline._extraction_results:
@@ -337,46 +241,10 @@ class DeepSummaryService:
         self.db.add(deep_summary)
         self.db.flush()
 
-        # Warm the patient cache only if result has real clinical content.
-        # Prevents caching LLM refusals / "no data" generic text.
-        _content_keys = {
-            "arc_narrative", "presenting_problem_evolution", "treatment_phases",
-            "goals_outcome", "clinical_patterns_identified", "turning_points",
-            "what_worked", "what_didnt_work", "current_status",
-            "recommendations_going_forward",
-            # Legacy keys
-            "overall_treatment_picture", "timeline_highlights",
-            "goals_and_tasks", "measurable_progress", "directions_for_next_phase",
-        }
-        _has_real_content = (
-            isinstance(result.summary_json, dict)
-            and any(
-                (isinstance(v, str) and len(v) > 20) or (isinstance(v, list) and len(v) > 0)
-                for k, v in result.summary_json.items()
-                if k in _content_keys
-            )
-        )
-        if _has_real_content:
-            patient.deep_summary_cache_json = result.summary_json
-            patient.deep_summary_cache_rendered_text = result.rendered_text
-            patient.deep_summary_cache_fingerprint = _fp
-            patient.deep_summary_cache_fingerprint_version = FINGERPRINT_VERSION
-            patient.deep_summary_cache_valid_until = cache_valid_until()
-            patient.deep_summary_cache_sessions_covered = len(approved_summaries)
-            patient.deep_summary_cache_model_used = result.model_used
-            self.db.flush()
-        else:
-            logger.warning(
-                f"[deep_summary] patient={patient_id} — LLM result has no real clinical content "
-                f"(keys={list((result.summary_json or {}).keys())}), NOT caching"
-            )
-
-        _result_keys = list((result.summary_json or {}).keys())
         logger.info(
             f"[deep_summary] GENERATE patient={patient_id} "
             f"sessions={len(approved_summaries)} tokens={result.tokens_used} "
-            f"vault_entries={vault_created} id={deep_summary.id} "
-            f"json_keys={_result_keys}"
+            f"vault_entries={vault_created} id={deep_summary.id}"
         )
         return deep_summary
 
@@ -437,17 +305,6 @@ class DeepSummaryService:
         summary.status = DeepSummaryStatus.APPROVED.value
         summary.approved_at = datetime.utcnow()
         self.db.flush()
-
-        # Precompute treatment plan in background after deep summary approval
-        try:
-            import asyncio
-            from app.services.precompute_jobs import precompute_treatment_plan
-            asyncio.create_task(
-                precompute_treatment_plan(summary.patient_id, therapist_id)
-            )
-        except RuntimeError:
-            pass  # no event loop in tests
-
         return summary
 
     def delete_deep_summary(self, summary_id: int, therapist_id: int) -> None:
@@ -460,127 +317,6 @@ class DeepSummaryService:
             raise ValueError("Deep summary not found or does not belong to this therapist")
         self.db.delete(summary)
         self.db.flush()
-
-    # ── Precompute cache ──────────────────────────────────────────────────────
-
-    async def _precompute_to_cache(
-        self,
-        patient_id: int,
-        therapist_id: int,
-        provider,  # AIProvider
-    ) -> bool:
-        """
-        Run the deep summary pipeline and store the result in patient cache columns.
-        Called by background precompute jobs.  Skips if the cache is already valid
-        for the current set of approved summaries.  Never raises.
-        Returns True on success, False on failure or skip.
-        """
-        try:
-            patient = self.db.query(Patient).filter(
-                Patient.id == patient_id,
-                Patient.therapist_id == therapist_id,
-            ).first()
-            if not patient:
-                logger.debug(f"[precompute_deep_summary] patient={patient_id} not found — skip")
-                return False
-
-            approved_summaries = self._fetch_approved_summaries(patient_id, therapist_id)
-            if not approved_summaries:
-                logger.debug(f"[precompute_deep_summary] patient={patient_id} — no approved summaries")
-                return False
-
-            _fp = deep_summary_fingerprint(approved_summaries)
-            if (
-                patient.deep_summary_cache_fingerprint == _fp
-                and patient.deep_summary_cache_fingerprint_version == FINGERPRINT_VERSION
-                and is_cache_valid(patient.deep_summary_cache_valid_until)
-                and patient.deep_summary_cache_json is not None
-                and patient.deep_summary_cache_rendered_text is not None
-            ):
-                logger.debug(
-                    f"[precompute_deep_summary] patient={patient_id} — cache still valid, skip"
-                )
-                return False
-
-            # Build pipeline inputs (mirrors generate_deep_summary)
-            therapist_profile = self._build_therapist_profile_dict(therapist_id)
-            modality = therapist_profile.get("modality", "")
-            treatment_plan = self._get_active_plan_json(patient_id, therapist_id)
-
-            retriever = VaultRetriever(self.db)
-            vault_entries = await retriever.get_relevant_entries(
-                client_id=patient_id,
-                therapist_id=therapist_id,
-                query_tags=[],
-                limit=8,
-            )
-            vault_context: Optional[str] = None
-            if vault_entries:
-                vault_context = "\n".join(
-                    f"[{e['entry_type']}] {e['content']}" for e in vault_entries
-                )
-
-            sig_engine = SignatureEngine(self.db)
-            sig_profile = await sig_engine.get_active_profile(therapist_id)
-            signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
-
-            inp = DeepSummaryInput(
-                client_id=patient_id,
-                therapist_id=therapist_id,
-                modality=modality,
-                approved_summaries=approved_summaries,
-                treatment_plan=treatment_plan,
-                therapist_signature=signature_prompt,
-            )
-
-            pipeline = DeepSummaryPipeline(provider)
-            result: DeepSummaryResult = await pipeline.run(inp, vault_context=vault_context)
-
-            # Validate the result has real content before caching
-            if not result.summary_json or not isinstance(result.summary_json, dict):
-                logger.warning(
-                    f"[precompute_deep_summary] patient={patient_id} — pipeline returned empty JSON, skipping cache"
-                )
-                return False
-            _content_keys = {
-                "arc_narrative", "presenting_problem_evolution", "treatment_phases",
-                "goals_outcome", "clinical_patterns_identified", "turning_points",
-                "what_worked", "what_didnt_work", "current_status",
-                "recommendations_going_forward",
-            }
-            _has_real_content = any(
-                (isinstance(v, str) and len(v) > 20) or (isinstance(v, list) and len(v) > 0)
-                for k, v in result.summary_json.items()
-                if k in _content_keys
-            )
-            if not _has_real_content:
-                logger.warning(
-                    f"[precompute_deep_summary] patient={patient_id} — pipeline returned no clinical content "
-                    f"(keys={list(result.summary_json.keys())}), skipping cache to avoid serving bad data"
-                )
-                return False
-
-            # Update patient cache columns
-            patient.deep_summary_cache_json = result.summary_json
-            patient.deep_summary_cache_rendered_text = result.rendered_text
-            patient.deep_summary_cache_fingerprint = _fp
-            patient.deep_summary_cache_fingerprint_version = FINGERPRINT_VERSION
-            patient.deep_summary_cache_valid_until = cache_valid_until()
-            patient.deep_summary_cache_sessions_covered = len(approved_summaries)
-            patient.deep_summary_cache_model_used = result.model_used
-            self.db.flush()
-
-            logger.info(
-                f"[precompute_deep_summary] patient={patient_id} "
-                f"sessions={len(approved_summaries)} tokens={result.tokens_used} — cached"
-            )
-            return True
-        except Exception as exc:
-            logger.exception(
-                f"[precompute_deep_summary] _precompute_to_cache patient={patient_id} "
-                f"failed (non-blocking): {exc!r}"
-            )
-            return False
 
     # ── Vault operations ──────────────────────────────────────────────────────
 

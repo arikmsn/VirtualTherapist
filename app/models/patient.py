@@ -2,7 +2,7 @@
 
 from sqlalchemy import (
     Column, String, Text, JSON, Boolean, Integer,
-    ForeignKey, Enum as SQLEnum, Date, DateTime,
+    ForeignKey, Enum as SQLEnum, Date,
 )
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
@@ -51,23 +51,6 @@ class Patient(BaseModel):
     # AI Interaction Settings
     allow_ai_contact = Column(Boolean, default=True)  # Patient consent for AI messages
     preferred_contact_time = Column(String(50))  # "morning", "afternoon", "evening"
-
-    # AI precompute cache — Deep Summary (added migration 038)
-    deep_summary_cache_json = Column(JSON, nullable=True)
-    deep_summary_cache_rendered_text = Column(Text, nullable=True)
-    deep_summary_cache_fingerprint = Column(Text, nullable=True)
-    deep_summary_cache_fingerprint_version = Column(Integer, nullable=True)
-    deep_summary_cache_valid_until = Column(DateTime, nullable=True)
-    deep_summary_cache_sessions_covered = Column(Integer, nullable=True)
-    deep_summary_cache_model_used = Column(String(200), nullable=True)
-
-    # AI precompute cache — Treatment Plan (added migration 038)
-    treatment_plan_cache_json = Column(JSON, nullable=True)
-    treatment_plan_cache_rendered_text = Column(Text, nullable=True)
-    treatment_plan_cache_fingerprint = Column(Text, nullable=True)
-    treatment_plan_cache_fingerprint_version = Column(Integer, nullable=True)
-    treatment_plan_cache_valid_until = Column(DateTime, nullable=True)
-    treatment_plan_cache_model_used = Column(String(200), nullable=True)
 
     # Relationships
     therapist = relationship("Therapist", back_populates="patients")
