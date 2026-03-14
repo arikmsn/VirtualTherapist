@@ -158,6 +158,10 @@ def _build_chunk_extraction_system() -> str:
         "Extract structured data from the provided session summaries.",
         "Return ONLY valid JSON — no prose, no markdown fences.",
         "",
+        "LANGUAGE REQUIREMENT: All string values in the JSON must be written in Hebrew (עברית).",
+        "If source notes are in Hebrew, extract and summarize in Hebrew.",
+        "If any field has no relevant content, use an empty string or empty list — do NOT write English phrases like 'insufficient data'.",
+        "",
         "Focus on: treatment_phases, goals_outcome, clinical_patterns_identified, "
         "turning_points, what_worked, what_didnt_work.",
         "",
@@ -187,6 +191,9 @@ def _build_synthesis_system() -> str:
         "You are a senior clinical analyst synthesizing partial treatment summaries.",
         "Merge the provided chunk analyses into one cohesive full treatment summary.",
         "Return ONLY valid JSON matching the schema. No prose, no markdown fences.",
+        "",
+        "LANGUAGE REQUIREMENT: All string values in the JSON must be written in Hebrew (עברית).",
+        "If any field has no relevant content, use an empty string or empty list — do NOT write English phrases like 'insufficient data'.",
         "",
         "Add arc_narrative, presenting_problem_evolution, current_status, "
         "and recommendations_going_forward based on the full picture.",
@@ -390,8 +397,10 @@ class DeepSummaryPipeline:
             "goals_outcome", "clinical_patterns_identified", "turning_points",
             "what_worked", "what_didnt_work", "current_status",
         )
+        # Require at least one field with meaningful Hebrew content (> 20 chars avoids
+        # short English placeholder phrases like "insufficient clinical data").
         _has_extracted_content = any(
-            (isinstance(summary_json.get(k), str) and len(summary_json.get(k, "")) > 10)
+            (isinstance(summary_json.get(k), str) and len(summary_json.get(k, "")) > 20)
             or (isinstance(summary_json.get(k), list) and len(summary_json.get(k, [])) > 0)
             for k in _content_fields
         )

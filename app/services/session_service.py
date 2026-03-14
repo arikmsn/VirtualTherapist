@@ -200,10 +200,11 @@ class SessionService:
         if not patient:
             raise ValueError("Patient not found or does not belong to this therapist")
 
-        # Get session number
-        session_count = self.db.query(TherapySession).filter(
+        # Get session number: use MAX to handle gaps from deleted sessions
+        from sqlalchemy import func
+        max_num = self.db.query(func.max(TherapySession.session_number)).filter(
             TherapySession.patient_id == patient_id
-        ).count()
+        ).scalar()
 
         session = TherapySession(
             therapist_id=therapist_id,
@@ -213,7 +214,7 @@ class SessionService:
             end_time=end_time,
             session_type=session_type,
             duration_minutes=duration_minutes,
-            session_number=session_count + 1
+            session_number=(max_num or 0) + 1
         )
 
         self.db.add(session)
