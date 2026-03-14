@@ -181,7 +181,7 @@ def _build_extraction_user_prompt(inp: TreatmentPlanInput) -> str:
     for i, s in enumerate(inp.approved_summaries, 1):
         date_str = str(s.get("session_date", ""))
         num = s.get("session_number", i)
-        text = s.get("full_summary", "")[:3000]
+        text = (s.get("full_summary") or "")[:3000]
         parts.append(f"\n[Session #{num} — {date_str}]\n{text}")
     parts.append("--- End of summaries ---")
 

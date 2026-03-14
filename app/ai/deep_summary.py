@@ -175,7 +175,7 @@ def _build_chunk_extraction_user(summaries: list[dict], chunk_index: int, total_
     for s in summaries:
         date_str = str(s.get("session_date", ""))
         num = s.get("session_number", "?")
-        text = s.get("full_summary", "")  # full text — no input truncation
+        text = s.get("full_summary") or ""  # full text — no input truncation
         parts.append(f"\n[Session #{num} — {date_str}]\n{text}")
     parts.append("--- End ---")
     parts.append(f"\nFill partial JSON schema:\n{_SCHEMA_STR}")
@@ -383,7 +383,28 @@ class DeepSummaryPipeline:
                 chunk_results.append(chunk_json)
             summary_json = await self._synthesize(chunk_results, inp)
 
-        rendered_text = await self._render(inp, summary_json, vault_context)
+        # If extraction produced no real content (JSON parsing failed or LLM returned empty),
+        # fall back to a direct render from the raw session summaries.
+        _content_fields = (
+            "arc_narrative", "presenting_problem_evolution", "treatment_phases",
+            "goals_outcome", "clinical_patterns_identified", "turning_points",
+            "what_worked", "what_didnt_work", "current_status",
+        )
+        _has_extracted_content = any(
+            (isinstance(summary_json.get(k), str) and len(summary_json.get(k, "")) > 10)
+            or (isinstance(summary_json.get(k), list) and len(summary_json.get(k, [])) > 0)
+            for k in _content_fields
+        )
+        if not _has_extracted_content:
+            logger.warning(
+                f"[deep_summary] extraction produced empty JSON for client={inp.client_id} "
+                f"(confidence={summary_json.get('confidence', 0.0)}) — "
+                f"falling back to direct render from {n} session summaries"
+            )
+            # Direct render: skip the structured JSON layer, pass sessions directly
+            rendered_text = await self._render_direct(inp, vault_context)
+        else:
+            rendered_text = await self._render(inp, summary_json, vault_context)
 
         model_used = "unknown"
         if self._render_result:
@@ -462,6 +483,51 @@ class DeepSummaryPipeline:
         """Render summary_json into formal Hebrew prose."""
         system = _build_render_system(inp)
         user = _build_render_user(summary_json, vault_context, inp)
+        model_id, route_reason = self._router.resolve(FlowType.DEEP_SUMMARY)
+        result = await self.provider.generate(
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            model=model_id,
+            flow_type=FlowType.DEEP_SUMMARY,
+            route_reason=route_reason,
+        )
+        self._render_result = result
+        return result.content
+
+    async def _render_direct(
+        self,
+        inp: DeepSummaryInput,
+        vault_context: Optional[str],
+    ) -> str:
+        """
+        Fallback render: skip structured JSON extraction, render a full clinical narrative
+        directly from the raw session summaries. Used when JSON extraction produces empty output.
+        """
+        vault_section = ""
+        if vault_context:
+            vault_section = f"\nתובנות קליניות מהכספת:\n{vault_context}\n"
+
+        sessions_text = "\n".join(
+            f"\n[פגישה #{s.get('session_number', i + 1)} — {s.get('session_date', '')}]\n{s.get('full_summary') or ''}"
+            for i, s in enumerate(inp.approved_summaries)
+        )
+
+        user = (
+            f"Modality: {inp.modality}\n"
+            f"Total sessions: {len(inp.approved_summaries)}\n"
+            f"{vault_section}\n"
+            "--- Session summaries (oldest → newest) ---\n"
+            f"{sessions_text}\n"
+            "--- End ---\n\n"
+            "כתוב סיכום עומק ממוקד ומקיף בעברית, עד כ‑5,000 תווים. "
+            "כסה: רצף הטיפול, דפוסים קליניים, מה עבד, מה לא עבד, מצב נוכחי, המלצות להמשך. "
+            "אל תחרוג מאורך זה.\n\n"
+            "Write the complete deep summary narrative in Hebrew now."
+        )
+
+        system = _build_render_system(inp)
         model_id, route_reason = self._router.resolve(FlowType.DEEP_SUMMARY)
         result = await self.provider.generate(
             messages=[
