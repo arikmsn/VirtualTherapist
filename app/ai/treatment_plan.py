@@ -242,6 +242,16 @@ def _build_render_user_prompt(inp: TreatmentPlanInput, plan_json: dict) -> str:
 
 # ── JSON parser ───────────────────────────────────────────────────────────────
 
+def _has_plan_content(plan_json: dict) -> bool:
+    """Return True if extraction produced clinically meaningful content."""
+    return (
+        bool((plan_json.get("presenting_problem") or "").strip())
+        or len(plan_json.get("primary_goals") or []) > 0
+        or len(plan_json.get("focus_areas") or []) > 0
+        or len(plan_json.get("interventions_planned") or []) > 0
+    )
+
+
 def _parse_plan_json(raw: str) -> dict:
     """Parse extraction response into a dict. Falls back to empty scaffold on failure."""
     cleaned = raw.strip()
@@ -303,7 +313,16 @@ class TreatmentPlanPipeline:
             )
 
         plan_json = await self._extract(inp)
-        rendered_text = await self._render(inp, plan_json)
+
+        if not _has_plan_content(plan_json):
+            logger.warning(
+                f"[treatment_plan] extraction yielded empty plan for "
+                f"client={inp.client_id} ({len(inp.approved_summaries)} summaries) "
+                "— falling back to direct render from session summaries"
+            )
+            rendered_text = await self._render_direct(inp)
+        else:
+            rendered_text = await self._render(inp, plan_json)
 
         extract_res = self._last_extraction_result
         render_res = self._last_render_result
@@ -343,6 +362,52 @@ class TreatmentPlanPipeline:
         )
         self._last_extraction_result = result
         return _parse_plan_json(result.content)
+
+    async def _render_direct(self, inp: TreatmentPlanInput) -> str:
+        """
+        Fallback render: generate a treatment plan prose directly from approved
+        session summaries when JSON extraction produced empty output.
+        """
+        sessions_text = "\n".join(
+            f"\n[פגישה #{s.get('session_number', i + 1)} — {s.get('session_date', '')}]\n"
+            f"{(s.get('full_summary') or '')[:2000]}"
+            for i, s in enumerate(inp.approved_summaries)
+        )
+        cbt_note = (
+            "\nUse CBT-specific language: cognitive goals, behavioral experiments, "
+            "cognitive distortion tracking, and measurable milestones."
+            if inp.modality.lower() == "cbt"
+            else ""
+        )
+        user_msg = (
+            f"Modality: {inp.modality}\n"
+            f"Sessions available: {len(inp.approved_summaries)} approved session summaries\n"
+            f"{cbt_note}\n"
+            "--- Approved session summaries (oldest → newest) ---\n"
+            f"{sessions_text}\n"
+            "--- End ---\n\n"
+            "Based on these sessions, write a comprehensive formal Hebrew treatment plan. "
+            "Structure it clearly with Hebrew section headings: "
+            "הצגת הבעיה, מטרות הטיפול, התערבויות מתוכננות, אבני דרך, "
+            "שיקולי סיכון, המלצות להמשך. "
+            "Each goal must be specific and measurable."
+        )
+        system_msg = _build_render_system_prompt(inp)
+        if inp.therapist_signature:
+            system_msg = inp.therapist_signature + "\n\n" + system_msg
+        model_id, route_reason = self._router.resolve(FlowType.TREATMENT_PLAN)
+        result = await self.provider.generate(
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            model=model_id,
+            flow_type=FlowType.TREATMENT_PLAN,
+            route_reason=route_reason,
+            max_tokens=8192,
+        )
+        self._last_render_result = result
+        return result.content
 
     async def _render(self, inp: TreatmentPlanInput, plan_json: dict) -> str:
         """Call 2: render plan_json into formal Hebrew prose (deep model)."""
