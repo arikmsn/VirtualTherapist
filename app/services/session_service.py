@@ -72,14 +72,9 @@ async def send_appointment_reminder(session_id: int) -> None:
         )
 
         # ── Blocked paths: save a FAILED record and return ───────────────────
-        if not patient.allow_ai_contact:
-            logger.info(f"[appt_reminder] session {session_id}: patient opted out — recording FAILED")
-            _save_failed_record(
-                db, therapist.id, patient.id, session_id,
-                f"[הודעה לא נשלחה — המטופל/ת לא נתן/ה הסכמה להודעות] {content_text}",
-            )
-            return
-
+        # Note: allow_ai_contact is NOT checked here — the therapist explicitly
+        # requested this reminder when creating the session.  deliver_message()
+        # doesn't check it either, so we match that behaviour.
         if not patient.phone_encrypted:
             logger.info(f"[appt_reminder] session {session_id}: no phone — recording FAILED")
             _save_failed_record(

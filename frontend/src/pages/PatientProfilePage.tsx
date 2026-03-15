@@ -144,40 +144,88 @@ type Tab = 'sessions' | 'summaries' | 'inbetween' | 'notes' | 'plan' | 'tasks' |
 // --- Deep Summary narrative renderer (for plain-text rendered_text) ---
 
 function DeepSummaryNarrative({ text }: { text: string }) {
-  // Split on double-newline to get logical paragraphs, filter empty
-  const paragraphs = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean)
-  if (paragraphs.length === 0) return null
+  const cleaned = text.trim()
+  if (!cleaned) return null
 
-  // Section heading keywords (Hebrew) — first paragraph that starts with one gets a card title
-  const SECTION_HEADINGS: Record<string, { label: string; className: string }> = {
-    'רקע':      { label: 'רקע', className: 'border-blue-100 bg-blue-50' },
-    'מהלך':     { label: 'מהלך הטיפול', className: 'border-blue-100 bg-blue-50' },
-    'דפוסים':   { label: 'דפוסים קליניים', className: 'border-yellow-100 bg-yellow-50' },
-    'מה עבד':   { label: 'מה עבד', className: 'border-green-100 bg-green-50' },
-    'מה לא':    { label: 'מה לא עבד', className: 'border-red-100 bg-red-50' },
-    'מצב נוכחי':{ label: 'מצב נוכחי', className: 'border-gray-100 bg-white' },
-    'המלצות':   { label: 'המלצות להמשך', className: 'border-purple-100 bg-purple-50' },
-    'נקודות מפנה': { label: 'נקודות מפנה', className: 'border-green-100 bg-green-50' },
+  // Try double-newline split; fall back to single-newline if text has no paragraphs
+  let rawParagraphs = cleaned.split(/\n{2,}/).map(p => p.trim()).filter(Boolean)
+  if (rawParagraphs.length === 1) {
+    const singleLines = cleaned.split(/\n/).map(p => p.trim()).filter(Boolean)
+    if (singleLines.length > 3) rawParagraphs = singleLines
+  }
+
+  // Single unbreakable block → polished flowing card
+  if (rawParagraphs.length <= 1) {
+    return (
+      <div className="rounded-xl border border-purple-100 bg-gradient-to-br from-purple-50/30 to-white p-5">
+        <p className="text-sm text-gray-800 leading-loose whitespace-pre-line">{cleaned}</p>
+      </div>
+    )
+  }
+
+  const HEADING_STYLES: Record<string, { label: string; cls: string }> = {
+    'רקע':          { label: 'רקע טיפולי',      cls: 'border-blue-100 bg-blue-50' },
+    'מהלך':         { label: 'מהלך הטיפול',     cls: 'border-blue-100 bg-blue-50' },
+    'תהליך':        { label: 'תהליך הטיפול',    cls: 'border-blue-100 bg-blue-50' },
+    'דפוסים':       { label: 'דפוסים קליניים',  cls: 'border-amber-100 bg-amber-50' },
+    'מה עבד':       { label: 'מה עבד',          cls: 'border-green-100 bg-green-50' },
+    'מה לא עבד':    { label: 'מה לא עבד',       cls: 'border-red-100 bg-red-50' },
+    'מה לא':        { label: 'מה לא עבד',       cls: 'border-red-100 bg-red-50' },
+    'מצב נוכחי':   { label: 'מצב נוכחי',       cls: 'border-gray-200 bg-gray-50' },
+    'מצב':          { label: 'מצב נוכחי',       cls: 'border-gray-200 bg-gray-50' },
+    'המלצות':       { label: 'המלצות להמשך',    cls: 'border-purple-100 bg-purple-50' },
+    'כיוונים':      { label: 'כיוונים להמשך',   cls: 'border-purple-100 bg-purple-50' },
+    'נקודות מפנה':  { label: 'נקודות מפנה',     cls: 'border-teal-100 bg-teal-50' },
+    'נקודת מפנה':   { label: 'נקודת מפנה',      cls: 'border-teal-100 bg-teal-50' },
+    'מטרות':        { label: 'מטרות',            cls: 'border-indigo-100 bg-indigo-50' },
+    'התקדמות':      { label: 'התקדמות',          cls: 'border-green-100 bg-green-50' },
+    'אתגרים':       { label: 'אתגרים',           cls: 'border-orange-100 bg-orange-50' },
+  }
+
+  type ParsedPara = { label: string | null; body: string; cls: string }
+  const parsed: ParsedPara[] = rawParagraphs.map(para => {
+    // Markdown bold heading: **Title** followed by optional body
+    const boldMatch = para.match(/^\*\*(.+?)\*\*[:\s]*\n?([\s\S]*)$/)
+    if (boldMatch) {
+      const heading = boldMatch[1].trim()
+      const body = boldMatch[2].trim() || heading
+      const styleKey = Object.keys(HEADING_STYLES).find(k => heading.includes(k))
+      const style = styleKey ? HEADING_STYLES[styleKey] : null
+      return { label: style?.label ?? heading, body, cls: style ? `border ${style.cls}` : 'border border-gray-100 bg-white' }
+    }
+    // Known keyword at paragraph start
+    const styleKey = Object.keys(HEADING_STYLES).find(k => para.startsWith(k))
+    if (styleKey) {
+      const style = HEADING_STYLES[styleKey]
+      return { label: style.label, body: para, cls: `border ${style.cls}` }
+    }
+    return { label: null, body: para, cls: 'border border-gray-100 bg-white' }
+  })
+
+  const hasStructure = parsed.some(p => p.label !== null)
+
+  if (!hasStructure) {
+    return (
+      <div className="rounded-xl border border-purple-100 bg-gradient-to-br from-purple-50/30 to-white p-5">
+        <div className="space-y-3">
+          {parsed.map((p, i) => (
+            <p key={i} className="text-sm text-gray-800 leading-loose whitespace-pre-line">{p.body}</p>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-3">
-      {paragraphs.map((para, i) => {
-        const matched = Object.entries(SECTION_HEADINGS).find(([key]) =>
-          para.startsWith(key) || para.includes(`**${key}`)
-        )
-        const cardClass = matched
-          ? `rounded-lg p-4 border ${matched[1].className}`
-          : 'rounded-lg p-4 border border-gray-100 bg-white'
-        return (
-          <div key={i} className={cardClass}>
-            {matched && (
-              <h3 className="font-bold text-gray-800 mb-2 text-sm">{matched[1].label}</h3>
-            )}
-            <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{para}</p>
-          </div>
-        )
-      })}
+      {parsed.map((p, i) => (
+        <div key={i} className={`rounded-xl p-4 ${p.cls}`}>
+          {p.label && (
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{p.label}</p>
+          )}
+          <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line">{p.body}</p>
+        </div>
+      ))}
     </div>
   )
 }
@@ -286,6 +334,59 @@ export default function PatientProfilePage() {
   // Prep brief modal
   const [prepModalSession, setPrepModalSession] = useState<PrepModalSession | null>(null)
   const prepStream = usePrepStream()
+
+  // sessionStorage keys for persisting in-progress AI generation across route navigations
+  const insightStorageKey = `insight_loading_${pid}`
+  const planStorageKey = `plan_loading_${pid}`
+
+  // Restore loading state on mount (user may have navigated away mid-generation)
+  useEffect(() => {
+    const insightTs = sessionStorage.getItem(insightStorageKey)
+    if (insightTs) {
+      const age = Date.now() - parseInt(insightTs)
+      if (age < 5 * 60 * 1000) {
+        setInsightLoading(true)
+        // Check if generation completed while we were away
+        patientSummariesAPI.getDeepSummaryHistory(pid).then((data) => {
+          if (data.length > 0 && new Date(data[0].created_at).getTime() > parseInt(insightTs)) {
+            sessionStorage.removeItem(insightStorageKey)
+            setInsightLoading(false)
+            setDeepHistory(data)
+            if (data[0].summary_json) setInsight(data[0].summary_json as unknown as DeepSummary)
+          }
+        }).catch(() => {
+          sessionStorage.removeItem(insightStorageKey)
+          setInsightLoading(false)
+        })
+      } else {
+        sessionStorage.removeItem(insightStorageKey)
+      }
+    }
+
+    const planTs = sessionStorage.getItem(planStorageKey)
+    if (planTs) {
+      const age = Date.now() - parseInt(planTs)
+      if (age < 5 * 60 * 1000) {
+        setPlanLoading(true)
+        // Check if generation completed while we were away
+        treatmentPlanAPI.getHistory(pid).then((data) => {
+          const versions = data as TreatmentPlanVersion[]
+          if (versions.length > 0 && new Date(versions[0].created_at).getTime() > parseInt(planTs)) {
+            sessionStorage.removeItem(planStorageKey)
+            setPlanLoading(false)
+            setPlanHistory(versions)
+            setSavedPlan(versions.find(p => p.status === 'active') ?? null)
+          }
+        }).catch(() => {
+          sessionStorage.removeItem(planStorageKey)
+          setPlanLoading(false)
+        })
+      } else {
+        sessionStorage.removeItem(planStorageKey)
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pid])
 
   const approvedCount = summaries.filter(
     (s) => s.summary.status === 'approved' || s.summary.approved_by_therapist
@@ -533,6 +634,7 @@ export default function PatientProfilePage() {
   }
 
   const handleGenerateInsight = async () => {
+    sessionStorage.setItem(insightStorageKey, Date.now().toString())
     setInsightLoading(true)
     setInsightError('')
     try {
@@ -544,6 +646,7 @@ export default function PatientProfilePage() {
     } catch (err: any) {
       setInsightError(err.response?.data?.detail || 'שגיאה ביצירת סיכום העומק')
     } finally {
+      sessionStorage.removeItem(insightStorageKey)
       setInsightLoading(false)
     }
   }
@@ -582,6 +685,7 @@ export default function PatientProfilePage() {
   }
 
   const handleGeneratePlan = async () => {
+    sessionStorage.setItem(planStorageKey, Date.now().toString())
     setPlanLoading(true)
     setPlanError('')
     try {
@@ -631,6 +735,7 @@ export default function PatientProfilePage() {
         setPlanError(msg || 'שגיאה ביצירת התוכנית הטיפולית')
       }
     } finally {
+      sessionStorage.removeItem(planStorageKey)
       setPlanLoading(false)
     }
   }

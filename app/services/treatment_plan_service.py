@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from loguru import logger
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.ai.models import FlowType
@@ -121,6 +122,18 @@ class TreatmentPlanService:
             "education": profile.education if profile else "",
         }
 
+    def _next_plan_version(self, patient_id: int, therapist_id: int) -> int:
+        """Return MAX(version)+1 across ALL plan rows for this patient (including archived/deleted)."""
+        max_ver = (
+            self.db.query(func.max(TreatmentPlan.version))
+            .filter(
+                TreatmentPlan.patient_id == patient_id,
+                TreatmentPlan.therapist_id == therapist_id,
+            )
+            .scalar()
+        )
+        return (max_ver or 0) + 1
+
     def _get_active_plan(self, patient_id: int, therapist_id: int) -> Optional[TreatmentPlan]:
         return (
             self.db.query(TreatmentPlan)
@@ -222,13 +235,15 @@ class TreatmentPlanService:
         pipeline = TreatmentPlanPipeline(provider)
         result: TreatmentPlanResult = await pipeline.run(inp)
 
+        next_version = self._next_plan_version(patient_id, therapist_id)
+
         plan = TreatmentPlan(
             patient_id=patient_id,
             therapist_id=therapist_id,
             status=PlanStatus.ACTIVE.value,
             plan_json=result.plan_json,
             rendered_text=result.rendered_text,
-            version=result.version,
+            version=next_version,
             parent_version_id=None,
             model_used=result.model_used,
             tokens_used=result.tokens_used,
@@ -253,7 +268,7 @@ class TreatmentPlanService:
         )
 
         logger.info(
-            f"[treatment_plan] CREATE patient={patient_id} version={result.version} "
+            f"[treatment_plan] CREATE patient={patient_id} version={next_version} "
             f"summaries={len(approved_summaries)} tokens={result.tokens_used} plan_id={plan.id}"
         )
         return plan
@@ -309,13 +324,15 @@ class TreatmentPlanService:
         # Archive old plan
         existing.status = PlanStatus.ARCHIVED.value
 
+        next_version = self._next_plan_version(patient_id, therapist_id)
+
         new_plan = TreatmentPlan(
             patient_id=patient_id,
             therapist_id=therapist_id,
             status=PlanStatus.ACTIVE.value,
             plan_json=result.plan_json,
             rendered_text=result.rendered_text,
-            version=result.version,
+            version=next_version,
             parent_version_id=existing.id,
             model_used=result.model_used,
             tokens_used=result.tokens_used,
@@ -339,7 +356,7 @@ class TreatmentPlanService:
         )
 
         logger.info(
-            f"[treatment_plan] UPDATE patient={patient_id} version={result.version} "
+            f"[treatment_plan] UPDATE patient={patient_id} version={next_version} "
             f"parent={existing.id} tokens={result.tokens_used} plan_id={new_plan.id}"
         )
         return new_plan
