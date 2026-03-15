@@ -906,6 +906,12 @@ async def stream_prep_v2(
     sig_profile = await sig_engine.get_active_profile(current_therapist.id)
     signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
 
+    # AI protocol context
+    from app.core.ai_context import build_ai_context_for_patient as _build_ai_ctx
+    from app.models.patient import Patient as _Patient
+    _patient_for_ctx = db.query(_Patient).filter(_Patient.id == session.patient_id).first()
+    _ai_ctx = _build_ai_ctx(agent.profile if agent.profile else None, _patient_for_ctx)
+
     prep_inp = PrepInput(
         client_id=session.patient_id,
         session_id=session_id,
@@ -915,6 +921,7 @@ async def stream_prep_v2(
         approved_summaries=approved_summaries,
         modality_prompt_module=modality_prompt_module,
         therapist_signature=signature_prompt,
+        ai_context=_ai_ctx,
     )
 
     async def _sse_generator():

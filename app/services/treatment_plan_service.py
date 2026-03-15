@@ -21,6 +21,7 @@ from app.models.patient import Patient
 from app.models.session import Session as TherapySession, SessionSummary
 from app.models.therapist import Therapist, TherapistProfile
 from app.models.treatment_plan import PlanStatus, TreatmentPlan
+from app.core.ai_context import build_ai_context_for_patient
 
 
 class TreatmentPlanService:
@@ -222,6 +223,14 @@ class TreatmentPlanService:
         sig_profile = await sig_engine.get_active_profile(therapist_id)
         signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
 
+        # AI protocol context
+        _profile_orm = (
+            self.db.query(TherapistProfile)
+            .filter(TherapistProfile.therapist_id == therapist_id)
+            .first()
+        )
+        ai_ctx = build_ai_context_for_patient(_profile_orm, patient)
+
         inp = TreatmentPlanInput(
             client_id=patient_id,
             therapist_id=therapist_id,
@@ -230,6 +239,7 @@ class TreatmentPlanService:
             therapist_profile=therapist_profile,
             existing_plan=None,
             therapist_signature=signature_prompt,
+            ai_context=ai_ctx,
         )
 
         pipeline = TreatmentPlanPipeline(provider)
@@ -308,6 +318,14 @@ class TreatmentPlanService:
         sig_profile = await sig_engine.get_active_profile(therapist_id)
         signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
 
+        # AI protocol context
+        _profile_orm = (
+            self.db.query(TherapistProfile)
+            .filter(TherapistProfile.therapist_id == therapist_id)
+            .first()
+        )
+        ai_ctx = build_ai_context_for_patient(_profile_orm, patient)
+
         inp = TreatmentPlanInput(
             client_id=patient_id,
             therapist_id=therapist_id,
@@ -316,6 +334,7 @@ class TreatmentPlanService:
             therapist_profile=therapist_profile,
             existing_plan=existing.plan_json,
             therapist_signature=signature_prompt,
+            ai_context=ai_ctx,
         )
 
         pipeline = TreatmentPlanPipeline(provider)

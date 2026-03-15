@@ -24,6 +24,7 @@ from app.ai.signature import SignatureEngine, inject_into_prompt
 from app.services.treatment_plan_service import TreatmentPlanService
 from app.services.audit_service import AuditService
 from app.security.encryption import decrypt_data
+from app.core.ai_context import build_ai_context_for_patient
 from loguru import logger
 
 
@@ -336,6 +337,15 @@ class SessionService:
         sig_profile = await sig_engine.get_active_profile(therapist_id)
         signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
 
+        # AI protocol context (Section 1 integration)
+        from app.models.therapist import TherapistProfile as _TherapistProfile
+        _profile = (
+            self.db.query(_TherapistProfile)
+            .filter(_TherapistProfile.therapist_id == therapist_id)
+            .first()
+        )
+        ai_ctx = build_ai_context_for_patient(_profile, patient)
+
         return SummaryInput(
             raw_content=raw_content,
             client_name=client_name,
@@ -345,6 +355,7 @@ class SessionService:
             open_tasks=open_tasks,
             modality_pack=agent.modality_pack,
             therapist_signature=signature_prompt,
+            ai_context=ai_ctx,
         )
 
     async def generate_summary_from_audio(
@@ -1236,6 +1247,12 @@ class SessionService:
         sig_profile = await sig_engine.get_active_profile(therapist_id)
         signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
 
+        # AI protocol context
+        ai_ctx = build_ai_context_for_patient(
+            agent.profile if agent.profile else None,
+            patient,
+        )
+
         prep_inp = PrepInput(
             client_id=session.patient_id,
             session_id=session_id,
@@ -1245,6 +1262,7 @@ class SessionService:
             approved_summaries=approved_summaries,
             modality_prompt_module=modality_prompt_module,
             therapist_signature=signature_prompt,
+            ai_context=ai_ctx,
         )
 
         pipeline = PrepPipeline(agent)

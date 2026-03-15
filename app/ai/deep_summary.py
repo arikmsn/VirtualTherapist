@@ -28,6 +28,7 @@ from loguru import logger
 
 from app.ai.models import FlowType
 from app.ai.router import ModelRouter
+from app.core.ai_context import format_protocol_block
 
 if TYPE_CHECKING:
     from app.ai.provider import AIProvider
@@ -60,6 +61,7 @@ class DeepSummaryInput:
     approved_summaries: list[dict]          # ALL approved summaries, oldest → newest
     treatment_plan: Optional[dict] = None   # active plan_json if exists
     therapist_signature: Optional[str] = None
+    ai_context: Optional[dict] = None      # built by build_ai_context_for_patient()
 
 
 @dataclass
@@ -275,11 +277,26 @@ def _build_synthesis_user(
         if inp.modality.lower() == "cbt" else ""
     )
 
+    protocol_block = format_protocol_block(inp.ai_context)
+    protocol_guidance = ""
+    if protocol_block:
+        protocol_guidance = (
+            "\nUse the protocol context JSON to understand:\n"
+            "- which structured protocols the therapist is following with this patient,\n"
+            "- how many sessions a typical protocol might include,\n"
+            "- what core techniques are expected.\n"
+            "When synthesizing, try to describe the treatment arc also in relation to these protocols "
+            "(e.g., early psychoeducation, mid-treatment behavioral experiments, late relapse prevention), "
+            "but only when the chunk analyses support such an interpretation.\n"
+        )
+
     chunk_text = json.dumps(merged_chunks, ensure_ascii=False, indent=2)
     return (
         f"Modality: {inp.modality}\n"
         f"Total sessions: {len(inp.approved_summaries)}\n"
-        f"{plan_section}{cbt_hint}\n"
+        f"{plan_section}{cbt_hint}"
+        f"{protocol_guidance}"
+        f"{protocol_block}\n"
         f"Chunk analyses to merge:\n{chunk_text}\n\n"
         f"Synthesize into a complete summary following this schema:\n{_SCHEMA_STR}"
     )
@@ -326,9 +343,24 @@ def _build_render_user(
     if vault_context:
         vault_section = f"\nתובנות קליניות מהכספת:\n{vault_context}\n"
 
+    protocol_block = format_protocol_block(inp.ai_context)
+    protocol_guidance = ""
+    if protocol_block:
+        protocol_guidance = (
+            "\nWhen writing the narrative:\n"
+            "- If the patient has an active protocol, frame the treatment story in relation to that "
+            "protocol's logic: where the treatment started, what phases were covered, and what remains.\n"
+            "- For CBT protocols, emphasize automatic thoughts, distortions, and behavioral experiments "
+            "in line with the protocol description.\n"
+            "- Do not expose protocol IDs or raw JSON; just let the narrative reflect this structure "
+            "naturally in Hebrew.\n"
+        )
+
     return (
         "The structured treatment data has been extracted. "
         "Render it as a complete formal Hebrew clinical narrative.\n\n"
+        f"{protocol_guidance}"
+        f"{protocol_block}\n"
         f"Structured summary:\n{json.dumps(summary_json, ensure_ascii=False, indent=2)}\n"
         f"{vault_section}\n"
         "כתוב סיכום עומק ממוקד ומקיף, עד 3,000 תווים בדיוק. "
@@ -635,10 +667,23 @@ class DeepSummaryPipeline:
                 "Write the complete deep summary narrative in Hebrew now."
             )
 
+        protocol_block = format_protocol_block(inp.ai_context)
+        protocol_guidance = ""
+        if protocol_block:
+            protocol_guidance = (
+                "\nWhen writing the narrative:\n"
+                "- If the patient has an active protocol, frame the treatment story in relation to that "
+                "protocol's logic: where the treatment started, what phases were covered, and what remains.\n"
+                "- Do not expose protocol IDs or raw JSON; let the narrative reflect this structure "
+                "naturally in Hebrew.\n"
+            )
+
         user = (
             f"Modality: {inp.modality}\n"
             f"Total sessions: {len(inp.approved_summaries)}\n"
             f"{vault_section}\n"
+            f"{protocol_guidance}"
+            f"{protocol_block}\n"
             "--- Session summaries (oldest → newest) ---\n"
             f"{sessions_text}\n"
             "--- End ---\n\n"

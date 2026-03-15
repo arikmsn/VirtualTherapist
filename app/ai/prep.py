@@ -27,6 +27,7 @@ from loguru import logger
 from app.ai.models import FlowType
 from app.ai.router import ModelRouter
 from app.core.config import settings
+from app.core.ai_context import format_protocol_block
 
 if TYPE_CHECKING:
     from app.ai.provider import AIProvider
@@ -53,6 +54,7 @@ class PrepInput:
     approved_summaries: list[dict]        # approved_by_therapist=True only, oldest→newest
     modality_prompt_module: Optional[str] = None   # raw prompt_module from ModalityPack
     therapist_signature: Optional[dict] = None      # injected in rendering only (Phase 6)
+    ai_context: Optional[dict] = None              # built by build_ai_context_for_patient()
 
 
 @dataclass
@@ -243,12 +245,25 @@ def _build_render_user_prompt(inp: PrepInput, prep_json: dict) -> str:
     token_guidance = _MODE_TOKEN_GUIDANCE.get(inp.mode, "")
     length_guidance = _MODE_LENGTH_GUIDANCE_HE.get(inp.mode, "")
     cbt_block = f"\n\n{_CBT_RENDER_ADDON.strip()}" if inp.modality.lower() == "cbt" else ""
+    protocol_block = format_protocol_block(inp.ai_context)
+    protocol_guidance = ""
+    if protocol_block:
+        protocol_guidance = (
+            "\nWhen preparing the pre-session brief:\n"
+            "- If the patient has an active protocol in the JSON, align the focus, "
+            "suggested questions, and homework ideas with that protocol and its stage.\n"
+            "- If no protocol is set, keep the brief general but still respect the "
+            "therapist's profession and approaches.\n"
+            "- Do not invent protocol names or stages that are not present in the JSON.\n"
+        )
     return (
         f"Mode: {inp.mode.value} — {token_guidance}{cbt_block}\n\n"
         "The structured prep data has been extracted. Render it as a ready-to-use "
         "pre-session brief that the therapist can scan in under 60 seconds.\n\n"
         f"Structured prep data:\n{json.dumps(prep_json, ensure_ascii=False, indent=2)}\n\n"
-        f"{length_guidance}\n\n"
+        f"{length_guidance}\n"
+        f"{protocol_guidance}"
+        f"{protocol_block}\n\n"
         "Write the pre-session brief now."
     )
 

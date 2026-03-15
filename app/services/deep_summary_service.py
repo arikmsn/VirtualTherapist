@@ -23,6 +23,7 @@ from app.models.patient import Patient
 from app.models.reference_vault import TherapistReferenceVault
 from app.models.session import Session as TherapySession
 from app.models.therapist import Therapist, TherapistProfile
+from app.core.ai_context import build_ai_context_for_patient
 
 
 class DeepSummaryService:
@@ -184,6 +185,14 @@ class DeepSummaryService:
         sig_profile = await sig_engine.get_active_profile(therapist_id)
         signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
 
+        # AI protocol context
+        _profile_orm = (
+            self.db.query(TherapistProfile)
+            .filter(TherapistProfile.therapist_id == therapist_id)
+            .first()
+        )
+        ai_ctx = build_ai_context_for_patient(_profile_orm, patient)
+
         inp = DeepSummaryInput(
             client_id=patient_id,
             therapist_id=therapist_id,
@@ -191,6 +200,7 @@ class DeepSummaryService:
             approved_summaries=approved_summaries,
             treatment_plan=treatment_plan,
             therapist_signature=signature_prompt,
+            ai_context=ai_ctx,
         )
 
         pipeline = DeepSummaryPipeline(provider)

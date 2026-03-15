@@ -24,6 +24,7 @@ from loguru import logger
 
 from app.ai.models import FlowType
 from app.ai.router import ModelRouter
+from app.core.ai_context import format_protocol_block
 
 if TYPE_CHECKING:
     from app.ai.provider import AIProvider
@@ -41,6 +42,7 @@ class TreatmentPlanInput:
     therapist_profile: dict
     existing_plan: Optional[dict] = None  # if updating, pass current plan_json
     therapist_signature: Optional[str] = None  # inject_into_prompt() string
+    ai_context: Optional[dict] = None         # built by build_ai_context_for_patient()
 
 
 @dataclass
@@ -172,6 +174,25 @@ def _build_extraction_user_prompt(inp: TreatmentPlanInput) -> str:
         parts.append(json.dumps(inp.therapist_profile, ensure_ascii=False, indent=2))
         parts.append("")
 
+    protocol_block = format_protocol_block(inp.ai_context)
+    if protocol_block:
+        parts.append(
+            "You also receive a JSON block with protocol context for this therapist and patient."
+        )
+        parts.append("")
+        parts.append(
+            "Use it ONLY to:\n"
+            "- choose appropriate goals and interventions that fit the active protocols,\n"
+            "- infer reasonable structure and stages (e.g., assessment, psychoeducation, skills training),\n"
+            "- estimate typical number of sessions when relevant.\n"
+            "\n"
+            "Do not copy JSON text into the plan. Do not invent new protocols not present in JSON.\n"
+            "The plan content (goals, interventions, risk considerations) must be derived from the\n"
+            "approved summaries, not from the protocol JSON alone."
+        )
+        parts.append(protocol_block)
+        parts.append("")
+
     if inp.existing_plan:
         parts.append("EXISTING PLAN (update this — preserve IDs, update statuses):")
         parts.append(json.dumps(inp.existing_plan, ensure_ascii=False, indent=2))
@@ -232,9 +253,22 @@ def _build_render_system_prompt(inp: TreatmentPlanInput) -> str:
 
 
 def _build_render_user_prompt(inp: TreatmentPlanInput, plan_json: dict) -> str:
+    protocol_block = format_protocol_block(inp.ai_context)
+    protocol_guidance = ""
+    if protocol_block:
+        protocol_guidance = (
+            "When rendering the treatment plan in Hebrew:\n"
+            "- Align the written goals, milestones, and planned interventions with any active "
+            "protocols for this patient in the JSON block.\n"
+            "- If there are multiple protocols, you may either integrate them into one coherent plan "
+            "or clearly separate sections (e.g., CBT vs. OT), depending on what fits the summaries.\n"
+            "- Do not mention protocol IDs or JSON terms; describe the plan in natural clinical Hebrew.\n\n"
+        )
     return (
         "The structured treatment plan has been extracted. "
         "Render it as a formal Hebrew clinical treatment plan document.\n\n"
+        f"{protocol_guidance}"
+        f"{protocol_block}\n"
         f"Structured plan data:\n{json.dumps(plan_json, ensure_ascii=False, indent=2)}\n\n"
         "Write the complete treatment plan document in Hebrew now."
     )

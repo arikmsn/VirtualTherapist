@@ -25,6 +25,7 @@ from loguru import logger
 
 from app.ai.models import FlowType
 from app.ai.router import ModelRouter
+from app.core.ai_context import format_protocol_block
 
 if TYPE_CHECKING:
     from app.core.agent import TherapyAgent
@@ -47,6 +48,7 @@ class SummaryInput:
     modality_pack: Optional["ModalityPack"]
     therapist_signature: Optional[str] = None  # Phase 6: inject_into_prompt() string
     flow_type: FlowType = FlowType.SESSION_SUMMARY
+    ai_context: Optional[dict] = None          # built by build_ai_context_for_patient()
 
 
 # ── CLINICAL_JSON_SCHEMA ──────────────────────────────────────────────────────
@@ -147,17 +149,31 @@ _CBT_RENDER_SECTION = """\
 def _build_render_prompt(inp: SummaryInput, clinical_json: dict) -> str:
     is_cbt = inp.modality_pack is not None and inp.modality_pack.name == "cbt"
     cbt_block = f"\n{_CBT_RENDER_SECTION}" if is_cbt else ""
+    protocol_block = format_protocol_block(inp.ai_context)
+    protocol_guidance = ""
+    if protocol_block:
+        protocol_guidance = (
+            "\nWhen writing the session summary:\n"
+            "- If the JSON shows active protocols for this patient, briefly reflect how this "
+            "session contributed to progress within those protocols (goals, techniques, or stage), "
+            "but keep the summary focused on the actual session.\n"
+            "- If protocols are defined for both CBT and OT (for example), you may mention both "
+            "perspectives, but only when supported by the session data.\n"
+            "- Do not list protocol IDs or JSON fields; refer to them implicitly in clinical Hebrew.\n"
+        )
     return (
         "The structured clinical data for this session has been extracted. "
         "Render it as a natural, cohesive session summary in the therapist's voice.\n\n"
-        f"Guidelines:\n"
+        "Guidelines:\n"
         "- Do NOT list fields mechanically. Integrate the content naturally.\n"
         "- Write as if the therapist is documenting their own session.\n"
         "- Do NOT include any title, header line, or document heading (e.g. 'סיכום פגישה', date stamps).\n"
         "- Do NOT mention the patient's name or the therapist's name anywhere in the text.\n"
         "- Begin directly with the clinical content — the first sentence should describe what happened.\n"
         "- If the modality requires specific elements that are absent, "
-        f"flag them at the end as: ⚠️ חסר: [element]{cbt_block}\n\n"
+        f"flag them at the end as: ⚠️ חסר: [element]{cbt_block}\n"
+        f"{protocol_guidance}"
+        f"{protocol_block}\n\n"
         f"Structured session data:\n{json.dumps(clinical_json, ensure_ascii=False, indent=2)}\n\n"
         "Write the session summary now."
     )
