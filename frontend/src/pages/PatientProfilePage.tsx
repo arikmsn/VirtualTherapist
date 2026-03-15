@@ -1781,8 +1781,19 @@ export default function PatientProfilePage() {
               {viewingDeepSummary.summary_json ? (() => {
                 const j = viewingDeepSummary.summary_json as Record<string, unknown>
                 // Detect which schema version we have
-                const isPhase8 = !!(j.arc_narrative || j.treatment_phases || j.goals_outcome || j.current_status || j.what_worked)
-                const isLegacy = !!(j.overall_treatment_picture || j.timeline_highlights || j.goals_and_tasks)
+                // Check for actual content — empty arrays are truthy in JS so we must test length
+                const isPhase8 = !!(
+                  (typeof j.arc_narrative === 'string' && j.arc_narrative.trim()) ||
+                  (Array.isArray(j.treatment_phases) && (j.treatment_phases as unknown[]).length > 0) ||
+                  (Array.isArray(j.goals_outcome) && (j.goals_outcome as unknown[]).length > 0) ||
+                  (typeof j.current_status === 'string' && j.current_status.trim()) ||
+                  (Array.isArray(j.what_worked) && (j.what_worked as string[]).length > 0)
+                )
+                const isLegacy = !!(
+                  (typeof j.overall_treatment_picture === 'string' && j.overall_treatment_picture.trim()) ||
+                  (Array.isArray(j.timeline_highlights) && (j.timeline_highlights as string[]).length > 0) ||
+                  (typeof j.goals_and_tasks === 'string' && j.goals_and_tasks.trim())
+                )
                 return (
                   <>
                     {/* ── Phase 8 schema (current pipeline) ── */}
