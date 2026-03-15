@@ -150,9 +150,63 @@ Quality rules:
 """
 
 
+# ── "No data" phrase detection ────────────────────────────────────────────────
+
+# Substrings (lowercased) that indicate the model wrote a placeholder instead of
+# real clinical content.  Used to prevent Hebrew "no data" boilerplate from
+# passing the _has_extracted_content check and bypassing _render_direct().
+_NO_DATA_MARKERS = [
+    # Hebrew
+    "לא נמסר מידע",
+    "לא ניתן להעריך",
+    "לא זוהו מטרות",
+    "לא זוהו דפוסים",
+    "לא זוהו נקודות",
+    "לא זוהו שינויים",
+    "חסר תוכן מספק",
+    "חסר מידע",
+    "המידע שהועבר לסינתזה",
+    "המידע הקליני שהועבר",
+    "המידע לסינתזה",
+    "מידע לא מספיק",
+    "אין מידע מספיק",
+    "אין נתונים",
+    "לא ניתן לזהות",
+    # English (guard against future regressions)
+    "insufficient",
+    "no data",
+    "no clinical",
+    "not provided",
+]
+
+
+def _is_meaningful_string(text: str) -> bool:
+    """Return True if text is real clinical content, not a 'no data' placeholder."""
+    if not text or len(text) < 15:
+        return False
+    low = text.lower()
+    return not any(marker in low for marker in _NO_DATA_MARKERS)
+
+
 # ── Prompt builders ───────────────────────────────────────────────────────────
 
-def _build_chunk_extraction_system() -> str:
+_CBT_EXTRACTION_NOTE = """\
+
+CBT EXTRACTION FOCUS (mandatory for this case):
+- clinical_patterns_identified: list recurring automatic thoughts, cognitive distortions,
+  and avoidance behaviors observed across sessions (in Hebrew)
+- turning_points: list sessions where a meaningful cognitive or behavioral shift occurred
+- what_worked: list CBT techniques that helped (e.g., behavioral experiments, thought records,
+  Socratic questioning, exposure) — extract from session notes even if not explicitly labelled
+- what_didnt_work: list what the client resisted, what produced no change, or what was abandoned
+- treatment_phases: label phases by the dominant CBT focus (psychoeducation / exposure /
+  cognitive restructuring / relapse prevention etc.)
+- goals_outcome: link each goal to a cognitive or behavioral target
+Do NOT leave any of these fields empty if the session notes contain any clinical narrative."""
+
+
+def _build_chunk_extraction_system(modality: str = "") -> str:
+    cbt_block = _CBT_EXTRACTION_NOTE if modality.lower() == "cbt" else ""
     return "\n".join([
         "You are a clinical documentation assistant performing longitudinal analysis.",
         "Extract structured data from the provided session summaries.",
@@ -160,14 +214,16 @@ def _build_chunk_extraction_system() -> str:
         "",
         "LANGUAGE REQUIREMENT: All string values in the JSON must be written in Hebrew (עברית).",
         "If source notes are in Hebrew, extract and summarize in Hebrew.",
-        "If any field has no relevant content, use an empty string or empty list — do NOT write English phrases like 'insufficient data'.",
+        "CRITICAL: If a field has no relevant content, use an empty string '' or empty list [] "
+        "— do NOT write any placeholder text in any language "
+        "(no 'insufficient data', no 'לא נמסר מידע', no 'לא זוהו', etc.).",
         "",
         "Focus on: treatment_phases, goals_outcome, clinical_patterns_identified, "
         "turning_points, what_worked, what_didnt_work.",
         "",
         "Use the JSON schema provided. Omit arc_narrative and current_status "
         "(those are added in synthesis). Set sessions_covered to the number of sessions in this chunk.",
-    ])
+    ]) + cbt_block
 
 
 def _build_chunk_extraction_user(summaries: list[dict], chunk_index: int, total_chunks: int) -> str:
@@ -193,7 +249,9 @@ def _build_synthesis_system() -> str:
         "Return ONLY valid JSON matching the schema. No prose, no markdown fences.",
         "",
         "LANGUAGE REQUIREMENT: All string values in the JSON must be written in Hebrew (עברית).",
-        "If any field has no relevant content, use an empty string or empty list — do NOT write English phrases like 'insufficient data'.",
+        "CRITICAL: If a field has no relevant content, use an empty string '' or empty list [] "
+        "— do NOT write any placeholder text in any language "
+        "(not 'insufficient data', not 'לא נמסר מידע', not 'לא זוהו', not 'חסר מידע', etc.).",
         "",
         "Add arc_narrative, presenting_problem_evolution, current_status, "
         "and recommendations_going_forward based on the full picture.",
@@ -407,27 +465,31 @@ class DeepSummaryPipeline:
             chunk_results = []
             total_chunks = len(chunks)
             for idx, chunk in enumerate(chunks):
-                chunk_json = await self._extract_chunk(chunk, idx, total_chunks)
+                chunk_json = await self._extract_chunk(chunk, idx, total_chunks, inp.modality)
                 chunk_results.append(chunk_json)
             summary_json = await self._synthesize(chunk_results, inp)
 
-        # If extraction produced no real content (JSON parsing failed or LLM returned empty),
-        # fall back to a direct render from the raw session summaries.
+        # If extraction produced no real content, fall back to a direct render.
+        # _is_meaningful_string() rejects both empty strings AND Hebrew/English
+        # "no data" placeholders that the model sometimes writes instead of empty strings.
         _content_fields = (
             "arc_narrative", "presenting_problem_evolution", "treatment_phases",
             "goals_outcome", "clinical_patterns_identified", "turning_points",
             "what_worked", "what_didnt_work", "current_status",
         )
-        # Require at least one field with meaningful Hebrew content (> 20 chars avoids
-        # short English placeholder phrases like "insufficient clinical data").
         _has_extracted_content = any(
-            (isinstance(summary_json.get(k), str) and len(summary_json.get(k, "")) > 20)
-            or (isinstance(summary_json.get(k), list) and len(summary_json.get(k, [])) > 0)
+            (isinstance(summary_json.get(k), str) and _is_meaningful_string(summary_json.get(k, "")))
+            or (
+                isinstance(summary_json.get(k), list)
+                and len(summary_json.get(k, [])) > 0
+                and any(_is_meaningful_string(str(item)) for item in summary_json.get(k, []))
+            )
             for k in _content_fields
         )
         if not _has_extracted_content:
             logger.warning(
-                f"[deep_summary] extraction produced empty JSON for client={inp.client_id} "
+                f"[deep_summary] extraction produced empty/placeholder JSON for "
+                f"client={inp.client_id} modality={inp.modality!r} "
                 f"(confidence={summary_json.get('confidence', 0.0)}) — "
                 f"falling back to direct render from {n} session summaries"
             )
@@ -453,7 +515,7 @@ class DeepSummaryPipeline:
 
     async def _extract_single(self, inp: DeepSummaryInput) -> dict:
         """Single extraction call for short histories (< 5 sessions)."""
-        system = _build_chunk_extraction_system()
+        system = _build_chunk_extraction_system(inp.modality)
         user = _build_chunk_extraction_user(inp.approved_summaries, 0, 1)
         model_id, route_reason = self._router.resolve(FlowType.DEEP_SUMMARY)
         result = await self.provider.generate(
@@ -473,9 +535,10 @@ class DeepSummaryPipeline:
         chunk: list[dict],
         chunk_index: int,
         total_chunks: int,
+        modality: str = "",
     ) -> dict:
         """One extraction call per chunk."""
-        system = _build_chunk_extraction_system()
+        system = _build_chunk_extraction_system(modality)
         user = _build_chunk_extraction_user(chunk, chunk_index, total_chunks)
         model_id, route_reason = self._router.resolve(FlowType.DEEP_SUMMARY)
         result = await self.provider.generate(
@@ -547,6 +610,31 @@ class DeepSummaryPipeline:
             for i, s in enumerate(inp.approved_summaries)
         )
 
+        if inp.modality.lower() == "cbt":
+            task_instruction = (
+                "כתוב סיכום עומק CBT מקיף ומפורט בעברית, עד 3,000 תווים בדיוק. "
+                "חובה לכלול את כל הסעיפים הבאים על בסיס המידע הקליני שסופק — "
+                "אין להשאיר סעיף ריק אם קיים מידע רלוונטי:\n"
+                "1. **רקע ודפוסים קוגניטיביים**: מחשבות אוטומטיות, עיוותים קוגניטיביים חוזרים שזוהו\n"
+                "2. **מהלך הטיפול ושלביו**: אבחון, פסיכוחינוך CBT, רשת מחשבות-רגשות-התנהגות\n"
+                "3. **ניסויים התנהגותיים ותוצאותיהם**: מה בוצע ומה היה השינוי\n"
+                "4. **מה עבד — מנקודת מבט CBT**: טכניקות שהניבו שינוי קוגניטיבי או התנהגותי\n"
+                "5. **מה לא עבד**: התנגדויות, הימנעויות, מה לא הושלם\n"
+                "6. **שינויים קוגניטיביים מרכזיים**: נקודות מפנה שבהן השתנתה תפיסת המטופל\n"
+                "7. **מצב נוכחי**: הערכה קוגניטיבית-התנהגותית של המצב היום\n"
+                "8. **המלצות CBT להמשך**: לפחות 2 המלצות ספציפיות (טכניקות, מטרות, שיעורי בית)\n"
+                "הקפד לסיים במשפט שלם. אל תחרוג מאורך זה.\n\n"
+                "Write the complete CBT deep summary narrative in Hebrew now."
+            )
+        else:
+            task_instruction = (
+                "כתוב סיכום עומק ממוקד ומקיף בעברית, עד 3,000 תווים בדיוק. "
+                "כסה: רצף הטיפול, דפוסים קליניים, מה עבד, מה לא עבד, מצב נוכחי, המלצות להמשך. "
+                "הקפד לסיים במשפט שלם — אל תיחתך באמצע מילה או משפט. "
+                "אל תחרוג מאורך זה.\n\n"
+                "Write the complete deep summary narrative in Hebrew now."
+            )
+
         user = (
             f"Modality: {inp.modality}\n"
             f"Total sessions: {len(inp.approved_summaries)}\n"
@@ -554,11 +642,7 @@ class DeepSummaryPipeline:
             "--- Session summaries (oldest → newest) ---\n"
             f"{sessions_text}\n"
             "--- End ---\n\n"
-            "כתוב סיכום עומק ממוקד ומקיף בעברית, עד 3,000 תווים בדיוק. "
-            "כסה: רצף הטיפול, דפוסים קליניים, מה עבד, מה לא עבד, מצב נוכחי, המלצות להמשך. "
-            "הקפד לסיים במשפט שלם — אל תיחתך באמצע מילה או משפט. "
-            "אל תחרוג מאורך זה.\n\n"
-            "Write the complete deep summary narrative in Hebrew now."
+            f"{task_instruction}"
         )
 
         system = _build_render_system(inp)
