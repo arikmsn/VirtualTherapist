@@ -52,6 +52,15 @@ class Patient(BaseModel):
     allow_ai_contact = Column(Boolean, default=True)  # Patient consent for AI messages
     preferred_contact_time = Column(String(50))  # "morning", "afternoon", "evening"
 
+    # Protocol selection (added migration 040)
+    # List of protocol IDs from the therapist's library that apply to this patient.
+    # Overrides the therapist's global protocols_used for AI prompts.
+    protocol_ids = Column(JSON, nullable=True)   # e.g. ["cbt_depression"]
+
+    # Demographics — used for AI personalization and future reporting
+    # Schema: {age, marital_status, has_guardian, guardian_name, parent_name}
+    demographics = Column(JSON, nullable=True)
+
     # Relationships
     therapist = relationship("Therapist", back_populates="patients")
     sessions = relationship("Session", back_populates="patient", cascade="all, delete-orphan")

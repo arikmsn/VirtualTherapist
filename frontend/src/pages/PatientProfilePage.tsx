@@ -510,6 +510,14 @@ export default function PatientProfilePage() {
   // CBT mode — derived from therapist profile, loaded once
   const [isCbtActive, setIsCbtActive] = useState(false)
 
+  // Protocol library (patient-level selection)
+  const [availableProtocols, setAvailableProtocols] = useState<Array<{
+    id: string; name: string; approach_id: string; target_problem: string
+    description: string; is_system: boolean; is_used: boolean
+  }>>([])
+  const [patientProtocolIds, setPatientProtocolIds] = useState<string[]>([])
+  const [protocolsSaving, setProtocolsSaving] = useState(false)
+
   // Patient data
   const [patient, setPatient] = useState<Patient | null>(null)
   const [loading, setLoading] = useState(true)
@@ -643,6 +651,14 @@ export default function PatientProfilePage() {
     }
     load()
   }, [pid])
+
+  // Load protocol library when settings tab is opened
+  useEffect(() => {
+    if (tab !== 'settings') return
+    therapistAPI.getProtocols()
+      .then((data) => setAvailableProtocols(data.protocols))
+      .catch(() => {/* non-critical */})
+  }, [tab])
 
   const reloadSessions = async () => {
     setSessionsLoading(true)
@@ -2056,6 +2072,79 @@ export default function PatientProfilePage() {
                 {patient.phone && <div className="flex gap-3"><dt className="text-gray-400 w-20 flex-shrink-0">טלפון</dt><dd className="text-gray-700">{patient.phone}</dd></div>}
                 {patient.email && <div className="flex gap-3"><dt className="text-gray-400 w-20 flex-shrink-0">אימייל</dt><dd className="text-gray-700">{patient.email}</dd></div>}
               </dl>
+            )}
+          </div>
+
+{/* Protocol selection for this patient */}
+          <div className="card space-y-4">
+            <div>
+              <h3 className="font-semibold text-gray-800">פרוטוקולים עבור מטופל זה</h3>
+              <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                בחר פרוטוקולים ייעודיים למטופל זה — יגברו על ברירת המחדל של הפרופיל שלך ב-AI
+              </p>
+            </div>
+
+            {availableProtocols.length === 0 ? (
+              <p className="text-xs text-gray-400">טוען פרוטוקולים...</p>
+            ) : (
+              <div className="space-y-2">
+                {/* Show therapist's "used" protocols first, then the rest */}
+                {availableProtocols
+                  .filter((p) => p.is_used || patientProtocolIds.includes(p.id))
+                  .map((p) => {
+                    const checked = patientProtocolIds.includes(p.id)
+                    return (
+                      <label key={p.id} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                        checked ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={async () => {
+                            const updated = checked
+                              ? patientProtocolIds.filter((id) => id !== p.id)
+                              : [...patientProtocolIds, p.id]
+                            setPatientProtocolIds(updated)
+                            setProtocolsSaving(true)
+                            try {
+                              await patientsAPI.update(pid, { protocol_ids: updated })
+                            } catch {
+                              setPatientProtocolIds(patientProtocolIds) // revert
+                            } finally {
+                              setProtocolsSaving(false)
+                            }
+                          }}
+                          className="mt-0.5 accent-therapy-calm h-4 w-4 flex-shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-sm font-medium ${checked ? 'text-blue-900' : 'text-gray-800'}`}>
+                              {p.name}
+                            </span>
+                            {!p.is_system && (
+                              <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">מותאם אישית</span>
+                            )}
+                            {p.is_used && !checked && (
+                              <span className="text-xs text-gray-400">ברירת מחדל שלך</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">{p.target_problem}</p>
+                        </div>
+                      </label>
+                    )
+                  })}
+
+                {availableProtocols.filter((p) => p.is_used || patientProtocolIds.includes(p.id)).length === 0 && (
+                  <p className="text-xs text-gray-400 text-center py-3">
+                    לא הוגדרו פרוטוקולים מועדפים עדיין —{' '}
+                    <a href="/twin" className="text-therapy-calm underline">הגדר בפרופיל המקצועי</a>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {protocolsSaving && (
+              <p className="text-xs text-gray-400">שומר...</p>
             )}
           </div>
 

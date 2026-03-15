@@ -16,6 +16,7 @@ export interface ProfessionOption {
 export interface TherapyModeOption {
   value: string
   label: string
+  description?: string   // tooltip / help text (OT approaches and future modes)
 }
 
 export const PROFESSION_OPTIONS: ProfessionOption[] = [
@@ -24,6 +25,7 @@ export const PROFESSION_OPTIONS: ProfessionOption[] = [
   { value: 'psychiatrist', label: 'פסיכיאטר/ית', emoji: '⚕️' },
   { value: 'family_therapist', label: 'מטפל/ת זוגי-משפחתי', emoji: '👨‍👩‍👧' },
   { value: 'art_therapist', label: 'מטפל/ת באמנויות', emoji: '🎨' },
+  { value: 'occupational_therapist', label: 'מרפא/ת בעיסוק', emoji: '🖐️' },
   { value: 'coach', label: 'מאמן/ת רגשי/התנהגותי', emoji: '🌱' },
   { value: 'counselor', label: 'יועץ/ת רגשי/ת', emoji: '💬' },
   { value: 'other', label: 'אחר', emoji: '➕' },
@@ -39,6 +41,18 @@ export const THERAPY_MODES: TherapyModeOption[] = [
   { value: 'psychodrama', label: 'פסיכודרמה' },
   { value: 'integrative', label: 'אינטגרטיבי' },
   { value: 'emdr', label: 'EMDR' },
+  {
+    value: 'ot_functional',
+    label: 'ריפוי בעיסוק — גישה תפקודית',
+    description:
+      'מיפוי תפקוד בעיסוקים יומיומיים (לבוש, רחצה, כתיבה, עבודה, לימודים) והגדרת מטרות שיפור השתתפות בהתאם לסביבה ולתפקידים של המטופל.',
+  },
+  {
+    value: 'ot_sensory',
+    label: 'ריפוי בעיסוק — אינטגרציה חושית',
+    description:
+      'עבודה על ויסות חושי ומוטורי, התאמת סביבה ופעילויות לילדים ומבוגרים עם קשיי קשב, ויסות, אוטיזם או רגישות יתר/חסר לגירויים (מגע, רעש, תנועה).',
+  },
   { value: 'other', label: 'אחר' },
 ]
 

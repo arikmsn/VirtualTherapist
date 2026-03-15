@@ -1,14 +1,17 @@
-"""Therapist profile routes — Twin v0.1 controls and profile management"""
+"""Therapist profile routes — Twin v0.1 controls, professional settings, and protocol CRUD"""
+
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy import desc
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from app.api.deps import get_db, get_current_therapist
 from app.models.therapist import Therapist, TherapistNote
 from app.services.therapist_service import TherapistService
+from app.core.protocols import Protocol, get_system_protocols, merge_protocols
 from loguru import logger
 
 router = APIRouter()
@@ -52,6 +55,9 @@ class TherapistProfileResponse(BaseModel):
     must_change_password: bool = False
     intro_wizard_completed: bool = False
     profile_setup_completed: bool = False
+    # Protocol library (migration 040)
+    protocols_used: List[str] = []       # IDs of protocols this therapist uses globally
+    custom_protocols: List[Dict[str, Any]] = []  # custom protocol dicts
 
     class Config:
         from_attributes = True
@@ -75,6 +81,8 @@ class UpdateTwinControlsRequest(BaseModel):
     # Profession + therapy modes (migration 029)
     profession: Optional[str] = None
     primary_therapy_modes: Optional[List[str]] = None
+    # Protocol library — updated via dedicated /protocols/* endpoints
+    protocols_used: Optional[List[str]] = None
 
 
 # --- Helpers ---
@@ -161,6 +169,8 @@ def _profile_response(profile, therapist=None) -> TherapistProfileResponse:
         must_change_password=bool(therapist.must_change_password) if therapist else False,
         intro_wizard_completed=bool(therapist.intro_wizard_completed) if therapist else False,
         profile_setup_completed=bool(therapist.profile_setup_completed) if therapist else False,
+        protocols_used=_to_list(profile.protocols_used) or [],
+        custom_protocols=_to_list(profile.custom_protocols) or [],
     )
 
 
@@ -281,6 +291,179 @@ async def reset_twin_controls(
     except Exception as e:
         logger.exception(f"reset_twin_controls therapist={current_therapist.id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Protocol Library ──────────────────────────────────────────────────────────
+
+
+class ProtocolResponse(BaseModel):
+    """Wire protocol (system or custom) returned to the frontend."""
+    id: str
+    name: str
+    approach_id: str
+    target_problem: str
+    description: str
+    typical_sessions: Optional[int] = None
+    core_techniques: List[str] = []
+    is_system: bool
+    is_used: bool = False   # True when this therapist has checked it
+
+
+class ProtocolListResponse(BaseModel):
+    protocols: List[ProtocolResponse]
+
+
+class CustomProtocolCreate(BaseModel):
+    name: str
+    approach_id: str
+    target_problem: str
+    description: str
+    typical_sessions: Optional[int] = None
+    core_techniques: List[str] = []
+
+
+class CustomProtocolUpdate(BaseModel):
+    name: Optional[str] = None
+    approach_id: Optional[str] = None
+    target_problem: Optional[str] = None
+    description: Optional[str] = None
+    typical_sessions: Optional[int] = None
+    core_techniques: Optional[List[str]] = None
+
+
+class ProtocolsUsedUpdate(BaseModel):
+    protocol_ids: List[str]
+
+
+@router.get("/protocols", response_model=ProtocolListResponse)
+async def list_protocols(
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Return all system + custom protocols, marked with is_used for this therapist."""
+    profile = current_therapist.profile
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    custom = _to_list(profile.custom_protocols) or []
+    used_ids = set(_to_list(profile.protocols_used) or [])
+    all_protocols = merge_protocols(get_system_protocols(), custom)
+
+    return ProtocolListResponse(protocols=[
+        ProtocolResponse(
+            id=p.id,
+            name=p.name,
+            approach_id=p.approach_id,
+            target_problem=p.target_problem,
+            description=p.description,
+            typical_sessions=p.typical_sessions,
+            core_techniques=p.core_techniques,
+            is_system=p.is_system,
+            is_used=(p.id in used_ids),
+        )
+        for p in all_protocols
+    ])
+
+
+@router.patch("/protocols/used", response_model=TherapistProfileResponse)
+async def update_protocols_used(
+    request: ProtocolsUsedUpdate,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Update the list of protocol IDs this therapist actively uses."""
+    profile = current_therapist.profile
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    profile.protocols_used = request.protocol_ids
+    db.commit()
+    db.refresh(profile)
+    return _profile_response(profile, therapist=current_therapist)
+
+
+@router.post("/protocols/custom", response_model=ProtocolResponse, status_code=201)
+async def create_custom_protocol(
+    request: CustomProtocolCreate,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Create a new custom protocol for this therapist."""
+    profile = current_therapist.profile
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    custom = list(_to_list(profile.custom_protocols) or [])
+    new_id = f"custom_{uuid.uuid4().hex[:8]}"
+    new_protocol = {
+        "id": new_id,
+        "name": request.name,
+        "approach_id": request.approach_id,
+        "target_problem": request.target_problem,
+        "description": request.description,
+        "typical_sessions": request.typical_sessions,
+        "core_techniques": request.core_techniques,
+        "is_system": False,
+    }
+    custom.append(new_protocol)
+    profile.custom_protocols = custom
+    db.commit()
+
+    return ProtocolResponse(**new_protocol, is_used=False)
+
+
+@router.patch("/protocols/custom/{protocol_id}", response_model=ProtocolResponse)
+async def update_custom_protocol(
+    protocol_id: str,
+    request: CustomProtocolUpdate,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Edit an existing custom protocol."""
+    profile = current_therapist.profile
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    custom = list(_to_list(profile.custom_protocols) or [])
+    target = next((p for p in custom if p.get("id") == protocol_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Custom protocol not found")
+
+    updates = request.model_dump(exclude_unset=True)
+    target.update(updates)
+
+    profile.custom_protocols = custom
+    db.commit()
+
+    used_ids = set(_to_list(profile.protocols_used) or [])
+    return ProtocolResponse(**target, is_used=(protocol_id in used_ids))
+
+
+@router.delete("/protocols/custom/{protocol_id}", status_code=200)
+async def delete_custom_protocol(
+    protocol_id: str,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Delete a custom protocol (also removes it from protocols_used)."""
+    profile = current_therapist.profile
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    custom = list(_to_list(profile.custom_protocols) or [])
+    original_len = len(custom)
+    custom = [p for p in custom if p.get("id") != protocol_id]
+    if len(custom) == original_len:
+        raise HTTPException(status_code=404, detail="Custom protocol not found")
+
+    profile.custom_protocols = custom
+
+    # Also remove from protocols_used if present
+    used = list(_to_list(profile.protocols_used) or [])
+    profile.protocols_used = [pid for pid in used if pid != protocol_id]
+
+    db.commit()
+    return {"message": "Protocol deleted"}
 
 
 # ── Side Notebook ─────────────────────────────────────────────────────────────

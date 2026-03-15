@@ -145,6 +145,11 @@ class TherapistProfile(BaseModel):
     profession = Column(String(100), nullable=True)           # e.g. "psychologist"
     primary_therapy_modes = Column(JSON, nullable=True)       # e.g. ["cbt", "dbt"]
 
+    # Protocol library (added migration 040)
+    # IDs from app/core/protocols.py (system) or custom_protocols (custom)
+    protocols_used = Column(JSON, nullable=True)     # e.g. ["cbt_depression", "act_general"]
+    custom_protocols = Column(JSON, nullable=True)   # list of custom Protocol dicts
+
     # Relationship
     therapist = relationship("Therapist", back_populates="profile")
 

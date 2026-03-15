@@ -43,6 +43,10 @@ class UpdatePatientRequest(BaseModel):
     next_session_date: Optional[date] = None
     allow_ai_contact: Optional[bool] = None
     preferred_contact_time: Optional[str] = None
+    # Protocol library (migration 040) — list of protocol IDs active for this patient
+    protocol_ids: Optional[List[str]] = None
+    # Demographics placeholder (migration 040)
+    demographics: Optional[dict] = None
 
 
 class PatientResponse(BaseModel):

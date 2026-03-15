@@ -716,6 +716,61 @@ export const therapistAPI = {
       insights: Array<{ patient_id: number; title: string; body: string }>
     }
   },
+
+  // ── Protocol Library ────────────────────────────────────────────────────
+
+  getProtocols: async () => {
+    const response = await api.get('/therapist/protocols')
+    return response.data as {
+      protocols: Array<{
+        id: string
+        name: string
+        approach_id: string
+        target_problem: string
+        description: string
+        typical_sessions: number | null
+        core_techniques: string[]
+        is_system: boolean
+        is_used: boolean
+      }>
+    }
+  },
+
+  updateProtocolsUsed: async (protocol_ids: string[]) => {
+    const response = await api.patch('/therapist/protocols/used', { protocol_ids })
+    return response.data
+  },
+
+  createCustomProtocol: async (data: {
+    name: string
+    approach_id: string
+    target_problem: string
+    description: string
+    typical_sessions?: number | null
+    core_techniques?: string[]
+  }) => {
+    const response = await api.post('/therapist/protocols/custom', data)
+    return response.data as {
+      id: string; name: string; approach_id: string; target_problem: string
+      description: string; typical_sessions: number | null; core_techniques: string[]
+      is_system: boolean; is_used: boolean
+    }
+  },
+
+  updateCustomProtocol: async (
+    protocolId: string,
+    data: Partial<{
+      name: string; approach_id: string; target_problem: string
+      description: string; typical_sessions: number | null; core_techniques: string[]
+    }>,
+  ) => {
+    const response = await api.patch(`/therapist/protocols/custom/${protocolId}`, data)
+    return response.data
+  },
+
+  deleteCustomProtocol: async (protocolId: string) => {
+    await api.delete(`/therapist/protocols/custom/${protocolId}`)
+  },
 }
 
 export default api
