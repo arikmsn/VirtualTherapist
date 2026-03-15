@@ -141,21 +141,62 @@ interface PrepModalSession {
 
 type Tab = 'sessions' | 'summaries' | 'inbetween' | 'notes' | 'plan' | 'tasks' | 'settings'
 
-// --- Deep Summary narrative renderer (for plain-text rendered_text) ---
+// --- Generic Markdown-section renderer ---
+// Parses # / ## / ### headings and renders each section as a colored card.
+// Works for any text format — no hard-coded section titles required.
 
-function DeepSummaryNarrative({ text }: { text: string }) {
+const SECTION_PALETTE = [
+  { bg: 'bg-blue-50',   border: 'border-blue-100',   title: 'text-blue-900',   body: 'text-blue-800'   },
+  { bg: 'bg-purple-50', border: 'border-purple-100', title: 'text-purple-900', body: 'text-purple-800' },
+  { bg: 'bg-teal-50',   border: 'border-teal-100',   title: 'text-teal-900',   body: 'text-teal-800'   },
+  { bg: 'bg-green-50',  border: 'border-green-100',  title: 'text-green-900',  body: 'text-green-800'  },
+  { bg: 'bg-amber-50',  border: 'border-amber-100',  title: 'text-amber-900',  body: 'text-amber-800'  },
+  { bg: 'bg-indigo-50', border: 'border-indigo-100', title: 'text-indigo-900', body: 'text-indigo-800' },
+  { bg: 'bg-rose-50',   border: 'border-rose-100',   title: 'text-rose-900',   body: 'text-rose-800'   },
+  { bg: 'bg-cyan-50',   border: 'border-cyan-100',   title: 'text-cyan-900',   body: 'text-cyan-800'   },
+]
+
+type MdSection = { level: 1 | 2 | 3; title: string; body: string }
+
+function parseMarkdownSections(text: string): MdSection[] | null {
+  const lines = text.split('\n')
+  const sections: MdSection[] = []
+  let current: MdSection | null = null
+  let bodyLines: string[] = []
+
+  const flush = () => {
+    if (current) {
+      current.body = bodyLines.join('\n').trim()
+      sections.push(current)
+      bodyLines = []
+    }
+  }
+
+  for (const line of lines) {
+    const hm = line.match(/^(#{1,3})\s+(.+)/)
+    if (hm) {
+      flush()
+      const level = Math.min(hm[1].length, 3) as 1 | 2 | 3
+      const title = hm[2].trim()
+      current = { level, title, body: '' }
+    } else {
+      bodyLines.push(line)
+    }
+  }
+  flush()
+
+  // Only treat as Markdown if there is at least one ## or # heading
+  return sections.some(s => s.level <= 2) ? sections : null
+}
+
+function MarkdownSectionRenderer({ text }: { text: string }) {
   const cleaned = text.trim()
   if (!cleaned) return null
 
-  // Try double-newline split; fall back to single-newline if text has no paragraphs
-  let rawParagraphs = cleaned.split(/\n{2,}/).map(p => p.trim()).filter(Boolean)
-  if (rawParagraphs.length === 1) {
-    const singleLines = cleaned.split(/\n/).map(p => p.trim()).filter(Boolean)
-    if (singleLines.length > 3) rawParagraphs = singleLines
-  }
+  const sections = parseMarkdownSections(cleaned)
 
-  // Single unbreakable block → polished flowing card
-  if (rawParagraphs.length <= 1) {
+  // No Markdown headings → single gradient prose card (free-form narrative)
+  if (!sections) {
     return (
       <div className="rounded-xl border border-purple-100 bg-gradient-to-br from-purple-50/30 to-white p-5">
         <p className="text-sm text-gray-800 leading-loose whitespace-pre-line">{cleaned}</p>
@@ -163,69 +204,47 @@ function DeepSummaryNarrative({ text }: { text: string }) {
     )
   }
 
-  const HEADING_STYLES: Record<string, { label: string; cls: string }> = {
-    'רקע':          { label: 'רקע טיפולי',      cls: 'border-blue-100 bg-blue-50' },
-    'מהלך':         { label: 'מהלך הטיפול',     cls: 'border-blue-100 bg-blue-50' },
-    'תהליך':        { label: 'תהליך הטיפול',    cls: 'border-blue-100 bg-blue-50' },
-    'דפוסים':       { label: 'דפוסים קליניים',  cls: 'border-amber-100 bg-amber-50' },
-    'מה עבד':       { label: 'מה עבד',          cls: 'border-green-100 bg-green-50' },
-    'מה לא עבד':    { label: 'מה לא עבד',       cls: 'border-red-100 bg-red-50' },
-    'מה לא':        { label: 'מה לא עבד',       cls: 'border-red-100 bg-red-50' },
-    'מצב נוכחי':   { label: 'מצב נוכחי',       cls: 'border-gray-200 bg-gray-50' },
-    'מצב':          { label: 'מצב נוכחי',       cls: 'border-gray-200 bg-gray-50' },
-    'המלצות':       { label: 'המלצות להמשך',    cls: 'border-purple-100 bg-purple-50' },
-    'כיוונים':      { label: 'כיוונים להמשך',   cls: 'border-purple-100 bg-purple-50' },
-    'נקודות מפנה':  { label: 'נקודות מפנה',     cls: 'border-teal-100 bg-teal-50' },
-    'נקודת מפנה':   { label: 'נקודת מפנה',      cls: 'border-teal-100 bg-teal-50' },
-    'מטרות':        { label: 'מטרות',            cls: 'border-indigo-100 bg-indigo-50' },
-    'התקדמות':      { label: 'התקדמות',          cls: 'border-green-100 bg-green-50' },
-    'אתגרים':       { label: 'אתגרים',           cls: 'border-orange-100 bg-orange-50' },
-  }
-
-  type ParsedPara = { label: string | null; body: string; cls: string }
-  const parsed: ParsedPara[] = rawParagraphs.map(para => {
-    // Markdown bold heading: **Title** followed by optional body
-    const boldMatch = para.match(/^\*\*(.+?)\*\*[:\s]*\n?([\s\S]*)$/)
-    if (boldMatch) {
-      const heading = boldMatch[1].trim()
-      const body = boldMatch[2].trim() || heading
-      const styleKey = Object.keys(HEADING_STYLES).find(k => heading.includes(k))
-      const style = styleKey ? HEADING_STYLES[styleKey] : null
-      return { label: style?.label ?? heading, body, cls: style ? `border ${style.cls}` : 'border border-gray-100 bg-white' }
-    }
-    // Known keyword at paragraph start
-    const styleKey = Object.keys(HEADING_STYLES).find(k => para.startsWith(k))
-    if (styleKey) {
-      const style = HEADING_STYLES[styleKey]
-      return { label: style.label, body: para, cls: `border ${style.cls}` }
-    }
-    return { label: null, body: para, cls: 'border border-gray-100 bg-white' }
-  })
-
-  const hasStructure = parsed.some(p => p.label !== null)
-
-  if (!hasStructure) {
-    return (
-      <div className="rounded-xl border border-purple-100 bg-gradient-to-br from-purple-50/30 to-white p-5">
-        <div className="space-y-3">
-          {parsed.map((p, i) => (
-            <p key={i} className="text-sm text-gray-800 leading-loose whitespace-pre-line">{p.body}</p>
-          ))}
-        </div>
-      </div>
-    )
-  }
+  let colorIdx = 0
 
   return (
     <div className="space-y-3">
-      {parsed.map((p, i) => (
-        <div key={i} className={`rounded-xl p-4 ${p.cls}`}>
-          {p.label && (
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{p.label}</p>
-          )}
-          <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line">{p.body}</p>
-        </div>
-      ))}
+      {sections.map((sec, i) => {
+        if (sec.level === 1) {
+          // Document-level title — bold header, no colored card
+          return (
+            <div key={i} className="pb-1">
+              <h2 className="text-base font-bold text-gray-800">{sec.title}</h2>
+              {sec.body && (
+                <p className="text-sm text-gray-600 mt-1 leading-relaxed whitespace-pre-line">{sec.body}</p>
+              )}
+            </div>
+          )
+        }
+
+        if (sec.level === 2) {
+          const color = SECTION_PALETTE[colorIdx % SECTION_PALETTE.length]
+          colorIdx++
+          return (
+            <div key={i} className={`rounded-xl border p-4 ${color.bg} ${color.border}`}>
+              <h3 className={`text-sm font-bold mb-2 ${color.title}`}>{sec.title}</h3>
+              {sec.body && (
+                <p className={`text-sm leading-relaxed whitespace-pre-line ${color.body}`}>{sec.body}</p>
+              )}
+            </div>
+          )
+        }
+
+        // level === 3 — subsection: indented, same palette entry as preceding ##
+        const color = SECTION_PALETTE[Math.max(0, colorIdx - 1) % SECTION_PALETTE.length]
+        return (
+          <div key={i} className={`rounded-lg border p-3 mr-4 ${color.bg} ${color.border} opacity-90`}>
+            <h4 className={`text-xs font-semibold uppercase tracking-wide mb-1.5 ${color.title}`}>{sec.title}</h4>
+            {sec.body && (
+              <p className={`text-sm leading-relaxed whitespace-pre-line ${color.body}`}>{sec.body}</p>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -414,14 +433,14 @@ function DeepSummaryContent({
 
         {/* Plain-text fallback when JSON has no recognized content */}
         {!isPhase8 && !isLegacy && rendered_text && (
-          <DeepSummaryNarrative text={rendered_text} />
+          <MarkdownSectionRenderer text={rendered_text} />
         )}
       </div>
     )
   }
 
   if (rendered_text) {
-    return <DeepSummaryNarrative text={rendered_text} />
+    return <MarkdownSectionRenderer text={rendered_text} />
   }
 
   return <p className="text-gray-400 text-sm">אין תוכן שמור</p>
