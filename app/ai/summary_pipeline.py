@@ -153,6 +153,9 @@ def _build_render_prompt(inp: SummaryInput, clinical_json: dict) -> str:
         f"Guidelines:\n"
         "- Do NOT list fields mechanically. Integrate the content naturally.\n"
         "- Write as if the therapist is documenting their own session.\n"
+        "- Do NOT include any title, header line, or document heading (e.g. 'סיכום פגישה', date stamps).\n"
+        "- Do NOT mention the patient's name or the therapist's name anywhere in the text.\n"
+        "- Begin directly with the clinical content — the first sentence should describe what happened.\n"
         "- If the modality requires specific elements that are absent, "
         f"flag them at the end as: ⚠️ חסר: [element]{cbt_block}\n\n"
         f"Structured session data:\n{json.dumps(clinical_json, ensure_ascii=False, indent=2)}\n\n"
@@ -197,6 +200,46 @@ def _parse_clinical_json(raw: str) -> dict:
         "longitudinal_note": None,
         "confidence": 0.0,
     }
+
+
+# ── Header stripper ───────────────────────────────────────────────────────────
+
+def _strip_summary_header(text: str, patient_name: str) -> str:
+    """
+    Remove any header line that the LLM may have prepended despite instructions.
+    Strips the FIRST line if it looks like a document heading:
+      - starts with "סיכום" (summary)
+      - is very short (< 60 chars) and contains no sentence-ending punctuation
+      - contains the patient or therapist name
+    Also removes any occurrence of the patient's first name from the entire text.
+    """
+    if not text:
+        return text
+
+    lines = text.split("\n")
+    first = lines[0].strip()
+
+    # Strip if the first line is a short heading (no real sentence content)
+    if first and len(first) < 60 and not any(c in first for c in ".!?,"):
+        if (
+            first.startswith("סיכום")
+            or first.startswith("פגישה")
+            or (patient_name and patient_name.split()[0] in first)
+        ):
+            lines = lines[1:]
+            # Also strip a blank line immediately after the removed heading
+            while lines and not lines[0].strip():
+                lines = lines[1:]
+            text = "\n".join(lines)
+
+    # Remove patient first name from the body (privacy + style)
+    if patient_name:
+        first_name = patient_name.split()[0]
+        if len(first_name) > 1:   # guard against single-char names
+            import re
+            text = re.sub(r'\b' + re.escape(first_name) + r'\b', "המטופל/ת", text)
+
+    return text.strip()
 
 
 # ── Edit distance ─────────────────────────────────────────────────────────────
@@ -301,4 +344,4 @@ class SummaryPipeline:
         self._last_render_result = result
         # Keep agent._last_result pointing to the render result (the visible output)
         self.agent._last_result = result
-        return result.content
+        return _strip_summary_header(result.content, inp.client_name)

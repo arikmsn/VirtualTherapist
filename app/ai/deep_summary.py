@@ -273,7 +273,8 @@ def _build_render_user(
         "Render it as a complete formal Hebrew clinical narrative.\n\n"
         f"Structured summary:\n{json.dumps(summary_json, ensure_ascii=False, indent=2)}\n"
         f"{vault_section}\n"
-        "כתוב סיכום עומק ממוקד ומקיף, עד כ‑5,000 תווים, תוך שמירה על עיקרי הרצף הטיפולי. "
+        "כתוב סיכום עומק ממוקד ומקיף, עד 3,000 תווים בדיוק. "
+        "הקפד לסיים במשפט שלם — אל תיחתך באמצע מילה או משפט. "
         "אל תחרוג מאורך זה.\n\n"
         "Write the complete deep summary narrative in Hebrew now."
     )
@@ -326,6 +327,26 @@ def _parse_vault_entries(raw: str) -> list[dict]:
     except json.JSONDecodeError:
         logger.warning("VaultExtractor: non-JSON response")
     return []
+
+
+_RENDERED_TEXT_HARD_LIMIT = 3000   # characters; enforced after generation
+
+
+def _truncate_at_sentence(text: str, limit: int = _RENDERED_TEXT_HARD_LIMIT) -> str:
+    """
+    Hard-limit rendered_text to `limit` characters, cutting at the last complete
+    sentence boundary before the limit.  Sentence boundaries: `. `, `! `, `? `,
+    `.\n`, `!\n`, `?\n`.  Falls back to the raw slice if no boundary is found.
+    """
+    if len(text) <= limit:
+        return text
+    chunk = text[:limit]
+    # Search backwards for a sentence-ending punctuation followed by space or newline
+    for i in range(len(chunk) - 1, max(len(chunk) - 200, 0), -1):
+        if chunk[i] in ".!?" and (i + 1 >= len(chunk) or chunk[i + 1] in " \n"):
+            return chunk[: i + 1].rstrip()
+    # No boundary found — just hard-cut and add ellipsis
+    return chunk.rstrip() + "…"
 
 
 # ── DeepSummaryPipeline ───────────────────────────────────────────────────────
@@ -414,6 +435,9 @@ class DeepSummaryPipeline:
             rendered_text = await self._render_direct(inp, vault_context)
         else:
             rendered_text = await self._render(inp, summary_json, vault_context)
+
+        # Hard-limit to _RENDERED_TEXT_HARD_LIMIT at a sentence boundary
+        rendered_text = _truncate_at_sentence(rendered_text)
 
         model_used = "unknown"
         if self._render_result:
@@ -530,8 +554,9 @@ class DeepSummaryPipeline:
             "--- Session summaries (oldest → newest) ---\n"
             f"{sessions_text}\n"
             "--- End ---\n\n"
-            "כתוב סיכום עומק ממוקד ומקיף בעברית, עד כ‑5,000 תווים. "
+            "כתוב סיכום עומק ממוקד ומקיף בעברית, עד 3,000 תווים בדיוק. "
             "כסה: רצף הטיפול, דפוסים קליניים, מה עבד, מה לא עבד, מצב נוכחי, המלצות להמשך. "
+            "הקפד לסיים במשפט שלם — אל תיחתך באמצע מילה או משפט. "
             "אל תחרוג מאורך זה.\n\n"
             "Write the complete deep summary narrative in Hebrew now."
         )

@@ -34,17 +34,17 @@ APPOINTMENT_TEMPLATE_SID = "HX6975c9f8284208ae4b202035dac62c85"
 
 async def send_appointment_reminder(session_id: int) -> None:
     """
-    Send a WhatsApp appointment reminder for the given session using the approved
-    Content Template.  Opens its own DB session so it is safe to call from
-    APScheduler jobs or asyncio.create_task — independent of the request lifecycle.
+    Send a WhatsApp appointment reminder for the given session.
+    Opens its own DB session so it is safe to call from asyncio.create_task or APScheduler.
 
-    Best-effort: logs errors but never raises, so callers are never blocked.
+    Uses the same deliver_message() path as the Messages UI so the transport,
+    status tracking, and audit trail are identical.  Best-effort: logs errors but
+    never raises, so callers are never blocked.
     """
-    # Deferred imports to avoid circular dependencies and heavy startup cost
     from app.core.database import SessionLocal
-    from app.core.config import settings
     from app.models.therapist import Therapist
-    from app.services.whatsapp_service import send_whatsapp_message
+    from app.models.message import Message, MessageStatus, MessageDirection
+    from app.services.message_service import MessageService
 
     db = SessionLocal()
     try:
@@ -60,14 +60,10 @@ async def send_appointment_reminder(session_id: int) -> None:
             logger.warning(f"[appt_reminder] session {session_id}: patient/therapist missing — skip")
             return
 
-        from app.models.message import Message, MessageStatus, MessageDirection
-
         patient_name = (
             decrypt_data(patient.full_name_encrypted)
             if patient.full_name_encrypted else "מטופל"
         )
-
-        # Format date/time for the template — DD.MM.YY, 24h time
         session_date_str = session.session_date.strftime("%d.%m.%y")
         session_time_str = session.start_time.strftime("%H:%M") if session.start_time else "לא צוינה"
         content_text = (
@@ -75,72 +71,90 @@ async def send_appointment_reminder(session_id: int) -> None:
             f"בתאריך {session_date_str} בשעה {session_time_str}."
         )
 
-        # ── Determine if we can send ─────────────────────────────────────────
-        send_status = MessageStatus.SENT
-        patient_phone: Optional[str] = None
-
+        # ── Blocked paths: save a FAILED record and return ───────────────────
         if not patient.allow_ai_contact:
-            logger.info(f"[appt_reminder] session {session_id}: patient opted out — recording skipped")
-            send_status = MessageStatus.FAILED
-            content_text = f"[הודעה לא נשלחה — המטופל/ת לא נתן/ה הסכמה להודעות AI] {content_text}"
-        elif not patient.phone_encrypted:
-            logger.info(f"[appt_reminder] session {session_id}: patient has no phone — recording skipped")
-            send_status = MessageStatus.FAILED
-            content_text = f"[הודעה לא נשלחה — אין מספר טלפון למטופל/ת] {content_text}"
-        else:
-            patient_phone = decrypt_data(patient.phone_encrypted)
-            result = await send_whatsapp_message(
-                patient_phone,
-                "",
-                content_sid=APPOINTMENT_TEMPLATE_SID,
-                content_variables={
-                    "1": patient_name,
-                    "2": therapist.full_name,
-                    "3": session_date_str,
-                    "4": session_time_str,
-                },
+            logger.info(f"[appt_reminder] session {session_id}: patient opted out — recording FAILED")
+            _save_failed_record(
+                db, therapist.id, patient.id, session_id,
+                f"[הודעה לא נשלחה — המטופל/ת לא נתן/ה הסכמה להודעות] {content_text}",
             )
-            if result["status"] == "sent":
-                logger.info(
-                    f"[notify] session_created patient={patient.id} session={session_id} sent=True "
-                    f"provider_id={result['provider_id']!r}"
-                )
-            else:
-                logger.error(
-                    f"[notify] session_created patient={patient.id} session={session_id} sent=False "
-                    f"error={result['error']!r}"
-                )
-                send_status = MessageStatus.FAILED
+            return
 
-        # ── Always save a Message record so the screen shows the attempt ─────
-        try:
-            msg_record = Message(
-                therapist_id=therapist.id,
-                patient_id=patient.id,
-                direction=MessageDirection.TO_PATIENT,
-                content=content_text,
-                status=send_status,
-                requires_approval=False,
-                generated_by_ai=False,
-                sent_at=datetime.utcnow() if send_status == MessageStatus.SENT else None,
-                message_type="appointment_reminder",
-                related_session_id=session_id,
-                channel="whatsapp",
-                recipient_phone=patient_phone or "",
+        if not patient.phone_encrypted:
+            logger.info(f"[appt_reminder] session {session_id}: no phone — recording FAILED")
+            _save_failed_record(
+                db, therapist.id, patient.id, session_id,
+                f"[הודעה לא נשלחה — אין מספר טלפון למטופל/ת] {content_text}",
             )
-            db.add(msg_record)
-            db.commit()
-            logger.info(
-                f"[appt_reminder] session {session_id}: record saved id={msg_record.id} status={send_status}"
-            )
-        except Exception as save_exc:
-            logger.error(f"[appt_reminder] session {session_id}: failed to save record — {save_exc}")
-            db.rollback()
+            return
+
+        patient_phone = decrypt_data(patient.phone_encrypted)
+
+        # ── Create Message record, then deliver via the same path as Messages UI ──
+        msg_record = Message(
+            therapist_id=therapist.id,
+            patient_id=patient.id,
+            direction=MessageDirection.TO_PATIENT,
+            content=content_text,
+            status=MessageStatus.APPROVED,   # ready to deliver
+            requires_approval=False,
+            generated_by_ai=False,
+            message_type="appointment_reminder",
+            related_session_id=session_id,
+            channel="whatsapp",
+            recipient_phone=patient_phone,
+        )
+        db.add(msg_record)
+        db.flush()   # get msg_record.id without closing the transaction
+
+        msg_svc = MessageService(db)
+        delivered = await msg_svc.deliver_message(msg_record.id)
+        # deliver_message already calls db.commit()
+
+        sent = delivered and delivered.status == MessageStatus.SENT
+        logger.info(
+            f"[notify] session_created patient={patient.id} session={session_id} "
+            f"sent={sent} msg_id={msg_record.id}"
+        )
 
     except Exception as exc:
         logger.error(f"[appt_reminder] session {session_id}: unexpected error — {exc}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
     finally:
         db.close()
+
+
+def _save_failed_record(
+    db,
+    therapist_id: int,
+    patient_id: int,
+    session_id: int,
+    content: str,
+) -> None:
+    """Persist a FAILED appointment_reminder record (best-effort, swallows DB errors)."""
+    from app.models.message import Message, MessageStatus, MessageDirection
+    try:
+        rec = Message(
+            therapist_id=therapist_id,
+            patient_id=patient_id,
+            direction=MessageDirection.TO_PATIENT,
+            content=content,
+            status=MessageStatus.FAILED,
+            requires_approval=False,
+            generated_by_ai=False,
+            message_type="appointment_reminder",
+            related_session_id=session_id,
+            channel="whatsapp",
+            recipient_phone="",
+        )
+        db.add(rec)
+        db.commit()
+    except Exception as exc:
+        logger.error(f"[appt_reminder] failed to save FAILED record: {exc}")
+        db.rollback()
 
 
 class SessionService:

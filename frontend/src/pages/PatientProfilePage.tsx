@@ -141,6 +141,47 @@ interface PrepModalSession {
 
 type Tab = 'sessions' | 'summaries' | 'inbetween' | 'notes' | 'plan' | 'tasks' | 'settings'
 
+// --- Deep Summary narrative renderer (for plain-text rendered_text) ---
+
+function DeepSummaryNarrative({ text }: { text: string }) {
+  // Split on double-newline to get logical paragraphs, filter empty
+  const paragraphs = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean)
+  if (paragraphs.length === 0) return null
+
+  // Section heading keywords (Hebrew) — first paragraph that starts with one gets a card title
+  const SECTION_HEADINGS: Record<string, { label: string; className: string }> = {
+    'רקע':      { label: 'רקע', className: 'border-blue-100 bg-blue-50' },
+    'מהלך':     { label: 'מהלך הטיפול', className: 'border-blue-100 bg-blue-50' },
+    'דפוסים':   { label: 'דפוסים קליניים', className: 'border-yellow-100 bg-yellow-50' },
+    'מה עבד':   { label: 'מה עבד', className: 'border-green-100 bg-green-50' },
+    'מה לא':    { label: 'מה לא עבד', className: 'border-red-100 bg-red-50' },
+    'מצב נוכחי':{ label: 'מצב נוכחי', className: 'border-gray-100 bg-white' },
+    'המלצות':   { label: 'המלצות להמשך', className: 'border-purple-100 bg-purple-50' },
+    'נקודות מפנה': { label: 'נקודות מפנה', className: 'border-green-100 bg-green-50' },
+  }
+
+  return (
+    <div className="space-y-3">
+      {paragraphs.map((para, i) => {
+        const matched = Object.entries(SECTION_HEADINGS).find(([key]) =>
+          para.startsWith(key) || para.includes(`**${key}`)
+        )
+        const cardClass = matched
+          ? `rounded-lg p-4 border ${matched[1].className}`
+          : 'rounded-lg p-4 border border-gray-100 bg-white'
+        return (
+          <div key={i} className={cardClass}>
+            {matched && (
+              <h3 className="font-bold text-gray-800 mb-2 text-sm">{matched[1].label}</h3>
+            )}
+            <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{para}</p>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // --- Component ---
 
 export default function PatientProfilePage() {
@@ -1927,14 +1968,14 @@ export default function PatientProfilePage() {
                         )}
                       </>
                     )}
-                    {/* ── Fallback: no known schema fields ── */}
+                    {/* ── Fallback: rendered_text only (no structured JSON) ── */}
                     {!isPhase8 && !isLegacy && viewingDeepSummary.rendered_text && (
-                      <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{viewingDeepSummary.rendered_text}</p>
+                      <DeepSummaryNarrative text={viewingDeepSummary.rendered_text} />
                     )}
                   </>
                 )
               })() : viewingDeepSummary.rendered_text ? (
-                <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{viewingDeepSummary.rendered_text}</p>
+                <DeepSummaryNarrative text={viewingDeepSummary.rendered_text} />
               ) : (
                 <p className="text-gray-400 text-sm">אין תוכן שמור</p>
               )}
