@@ -545,7 +545,7 @@ export default function PatientProfilePage() {
   }>>([])
   const [deepHistoryLoading, setDeepHistoryLoading] = useState(false)
   const [viewingDeepSummary, setViewingDeepSummary] = useState<{
-    created_at: string; rendered_text: string | null; summary_json: Record<string, unknown> | null
+    summary_id?: number; created_at: string; rendered_text: string | null; summary_json: Record<string, unknown> | null
   } | null>(null)
   // Inline expanded view in the summaries tab (set via "טען לתצוגה הנוכחית", reset on tab change)
   const [currentDeepSummaryInView, setCurrentDeepSummaryInView] = useState<{
@@ -1304,7 +1304,7 @@ export default function PatientProfilePage() {
                 )}
                 {insight && (
                   <>
-                    <CopyButton text={deepSummaryToText(insight)} />
+                    <CopyButton text={deepHistory[0]?.rendered_text || deepSummaryToText(insight)} />
                     <button
                       type="button"
                       onClick={() => window.open(`/patients/${pid}/print?doc=summary`, '_blank')}
@@ -1430,7 +1430,7 @@ export default function PatientProfilePage() {
                   {isCbtActive && (
                     <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">CBT</span>
                   )}
-                  <CopyButton text={deepSummaryToText(currentDeepSummaryInView.summary_json as unknown as DeepSummary)} />
+                  <CopyButton text={currentDeepSummaryInView.rendered_text || (currentDeepSummaryInView.summary_json ? deepSummaryToText(currentDeepSummaryInView.summary_json as unknown as DeepSummary) : '')} />
                 </div>
                 <button
                   onClick={() => setCurrentDeepSummaryInView(null)}
@@ -2312,14 +2312,15 @@ export default function PatientProfilePage() {
                 <span className="text-xs text-purple-500">{formatDateIL(viewingDeepSummary.created_at)}</span>
                 <CopyButton
                   text={
-                    viewingDeepSummary.summary_json
+                    viewingDeepSummary.rendered_text ||
+                    (viewingDeepSummary.summary_json
                       ? deepSummaryToText(viewingDeepSummary.summary_json as unknown as DeepSummary)
-                      : viewingDeepSummary.rendered_text || ''
+                      : '')
                   }
                 />
                 <button
                   type="button"
-                  onClick={() => window.open(`/patients/${pid}/print?doc=summary`, '_blank')}
+                  onClick={() => window.open(`/patients/${pid}/print?doc=summary${viewingDeepSummary.summary_id ? `&sid=${viewingDeepSummary.summary_id}` : ''}`, '_blank')}
                   className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-purple-200 bg-white text-purple-500 hover:text-purple-700 hover:border-purple-300 transition-colors"
                 >
                   🖨 הדפסה

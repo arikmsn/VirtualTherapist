@@ -42,6 +42,7 @@ export default function PrintPatientPage() {
   const { patientId } = useParams<{ patientId: string }>()
   const [searchParams] = useSearchParams()
   const doc = searchParams.get('doc') // 'summary' | 'plan' | null (both)
+  const sid = searchParams.get('sid') ? Number(searchParams.get('sid')) : null // specific summary ID
   const id = Number(patientId)
 
   const [patient, setPatient] = useState<Patient | null>(null)
@@ -72,7 +73,10 @@ export default function PrintPatientPage() {
         const [insightData, planData] = await Promise.allSettled([
           showSummary
             ? patientSummariesAPI.getDeepSummaryHistory(id)
-                .then(h => h[0] ?? null)
+                .then(h => {
+                  if (sid) return h.find((s: any) => s.summary_id === sid) ?? h[0] ?? null
+                  return h[0] ?? null
+                })
                 .catch(() => null)
             : Promise.resolve(null),
           showPlan ? treatmentPlanAPI.get(id).catch(() => null) : Promise.resolve(null),
@@ -95,7 +99,7 @@ export default function PrintPatientPage() {
       }
     }
     load()
-  }, [id, showSummary, showPlan])
+  }, [id, showSummary, showPlan, sid])
 
   if (loading) {
     return (
@@ -185,7 +189,8 @@ export default function PrintPatientPage() {
 
             {!insight && !insightRenderedText ? (
               <p className="text-gray-400 text-sm">אין סיכום עומק זמין.</p>
-            ) : !insight && insightRenderedText ? (
+            ) : insightRenderedText ? (
+              // rendered_text is the canonical output — works for all schema versions (legacy, phase-6, CBT/phase-8)
               <p className="text-gray-800 text-sm whitespace-pre-line leading-relaxed">{insightRenderedText}</p>
             ) : insight ? (
               <div className="space-y-5 text-sm leading-relaxed">
