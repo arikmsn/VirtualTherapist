@@ -41,10 +41,11 @@ export default function LoginPage() {
             <AppLogo variant="full" fluid />
           </a>
           <h1 className="text-xl font-bold text-gray-900">התחברות</h1>
+          <p className="text-sm text-gray-500 mt-0.5">מטפל אונליין</p>
         </div>
 
         {/* Login Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" autoComplete="on">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
               {error}
@@ -61,6 +62,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               className="input-field"
               placeholder="your@email.com"
+              autoComplete="email"
               required
             />
           </div>
@@ -75,6 +77,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               className="input-field"
               placeholder="••••••••"
+              autoComplete="current-password"
               required
             />
           </div>
