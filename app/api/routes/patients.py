@@ -48,6 +48,8 @@ class UpdatePatientRequest(BaseModel):
     protocol_ids: Optional[List[str]] = None
     # Demographics placeholder (migration 040)
     demographics: Optional[dict] = None
+    # Age stored inside demographics JSON
+    age: Optional[int] = None
 
 
 class PatientResponse(BaseModel):
@@ -65,6 +67,8 @@ class PatientResponse(BaseModel):
     created_at: datetime
     # Protocol library — non-encrypted, safe to expose
     protocol_ids: Optional[List[str]] = None
+    # Age exposed from demographics JSON
+    age: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -255,6 +259,7 @@ async def get_protocol_progress(
         .filter(
             TherapySession.patient_id == patient_id,
             TherapySession.therapist_id == current_therapist.id,
+            TherapySession.session_date <= date.today(),
         )
         .scalar()
     ) or 0

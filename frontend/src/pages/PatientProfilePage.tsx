@@ -2311,7 +2311,11 @@ export default function PatientProfilePage() {
                 <h2 className="text-base font-bold text-purple-900">סיכום עומק</h2>
                 <span className="text-xs text-purple-500">{formatDateIL(viewingDeepSummary.created_at)}</span>
                 <CopyButton
-                  text={deepSummaryToText(viewingDeepSummary.summary_json as unknown as DeepSummary)}
+                  text={
+                    viewingDeepSummary.summary_json
+                      ? deepSummaryToText(viewingDeepSummary.summary_json as unknown as DeepSummary)
+                      : viewingDeepSummary.rendered_text || ''
+                  }
                 />
                 <button
                   type="button"

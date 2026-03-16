@@ -419,6 +419,7 @@ function ProfessionalTab({
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [editingProtocol, setEditingProtocol] = useState<ProtocolItem | null>(null)
   const [protocolFilter, setProtocolFilter] = useState<'all' | 'used'>('all')
+  const [protocolSaveStatus, setProtocolSaveStatus] = useState<'idle' | 'saved'>('idle')
 
   useEffect(() => {
     setProtocolsLoading(true)
@@ -436,6 +437,8 @@ function ProfessionalTab({
     setProtocols((prev) => prev.map((p) => p.id === protocol.id ? { ...p, is_used: !p.is_used } : p))
     try {
       await therapistAPI.updateProtocolsUsed(newUsed)
+      setProtocolSaveStatus('saved')
+      setTimeout(() => setProtocolSaveStatus('idle'), 2000)
     } catch {
       // revert on error
       setProtocols((prev) => prev.map((p) => p.id === protocol.id ? { ...p, is_used: protocol.is_used } : p))
@@ -622,7 +625,12 @@ function ProfessionalTab({
       <div className="card space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-gray-800">פרוטוקולים טיפוליים מועדפים</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-gray-800">פרוטוקולים טיפוליים מועדפים</h2>
+              {protocolSaveStatus === 'saved' && (
+                <span className="text-xs text-green-600 font-medium">נשמר ✓</span>
+              )}
+            </div>
             <p className="text-sm text-gray-500 mt-0.5">
               סמנו את הפרוטוקולים שאתם עובדים איתם, המערכת תתאים את הסיכומים ותוכניות הטיפול בהתאם
             </p>
@@ -670,31 +678,6 @@ function ProfessionalTab({
             ))}
           </div>
         )}
-      </div>
-
-      {/* ── ד. מידע מצטבר ── */}
-      <div className="card">
-        <h2 className="text-base font-bold text-gray-800 mb-3">נתונים על העבודה שלך במערכת</h2>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-gray-50 rounded-lg p-3 text-center">
-            <div className="text-2xl font-bold text-gray-700">{sigProfile?.approved_sample_count ?? '—'}</div>
-            <div className="text-xs text-gray-500 mt-0.5">סיכומים מאושרים</div>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-3 text-center">
-            <div className="text-2xl font-bold text-therapy-calm">
-              {protocols.filter((p) => p.is_used).length}
-            </div>
-            <div className="text-xs text-gray-500 mt-0.5">פרוטוקולים פעילים</div>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-3 text-center">
-            <div className="text-2xl font-bold text-gray-700">
-              {profile.therapist_created_at
-                ? Math.floor((Date.now() - new Date(profile.therapist_created_at).getTime()) / 86400000)
-                : '—'}
-            </div>
-            <div className="text-xs text-gray-500 mt-0.5">ימי פעילות</div>
-          </div>
-        </div>
       </div>
 
       {/* Modals */}
@@ -784,7 +767,9 @@ function AISettingsTab({
               <div className={`text-2xl font-bold ${sigProfile.samples_until_active === 0 ? 'text-green-600' : 'text-amber-600'}`}>
                 {sigProfile.samples_until_active === 0 ? '✓' : sigProfile.samples_until_active}
               </div>
-              <div className="text-xs text-gray-500 mt-0.5">טרם מולאו</div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {sigProfile.samples_until_active === 0 ? 'מינימום הושג' : 'נדרשים עוד'}
+              </div>
             </div>
             <div className="bg-white rounded-lg p-3 text-center">
               <div className="text-2xl font-bold text-indigo-700">

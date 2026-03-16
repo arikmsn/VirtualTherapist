@@ -134,7 +134,14 @@ class PatientService:
         if update_data.get("phone"):
             update_data = {**update_data, "phone": normalize_phone(update_data["phone"])}
 
+        # Age is stored inside the demographics JSON column
+        if "age" in update_data and update_data["age"] is not None:
+            current_demo = patient.demographics or {}
+            patient.demographics = {**current_demo, "age": update_data["age"]}
+
         for field, value in update_data.items():
+            if field == "age":
+                continue  # already handled above
             if value is None:
                 continue
             if field in ENCRYPTED_FIELDS:
@@ -209,4 +216,7 @@ class PatientService:
             decrypt_data(patient.diagnosis)
             if patient.diagnosis else None
         )
+        # Expose age from demographics JSON as a top-level attribute
+        demo = patient.demographics or {}
+        patient.age = demo.get("age")
         return patient

@@ -354,7 +354,7 @@ export default function PatientsPage() {
                   </button>
                   <button
                     className="p-2 text-gray-400 hover:text-therapy-calm hover:bg-blue-50 rounded-lg touch-manipulation"
-                    title="שלח הודעה"
+                    title="הודעות"
                     onClick={(e) => {
                       e.stopPropagation()
                       navigate(`/patients/${patient.id}`, { state: { initialTab: 'inbetween' } })
@@ -434,7 +434,7 @@ export default function PatientsPage() {
                     navigate(`/patients/${patient.id}`, { state: { initialTab: 'inbetween' } })
                   }}
                 >
-                  שלח הודעה
+                  הודעות
                 </button>
               </div>
             </div>

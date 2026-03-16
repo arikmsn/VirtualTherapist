@@ -502,23 +502,23 @@ export default function DashboardPage() {
           </div>
         </button>
 
-        {/* Action 3: Go to Messages Center */}
+        {/* Action 3: Go to Patients */}
         <button
-          onClick={() => navigate('/messages')}
+          onClick={() => navigate('/patients')}
           className="card group hover:shadow-2xl transition-all duration-300 hover:scale-105 cursor-pointer text-right"
         >
           <div className="flex flex-col items-start gap-4">
             <div className="w-16 h-16 bg-therapy-warm/10 rounded-full flex items-center justify-center group-hover:bg-therapy-warm group-hover:text-white transition-colors duration-300">
-              <BellAlertIcon className="h-8 w-8 text-therapy-warm group-hover:text-white" />
+              <CheckCircleIcon className="h-8 w-8 text-therapy-warm group-hover:text-white" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">📨 מרכז הודעות</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">👥 ניהול מטופלים</h3>
               <p className="text-gray-600 text-sm">
-                צפה בכל ההודעות שנשלחו למטופלים, ערוך הודעות מתוזמנות וצפה בסטטוס
+                צפה ברשימת המטופלים, נהל פרופילים, ועקוב אחר ההתקדמות הטיפולית
               </p>
             </div>
             <div className="mt-auto w-full">
-              <div className="text-sm text-therapy-warm font-medium">עבור למרכז הודעות →</div>
+              <div className="text-sm text-therapy-warm font-medium">עבור לניהול מטופלים →</div>
             </div>
           </div>
         </button>

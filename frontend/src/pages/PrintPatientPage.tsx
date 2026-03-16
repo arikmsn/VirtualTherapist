@@ -47,6 +47,7 @@ export default function PrintPatientPage() {
   const [patient, setPatient] = useState<Patient | null>(null)
   const [therapistName, setTherapistName] = useState('')
   const [insight, setInsight] = useState<DeepSummary | null>(null)
+  const [insightRenderedText, setInsightRenderedText] = useState<string | null>(null)
   const [plan, setPlan] = useState<TreatmentPlanVersion | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -71,14 +72,16 @@ export default function PrintPatientPage() {
         const [insightData, planData] = await Promise.allSettled([
           showSummary
             ? patientSummariesAPI.getDeepSummaryHistory(id)
-                .then(h => (h[0]?.summary_json as DeepSummary | null) ?? null)
+                .then(h => h[0] ?? null)
                 .catch(() => null)
             : Promise.resolve(null),
           showPlan ? treatmentPlanAPI.get(id).catch(() => null) : Promise.resolve(null),
         ])
 
         if (insightData.status === 'fulfilled' && insightData.value) {
-          setInsight(insightData.value as DeepSummary)
+          const h = insightData.value as { summary_json?: unknown; rendered_text?: string | null }
+          if (h.summary_json) setInsight(h.summary_json as DeepSummary)
+          if (h.rendered_text) setInsightRenderedText(h.rendered_text)
         }
         if (planData.status === 'fulfilled' && planData.value) {
           // treatmentPlanAPI.get returns a TreatmentPlanVersion with plan_json inside
@@ -180,9 +183,11 @@ export default function PrintPatientPage() {
               ✦ סיכום עומק AI
             </h2>
 
-            {!insight ? (
+            {!insight && !insightRenderedText ? (
               <p className="text-gray-400 text-sm">אין סיכום עומק זמין.</p>
-            ) : (
+            ) : !insight && insightRenderedText ? (
+              <p className="text-gray-800 text-sm whitespace-pre-line leading-relaxed">{insightRenderedText}</p>
+            ) : insight ? (
               <div className="space-y-5 text-sm leading-relaxed">
                 {insight.overall_treatment_picture && (
                   <section>
