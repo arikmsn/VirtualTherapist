@@ -229,7 +229,7 @@ export default function PrintPatientPage() {
                   </section>
                 )}
               </div>
-            )}
+            ) : null}
           </div>
         )}
 
