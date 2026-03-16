@@ -86,7 +86,7 @@ async def create_draft_message(
 
     except Exception as e:
         logger.exception(f"create_draft_message therapist={current_therapist.id} patient={request.patient_id} failed: {e!r}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="שגיאה זמנית בשליחת ההודעה, נסו שוב בעוד מספר דקות")
 
 
 @router.post("/approve")
@@ -345,7 +345,7 @@ async def generate_draft_message(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception(f"generate_draft_message therapist={current_therapist.id} patient={request.patient_id} failed: {e!r}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="שגיאה זמנית בייצור ההודעה, נסו שוב בעוד מספר דקות")
 
 
 @router.post("/compose", response_model=MessageResponse, status_code=201)
@@ -376,7 +376,7 @@ async def compose_message(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception(f"compose_message therapist={current_therapist.id} patient={request.patient_id} failed: {e!r}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="שגיאה זמנית בשליחת ההודעה, נסו שוב בעוד מספר דקות")
 
 
 @router.post("/{message_id}/send-or-schedule", response_model=MessageResponse)

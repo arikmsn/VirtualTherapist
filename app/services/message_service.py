@@ -63,7 +63,7 @@ class MessageService:
             requires_approval=settings.REQUIRE_THERAPIST_APPROVAL,
             message_type=message_type,
             generated_by_ai=True,
-            ai_model=settings.AI_MODEL,
+            ai_model=settings.AI_FAST_MODEL,
             ai_prompt_used=message_prompt
         )
 
@@ -498,7 +498,7 @@ class MessageService:
             requires_approval=True,
             message_type=message_type,
             generated_by_ai=(message_type == "task_reminder"),
-            ai_model=settings.AI_MODEL if message_type == "task_reminder" else None,
+            ai_model=settings.AI_FAST_MODEL if message_type == "task_reminder" else None,
             channel="whatsapp",
             related_session_id=related_session_id,
         )
