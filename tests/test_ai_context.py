@@ -101,6 +101,27 @@ def test_therapist_only_protocols():
 
 
 # ---------------------------------------------------------------------------
+# session_count → completed_sessions in protocol dicts
+# ---------------------------------------------------------------------------
+
+
+def test_session_count_adds_completed_sessions():
+    profile = _make_profile(protocols_used=["cbt_depression"])
+    patient = _make_patient(protocol_ids=None)
+    ctx = build_ai_context_for_patient(profile, patient, session_count=5)
+    for p in ctx["protocols"]:
+        assert p.get("completed_sessions") == 5, f"Expected completed_sessions=5 in {p}"
+
+
+def test_no_session_count_omits_completed_sessions():
+    profile = _make_profile(protocols_used=["cbt_depression"])
+    patient = _make_patient(protocol_ids=None)
+    ctx = build_ai_context_for_patient(profile, patient)  # no session_count
+    for p in ctx["protocols"]:
+        assert "completed_sessions" not in p, f"completed_sessions should be absent: {p}"
+
+
+# ---------------------------------------------------------------------------
 # Patient overrides therapist
 # ---------------------------------------------------------------------------
 

@@ -910,7 +910,7 @@ async def stream_prep_v2(
     from app.core.ai_context import build_ai_context_for_patient as _build_ai_ctx
     from app.models.patient import Patient as _Patient
     _patient_for_ctx = db.query(_Patient).filter(_Patient.id == session.patient_id).first()
-    _ai_ctx = _build_ai_ctx(agent.profile if agent.profile else None, _patient_for_ctx)
+    _ai_ctx = _build_ai_ctx(agent.profile if agent.profile else None, _patient_for_ctx, session_count=len(approved_summaries))
 
     prep_inp = PrepInput(
         client_id=session.patient_id,

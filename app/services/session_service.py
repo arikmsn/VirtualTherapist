@@ -1251,6 +1251,7 @@ class SessionService:
         ai_ctx = build_ai_context_for_patient(
             agent.profile if agent.profile else None,
             patient,
+            session_count=len(approved_summaries),
         )
 
         prep_inp = PrepInput(

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 def build_ai_context_for_patient(
     profile: Optional["TherapistProfile"],
     patient: Optional["Patient"],
+    session_count: Optional[int] = None,
 ) -> dict:
     """
     Build the AI protocol/professional context dict for a therapist+patient pair.
@@ -30,6 +31,13 @@ def build_ai_context_for_patient(
     Returns a dict with three keys: "therapist", "patient", "protocols".
     Returns {} when no meaningful protocol context is available so callers can
     skip injection with a simple ``if ctx:`` check.
+
+    Args:
+        profile:       TherapistProfile ORM row (or None).
+        patient:       Patient ORM row (or None).
+        session_count: Optional total number of documented sessions for this patient.
+                       When provided, each protocol entry gains a ``completed_sessions``
+                       field so the AI can infer treatment phase.
 
     Resolution rules:
     - patient.protocol_ids (non-empty) overrides therapist.protocols_used
@@ -89,7 +97,7 @@ def build_ai_context_for_patient(
     for pid in active_ids:
         p = library_by_id.get(pid)
         if p:
-            resolved_protocols.append({
+            entry: dict = {
                 "id": p.id,
                 "name": p.name,
                 "approach": p.approach_id,
@@ -97,7 +105,10 @@ def build_ai_context_for_patient(
                 "description": p.description,
                 "typical_sessions": p.typical_sessions,
                 "core_techniques": p.core_techniques,
-            })
+            }
+            if session_count is not None:
+                entry["completed_sessions"] = session_count
+            resolved_protocols.append(entry)
 
     primary_protocol_id = active_ids[0] if active_ids else None
 

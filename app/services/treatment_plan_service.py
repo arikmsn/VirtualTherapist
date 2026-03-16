@@ -229,7 +229,7 @@ class TreatmentPlanService:
             .filter(TherapistProfile.therapist_id == therapist_id)
             .first()
         )
-        ai_ctx = build_ai_context_for_patient(_profile_orm, patient)
+        ai_ctx = build_ai_context_for_patient(_profile_orm, patient, session_count=len(approved_summaries))
 
         # Compute version BEFORE the AI call so we don't hold a DB query open after a long await
         next_version = self._next_plan_version(patient_id, therapist_id)
@@ -325,7 +325,7 @@ class TreatmentPlanService:
             .filter(TherapistProfile.therapist_id == therapist_id)
             .first()
         )
-        ai_ctx = build_ai_context_for_patient(_profile_orm, patient)
+        ai_ctx = build_ai_context_for_patient(_profile_orm, patient, session_count=len(approved_summaries))
 
         # Compute version BEFORE the AI call so we don't hold a DB query open after a long await
         next_version = self._next_plan_version(patient_id, therapist_id)

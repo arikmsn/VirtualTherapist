@@ -191,7 +191,7 @@ class DeepSummaryService:
             .filter(TherapistProfile.therapist_id == therapist_id)
             .first()
         )
-        ai_ctx = build_ai_context_for_patient(_profile_orm, patient)
+        ai_ctx = build_ai_context_for_patient(_profile_orm, patient, session_count=len(approved_summaries))
 
         inp = DeepSummaryInput(
             client_id=patient_id,
