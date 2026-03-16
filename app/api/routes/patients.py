@@ -1,6 +1,7 @@
 """Patient management routes"""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -62,9 +63,18 @@ class PatientResponse(BaseModel):
     completed_exercises_count: int
     missed_exercises_count: int
     created_at: datetime
+    # Protocol library — non-encrypted, safe to expose
+    protocol_ids: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
+
+
+class ProtocolProgressItem(BaseModel):
+    id: str
+    name: str
+    current_stage: int
+    typical_sessions: int
 
 
 # --- Endpoints ---
@@ -195,6 +205,69 @@ async def delete_patient(
     except Exception as e:
         logger.exception(f"delete_patient {patient_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{patient_id}/protocol-progress", response_model=List[ProtocolProgressItem])
+async def get_protocol_progress(
+    patient_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: Session = Depends(get_db),
+):
+    """
+    Return active protocol progress for this patient.
+
+    Each item shows how many sessions the patient has had (current_stage)
+    vs. the protocol's typical session count. Returns [] when no protocols
+    are assigned to either the patient or the therapist.
+    """
+    from app.models.session import Session as TherapySession
+    from app.models.therapist import TherapistProfile
+    from app.core.protocol_context import build_protocol_context_for_patient
+
+    service = PatientService(db)
+    patient = await service.get_patient(patient_id=patient_id, therapist_id=current_therapist.id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    profile = (
+        db.query(TherapistProfile)
+        .filter(TherapistProfile.therapist_id == current_therapist.id)
+        .first()
+    )
+    therapist_protocol_ids: List[str] = list(getattr(profile, "protocols_used", None) or [])
+    custom_protocols: List[dict] = list(getattr(profile, "custom_protocols", None) or [])
+
+    # patient.protocol_ids overrides therapist list when non-empty
+    raw_patient_ids = getattr(patient, "protocol_ids", None) or []
+    patient_protocol_ids = list(raw_patient_ids) if raw_patient_ids else None
+
+    ctx = build_protocol_context_for_patient(
+        therapist_protocol_ids=therapist_protocol_ids,
+        therapist_custom_protocols=custom_protocols,
+        patient_protocol_ids=patient_protocol_ids,
+    )
+    active_protocols = ctx.get("active_protocols", [])
+    if not active_protocols:
+        return []
+
+    session_count: int = (
+        db.query(func.count(TherapySession.id))
+        .filter(
+            TherapySession.patient_id == patient_id,
+            TherapySession.therapist_id == current_therapist.id,
+        )
+        .scalar()
+    ) or 0
+
+    return [
+        ProtocolProgressItem(
+            id=p["id"],
+            name=p["name"],
+            current_stage=min(session_count, p.get("typical_sessions") or 12),
+            typical_sessions=p.get("typical_sessions") or 12,
+        )
+        for p in active_protocols
+    ]
 
 
 @router.get("/{patient_id}/summaries", response_model=List[PatientSummaryItem])

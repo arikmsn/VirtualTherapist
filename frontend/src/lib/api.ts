@@ -312,6 +312,13 @@ export const patientsAPI = {
     const response = await api.delete(`/patients/${patientId}`)
     return response.data
   },
+
+  getProtocolProgress: async (patientId: number): Promise<Array<{
+    id: string; name: string; current_stage: number; typical_sessions: number
+  }>> => {
+    const response = await api.get(`/patients/${patientId}/protocol-progress`)
+    return response.data
+  },
 }
 
 // Patient Notes API

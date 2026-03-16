@@ -37,6 +37,20 @@ def test_all_system_protocols_are_valid():
         assert p.is_system is True, f"System protocol should have is_system=True: {p.id}"
 
 
+def test_all_system_protocols_have_typical_sessions_and_techniques():
+    """Every system protocol must declare typical_sessions and ≥3 core_techniques."""
+    for p in get_system_protocols():
+        assert p.typical_sessions is not None, (
+            f"Protocol {p.id!r} is missing typical_sessions"
+        )
+        assert isinstance(p.typical_sessions, int) and p.typical_sessions > 0, (
+            f"Protocol {p.id!r} typical_sessions must be a positive integer, got {p.typical_sessions!r}"
+        )
+        assert len(p.core_techniques) >= 3, (
+            f"Protocol {p.id!r} should have ≥3 core_techniques, got {len(p.core_techniques)}"
+        )
+
+
 def test_system_protocols_ids_are_unique():
     ids = [p.id for p in get_system_protocols()]
     assert len(ids) == len(set(ids)), "System protocol IDs must be unique"

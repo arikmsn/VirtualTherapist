@@ -71,6 +71,7 @@ interface Patient {
   allow_ai_contact: boolean
   completed_exercises_count: number
   created_at: string
+  protocol_ids?: string[] | null
 }
 
 interface Session {
@@ -517,6 +518,9 @@ export default function PatientProfilePage() {
   }>>([])
   const [patientProtocolIds, setPatientProtocolIds] = useState<string[]>([])
   const [protocolsSaving, setProtocolsSaving] = useState(false)
+  const [protocolProgress, setProtocolProgress] = useState<Array<{
+    id: string; name: string; current_stage: number; typical_sessions: number
+  }>>([])
 
   // Patient data
   const [patient, setPatient] = useState<Patient | null>(null)
@@ -642,8 +646,12 @@ export default function PatientProfilePage() {
           patientsAPI.get(pid),
           therapistAPI.getProfile(),
         ])
-        if (p.status === 'fulfilled') setPatient(p.value)
-        else setError((p.reason as any)?.response?.data?.detail || 'שגיאה בטעינת המטופל')
+        if (p.status === 'fulfilled') {
+          setPatient(p.value)
+          setPatientProtocolIds(Array.isArray(p.value.protocol_ids) ? p.value.protocol_ids : [])
+        } else {
+          setError((p.reason as any)?.response?.data?.detail || 'שגיאה בטעינת המטופל')
+        }
         if (profile.status === 'fulfilled') setIsCbtActive(!!profile.value.cbt_active)
       } finally {
         setLoading(false)
@@ -652,13 +660,17 @@ export default function PatientProfilePage() {
     load()
   }, [pid])
 
-  // Load protocol library when settings tab is opened
+  // Load protocol library + patient progress when settings tab is opened
   useEffect(() => {
     if (tab !== 'settings') return
     therapistAPI.getProtocols()
       .then((data) => setAvailableProtocols(data.protocols))
       .catch(() => {/* non-critical */})
-  }, [tab])
+    patientsAPI.getProtocolProgress(pid)
+      .then((data) => setProtocolProgress(data))
+      .catch(() => {/* non-critical */})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, pid])
 
   const reloadSessions = async () => {
     setSessionsLoading(true)
@@ -2083,6 +2095,23 @@ export default function PatientProfilePage() {
                 בחר פרוטוקולים ייעודיים למטופל זה — יגברו על ברירת המחדל של הפרופיל שלך ב-AI
               </p>
             </div>
+
+            {/* Protocol stage progress — shown only when ≥1 active protocol */}
+            {protocolProgress.length > 0 && (
+              <div className="space-y-1.5">
+                {protocolProgress.map((pp) => (
+                  <div
+                    key={pp.id}
+                    className="flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg"
+                  >
+                    <span className="text-sm font-medium text-blue-900">{pp.name}</span>
+                    <span className="text-xs font-medium text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full whitespace-nowrap">
+                      שלב {pp.current_stage} מתוך {pp.typical_sessions}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {availableProtocols.length === 0 ? (
               <p className="text-xs text-gray-400">טוען פרוטוקולים...</p>
