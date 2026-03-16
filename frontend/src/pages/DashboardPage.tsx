@@ -17,6 +17,7 @@ import { patientsAPI, sessionsAPI, therapistAPI, messagesAPI } from '@/lib/api'
 import { usePrepStream } from '@/hooks/usePrepStream'
 import { formatDateIL } from '@/lib/dateUtils'
 import { useAuth } from '@/auth/useAuth'
+import MessagesCenter from '@/components/MessagesCenter'
 
 interface Patient {
   id: number
@@ -105,6 +106,7 @@ export default function DashboardPage() {
   const { user } = useAuth()
   const [showMessagePickerModal, setShowMessagePickerModal] = useState(false)
   const [showSummaryModal, setShowSummaryModal] = useState(false)
+  const [messagingPatient, setMessagingPatient] = useState<{ id: number; name: string } | null>(null)
   const [allSessions, setAllSessions] = useState<SimpleSession[]>([])
 
   const [stats, setStats] = useState({
@@ -127,10 +129,10 @@ export default function DashboardPage() {
 
   // Lock body scroll whenever a modal is open
   useEffect(() => {
-    const locked = showSummaryModal || showMessagePickerModal || !!prepSession
+    const locked = showSummaryModal || showMessagePickerModal || !!prepSession || !!messagingPatient
     document.body.style.overflow = locked ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
-  }, [showSummaryModal, showMessagePickerModal, prepSession])
+  }, [showSummaryModal, showMessagePickerModal, prepSession, messagingPatient])
 
   // Last reminder per patient (non-blocking background load)
   const [lastReminderByPatient, setLastReminderByPatient] = useState<
@@ -433,9 +435,7 @@ export default function DashboardPage() {
                       פתח סשן
                     </button>
                     <button
-                      onClick={() => navigate(`/patients/${session.patient_id}`, {
-                        state: { initialTab: 'inbetween', openComposer: true },
-                      })}
+                      onClick={() => setMessagingPatient({ id: session.patient_id, name: session.patient_name })}
                       className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-sm px-3 py-2 sm:py-1 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
                     >
                       <PaperAirplaneIcon className="h-4 w-4 flex-shrink-0" />
@@ -688,16 +688,41 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* Message Patient Picker — selects a patient, then navigates to their messages tab */}
+      {/* Message Patient Picker — selects a patient, opens MessagesCenter inline */}
       {showMessagePickerModal && (
         <MessagePatientPickerModal
           patients={patients}
           onClose={() => setShowMessagePickerModal(false)}
           onSelect={(patientId) => {
             setShowMessagePickerModal(false)
-            navigate(`/patients/${patientId}`, { state: { initialTab: 'inbetween' } })
+            const p = patients.find((x) => x.id === patientId)
+            setMessagingPatient({ id: patientId, name: p?.full_name ?? '' })
           }}
         />
+      )}
+
+      {/* Inline MessagesCenter modal — no navigation away from dashboard */}
+      {messagingPatient && (
+        <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4 overflow-y-auto" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[calc(100vh-4rem)] sm:max-h-[90vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-base font-bold text-gray-900">הודעות — {messagingPatient.name}</h2>
+              <button
+                onClick={() => setMessagingPatient(null)}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-5">
+              <MessagesCenter
+                patientId={messagingPatient.id}
+                patientName={messagingPatient.name}
+                autoOpen
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -1353,35 +1353,67 @@ export default function PatientProfilePage() {
 
             {insight && (
               <div className="rounded-lg border border-purple-200 bg-white p-3 mt-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {deepHistory[0] && (
-                      <span className="text-xs text-gray-500">{formatDateIL(deepHistory[0].created_at)}</span>
-                    )}
-                    <span className="text-xs bg-purple-600 text-white px-1.5 py-0.5 rounded-full">פעילה</span>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {deepHistory[0] && (
+                        <span className="text-xs text-gray-500">{formatDateIL(deepHistory[0].created_at)}</span>
+                      )}
+                      <span className="text-xs bg-purple-600 text-white px-1.5 py-0.5 rounded-full">פעילה</span>
+                    </div>
                     {deepHistory[0]?.rendered_text && (
-                      <span className="text-xs text-gray-500 line-clamp-1 max-w-xs">
-                        {deepHistory[0].rendered_text.replace(/^```(?:json)?\s*[\s\S]*?```\s*/g, '').trim().slice(0, 80)}
-                      </span>
+                      <p className="text-xs text-gray-500 line-clamp-2">
+                        {deepHistory[0].rendered_text.replace(/^```(?:json)?\s*[\s\S]*?```\s*/g, '').trim().slice(0, 200)}
+                      </p>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (deepHistory[0]) {
-                        setViewingDeepSummary(deepHistory[0])
-                      } else {
-                        setViewingDeepSummary({
-                          created_at: new Date().toISOString(),
-                          rendered_text: null,
-                          summary_json: insight as unknown as Record<string, unknown>,
-                        })
-                      }
-                    }}
-                    className="text-xs text-purple-600 hover:text-purple-800 shrink-0"
-                  >
-                    הצג
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (deepHistory[0]) {
+                          setViewingDeepSummary(deepHistory[0])
+                        } else {
+                          setViewingDeepSummary({
+                            created_at: new Date().toISOString(),
+                            rendered_text: null,
+                            summary_json: insight as unknown as Record<string, unknown>,
+                          })
+                        }
+                      }}
+                      className="text-xs text-purple-600 hover:text-purple-800"
+                    >
+                      הצג
+                    </button>
+                    {deepHistory[0] && (
+                      deletingDeepSummaryId === deepHistory[0].summary_id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDeepSummary(deepHistory[0].summary_id)}
+                            className="text-xs text-red-600 hover:text-red-800 font-medium"
+                          >
+                            אשר מחיקה
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingDeepSummaryId(null)}
+                            className="text-xs text-gray-500 hover:text-gray-700"
+                          >
+                            ביטול
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setDeletingDeepSummaryId(deepHistory[0].summary_id)}
+                          className="text-xs text-gray-400 hover:text-red-500"
+                        >
+                          מחק
+                        </button>
+                      )
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -1416,26 +1448,22 @@ export default function PatientProfilePage() {
             </div>
           )}
 
-          {/* Deep Summary History */}
-          {(deepHistoryLoading || deepHistory.length > 0) && (
+          {/* Deep Summary History — archived entries only (active shown above) */}
+          {(deepHistoryLoading || deepHistory.length > 1) && (
             <div className="card border-purple-100">
               <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
                 <SparklesIcon className="h-4 w-4 text-purple-400" />
                 היסטוריית סיכומי עומק
-                <span className="text-xs font-normal text-purple-500">({deepHistory.length})</span>
+                <span className="text-xs font-normal text-purple-500">({Math.max(0, deepHistory.length - 1)})</span>
                 {deepHistoryLoading && <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-purple-400 mr-auto" />}
               </h3>
               <div className="space-y-2">
-                {deepHistory.map((item, idx) => (
+                {deepHistory.slice(1).map((item) => (
                   <div key={item.summary_id} className="rounded-lg border border-purple-100 bg-purple-50 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs text-gray-500">{formatDateIL(item.created_at)}</span>
-                        {idx === 0 ? (
-                          <span className="text-xs bg-purple-600 text-white px-1.5 py-0.5 rounded-full">פעילה</span>
-                        ) : (
-                          <span className="text-xs bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full">ארכיון</span>
-                        )}
+                        <span className="text-xs bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full">ארכיון</span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <button
