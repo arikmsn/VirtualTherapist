@@ -231,6 +231,9 @@ class TreatmentPlanService:
         )
         ai_ctx = build_ai_context_for_patient(_profile_orm, patient)
 
+        # Compute version BEFORE the AI call so we don't hold a DB query open after a long await
+        next_version = self._next_plan_version(patient_id, therapist_id)
+
         inp = TreatmentPlanInput(
             client_id=patient_id,
             therapist_id=therapist_id,
@@ -244,8 +247,6 @@ class TreatmentPlanService:
 
         pipeline = TreatmentPlanPipeline(provider)
         result: TreatmentPlanResult = await pipeline.run(inp)
-
-        next_version = self._next_plan_version(patient_id, therapist_id)
 
         plan = TreatmentPlan(
             patient_id=patient_id,
@@ -326,6 +327,9 @@ class TreatmentPlanService:
         )
         ai_ctx = build_ai_context_for_patient(_profile_orm, patient)
 
+        # Compute version BEFORE the AI call so we don't hold a DB query open after a long await
+        next_version = self._next_plan_version(patient_id, therapist_id)
+
         inp = TreatmentPlanInput(
             client_id=patient_id,
             therapist_id=therapist_id,
@@ -342,8 +346,6 @@ class TreatmentPlanService:
 
         # Archive old plan
         existing.status = PlanStatus.ARCHIVED.value
-
-        next_version = self._next_plan_version(patient_id, therapist_id)
 
         new_plan = TreatmentPlan(
             patient_id=patient_id,

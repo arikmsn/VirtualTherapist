@@ -16,6 +16,7 @@ if _is_sqlite:
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 else:
     engine_kwargs["pool_pre_ping"] = True
+    engine_kwargs["pool_recycle"] = 300   # recycle connections every 5 min (Render PostgreSQL)
 
 # Create database engine
 engine = create_engine(settings.DATABASE_URL, **engine_kwargs)

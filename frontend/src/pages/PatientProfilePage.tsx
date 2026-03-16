@@ -1259,8 +1259,8 @@ export default function PatientProfilePage() {
                         </div>
                       )}
                     </div>
-                    {/* Prep button — only for upcoming and today's sessions */}
-                    {session.session_date >= new Date().toISOString().split('T')[0] && (
+                    {/* Prep button — only for upcoming and today's sessions without approved summary */}
+                    {session.session_date >= new Date().toISOString().split('T')[0] && session.summary_status !== 'approved' && (
                       <button
                         onClick={(e) => { e.stopPropagation(); openPrepModal(session) }}
                         className="flex items-center gap-1 text-xs font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-2.5 py-1.5 transition-colors whitespace-nowrap touch-manipulation flex-shrink-0"

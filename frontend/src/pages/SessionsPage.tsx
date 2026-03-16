@@ -351,8 +351,8 @@ export default function SessionsPage() {
 
                 {/* Actions — stacked row below info on mobile, inline on desktop */}
                 <div className="flex gap-2 items-center flex-shrink-0 flex-wrap sm:flex-nowrap">
-                  {/* Prep button: only for future sessions or sessions without a summary */}
-                  {(session.summary_id == null || session.session_date >= todayStr) && (
+                  {/* Prep button: only for upcoming/today sessions without an approved summary */}
+                  {session.session_date >= todayStr && session.summary_status !== 'approved' && (
                     <button
                       onClick={() => openPrepModal(session)}
                       className="flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-2 min-h-[44px] sm:min-h-0 transition-colors touch-manipulation flex-shrink-0"

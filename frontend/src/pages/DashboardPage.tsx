@@ -441,13 +441,15 @@ export default function DashboardPage() {
                       <PaperAirplaneIcon className="h-4 w-4 flex-shrink-0" />
                       הודעה
                     </button>
-                    <button
-                      onClick={() => openPrepModal(session)}
-                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-sm px-3 py-2 sm:py-1 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
-                    >
-                      <SparklesIcon className="h-4 w-4 flex-shrink-0" />
-                      הכנה
-                    </button>
+                    {session.session_date >= todayISO() && session.summary_status !== 'approved' && (
+                      <button
+                        onClick={() => openPrepModal(session)}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-sm px-3 py-2 sm:py-1 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
+                      >
+                        <SparklesIcon className="h-4 w-4 flex-shrink-0" />
+                        הכנה
+                      </button>
+                    )}
                   </div>
                 </div>
               )

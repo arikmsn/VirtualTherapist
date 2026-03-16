@@ -123,7 +123,10 @@ async def create_treatment_plan(
         raise HTTPException(status_code=400, detail=msg)
     except Exception as e:
         logger.exception(f"create_treatment_plan client={client_id} failed: {e!r}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="שגיאה זמנית בשמירת התוכנית הטיפולית, נסו שוב בעוד מספר דקות",
+        )
 
 
 @router.put(
@@ -158,7 +161,10 @@ async def update_treatment_plan(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.exception(f"update_treatment_plan client={client_id} failed: {e!r}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="שגיאה זמנית בשמירת התוכנית הטיפולית, נסו שוב בעוד מספר דקות",
+        )
 
 
 @router.get(
