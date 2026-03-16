@@ -389,7 +389,6 @@ function ProtocolCard({
 
 function ProfessionalTab({
   profile,
-  sigProfile,
   // editable state — lifted from parent for unified save
   professionKey, setProfessionKey,
   professionOtherText, setProfessionOtherText,
@@ -402,7 +401,6 @@ function ProfessionalTab({
   tone, setTone,
 }: {
   profile: TherapistProfile
-  sigProfile: { approved_sample_count: number; is_active: boolean; samples_until_active: number } | null
   professionKey: string; setProfessionKey: (v: string) => void
   professionOtherText: string; setProfessionOtherText: (v: string) => void
   selectedModalities: string[]; toggleMode: (v: string) => void
@@ -1083,7 +1081,6 @@ export default function TwinProfilePage() {
       {activeTab === 'professional' ? (
         <ProfessionalTab
           profile={profile}
-          sigProfile={sigProfile}
           professionKey={professionKey} setProfessionKey={setProfessionKey}
           professionOtherText={professionOtherText} setProfessionOtherText={setProfessionOtherText}
           selectedModalities={selectedModalities} toggleMode={toggleMode}
