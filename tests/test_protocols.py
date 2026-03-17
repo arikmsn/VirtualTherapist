@@ -93,6 +93,43 @@ def test_ot_protocols_exist():
     assert si.approach_id == "ot_sensory"
 
 
+def test_slp_protocols_exist():
+    """SLP protocols added for Speech-Language Pathologist profession."""
+    art = get_protocol_by_id("slp_articulation")
+    lang = get_protocol_by_id("slp_language_delays")
+    phon = get_protocol_by_id("slp_phonological_processes")
+    assert art is not None, "slp_articulation protocol must exist"
+    assert lang is not None, "slp_language_delays protocol must exist"
+    assert phon is not None, "slp_phonological_processes protocol must exist"
+    assert art.approach_id == "slp_phonological_articulation"
+    assert lang.approach_id == "slp_communicative_social"
+    assert phon.approach_id == "slp_phonological_articulation"
+
+
+def test_slp_protocols_have_valid_sessions_and_techniques():
+    """Each SLP protocol must have typical_sessions > 0 and ≥3 core_techniques."""
+    for pid in ("slp_articulation", "slp_language_delays", "slp_phonological_processes"):
+        p = get_protocol_by_id(pid)
+        assert p is not None, f"{pid} must exist"
+        assert p.typical_sessions is not None and p.typical_sessions > 0, (
+            f"{pid}: typical_sessions must be a positive integer"
+        )
+        assert len(p.core_techniques) >= 3, (
+            f"{pid}: expected ≥3 core_techniques, got {len(p.core_techniques)}"
+        )
+
+
+def test_slp_approach_filter():
+    """get_protocols_for_approach returns the correct SLP protocols."""
+    phon = get_protocols_for_approach("slp_phonological_articulation")
+    comm = get_protocols_for_approach("slp_communicative_social")
+    phon_ids = {p.id for p in phon}
+    comm_ids = {p.id for p in comm}
+    assert "slp_articulation" in phon_ids
+    assert "slp_phonological_processes" in phon_ids
+    assert "slp_language_delays" in comm_ids
+
+
 # ---------------------------------------------------------------------------
 # merge_protocols tests
 # ---------------------------------------------------------------------------

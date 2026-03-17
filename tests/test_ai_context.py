@@ -222,6 +222,43 @@ def _ctx_with_protocols():
     return build_ai_context_for_patient(profile, patient)
 
 
+# ---------------------------------------------------------------------------
+# SLP profession + approaches + protocols flow-through
+# ---------------------------------------------------------------------------
+
+
+def test_slp_therapist_context_includes_profession_and_approaches():
+    """An SLP therapist with SLP approaches flows correctly into build_ai_context_for_patient."""
+    profile = _make_profile(
+        profession="speech_language_pathologist",
+        primary_therapy_modes=["slp_communicative_social", "slp_phonological_articulation"],
+        protocols_used=["slp_articulation", "slp_language_delays"],
+    )
+    patient = _make_patient(protocol_ids=["slp_phonological_processes"])
+    ctx = build_ai_context_for_patient(profile, patient)
+
+    # Context must be non-empty (protocols are present)
+    assert ctx, "Expected non-empty context for SLP therapist with protocols"
+
+    # Profession and approaches must flow through to the therapist block
+    therapist_block = ctx.get("therapist", {})
+    assert therapist_block.get("profession") == "speech_language_pathologist"
+    approaches = therapist_block.get("approaches", [])
+    assert "slp_communicative_social" in approaches
+    assert "slp_phonological_articulation" in approaches
+
+    # Resolved protocols must include the patient-level SLP protocol
+    protocol_ids_in_ctx = {p["id"] for p in ctx.get("protocols", [])}
+    assert "slp_phonological_processes" in protocol_ids_in_ctx, (
+        "Patient-assigned SLP protocol should appear in context"
+    )
+
+    # format_protocol_block must wrap correctly
+    block = format_protocol_block(ctx)
+    assert "[AI_PROTOCOL_CONTEXT]" in block
+    assert "slp_phonological_processes" in block
+
+
 def test_prep_render_prompt_contains_block():
     ctx = _ctx_with_protocols()
     inp = PrepInput(

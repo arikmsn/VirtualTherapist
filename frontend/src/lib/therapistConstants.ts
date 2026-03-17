@@ -26,6 +26,7 @@ export const PROFESSION_OPTIONS: ProfessionOption[] = [
   { value: 'family_therapist', label: 'מטפל/ת זוגי-משפחתי', emoji: '👨‍👩‍👧' },
   { value: 'art_therapist', label: 'מטפל/ת באמנויות', emoji: '🎨' },
   { value: 'occupational_therapist', label: 'מרפא/ת בעיסוק', emoji: '🖐️' },
+  { value: 'speech_language_pathologist', label: 'קלינאות תקשורת', emoji: '🗣️' },
   { value: 'coach', label: 'מאמן/ת רגשי/התנהגותי', emoji: '🌱' },
   { value: 'counselor', label: 'יועץ/ת רגשי/ת', emoji: '💬' },
   { value: 'other', label: 'אחר', emoji: '➕' },
@@ -52,6 +53,18 @@ export const THERAPY_MODES: TherapyModeOption[] = [
     label: 'ריפוי בעיסוק — אינטגרציה חושית',
     description:
       'עבודה על ויסות חושי ומוטורי, התאמת סביבה ופעילויות לילדים ומבוגרים עם קשיי קשב, ויסות, אוטיזם או רגישות יתר/חסר לגירויים (מגע, רעש, תנועה).',
+  },
+  {
+    value: 'slp_communicative_social',
+    label: 'קלינאות תקשורת — תקשורתית-חברתית',
+    description:
+      'טיפול בפרגמטיקה, תקשורת חברתית, שפה ביטויית וקולטת — בעיקר לפעוטות וילדים עם עיכוב שפתי, ASD או קשיי תקשורת.',
+  },
+  {
+    value: 'slp_phonological_articulation',
+    label: 'קלינאות תקשורת — פונולוגית/הגייתית',
+    description:
+      'טיפול בשיבושי הגייה, תהליכים פונולוגיים ומודעות פונולוגית — עבור ילדים ומבוגרים עם קשיי צליל ודיסלקציה.',
   },
   { value: 'other', label: 'אחר' },
 ]

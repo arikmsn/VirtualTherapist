@@ -89,7 +89,10 @@ class UpdateTwinControlsRequest(BaseModel):
 
 VALID_THERAPY_MODES = [
     "cbt", "psychodynamic", "act", "dbt", "humanistic",
-    "family_systemic", "integrative", "emdr", "gestalt", "psychodrama", "other",
+    "family_systemic", "integrative", "emdr", "gestalt", "psychodrama",
+    "ot_functional", "ot_sensory",
+    "slp_communicative_social", "slp_phonological_articulation",
+    "other",
 ]
 
 

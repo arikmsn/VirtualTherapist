@@ -17,7 +17,7 @@
  * URL: /twin  (unchanged — just the label in the nav changed)
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import {
   SparklesIcon,
   CheckCircleIcon,
@@ -665,15 +665,31 @@ function ProfessionalTab({
           </p>
         ) : (
           <div className="space-y-2">
-            {visibleProtocols.map((p) => (
-              <ProtocolCard
-                key={p.id}
-                protocol={p}
-                onToggleUsed={() => handleToggleUsed(p)}
-                onEdit={p.is_system ? undefined : () => setEditingProtocol(p)}
-                onDelete={p.is_system ? undefined : () => handleDeleteCustom(p.id)}
-              />
-            ))}
+            {(() => {
+              const SLP_APPROACHES = new Set(['slp_phonological_articulation', 'slp_communicative_social'])
+              let slpHeaderShown = false
+              return visibleProtocols.map((p) => {
+                const isSlp = SLP_APPROACHES.has(p.approach_id)
+                const showSlpHeader = isSlp && !slpHeaderShown
+                if (showSlpHeader) slpHeaderShown = true
+                return (
+                  <Fragment key={p.id}>
+                    {showSlpHeader && (
+                      <div className="flex items-center gap-3 pt-1 pb-0.5">
+                        <span className="text-xs font-semibold text-teal-600 tracking-wide">🗣️ קלינאות תקשורת / SLP</span>
+                        <div className="flex-1 border-t border-gray-100" />
+                      </div>
+                    )}
+                    <ProtocolCard
+                      protocol={p}
+                      onToggleUsed={() => handleToggleUsed(p)}
+                      onEdit={p.is_system ? undefined : () => setEditingProtocol(p)}
+                      onDelete={p.is_system ? undefined : () => handleDeleteCustom(p.id)}
+                    />
+                  </Fragment>
+                )
+              })
+            })()}
           </div>
         )}
       </div>
