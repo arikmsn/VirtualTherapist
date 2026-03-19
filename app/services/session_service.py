@@ -1188,25 +1188,37 @@ class SessionService:
             age_seconds = (datetime.utcnow() - session.prep_generated_at).total_seconds()
             if age_seconds < self._PREP_CACHE_SECONDS:
                 logger.info(
-                    f"[precompute] prep cache HIT (time-based, age={age_seconds:.0f}s) — "
-                    f"session={session_id} mode={mode.value} therapist={therapist_id} patient={session.patient_id}"
+                    f"[prep_v2] session={session_id} mode={mode.value} — cache hit "
+                    f"(age={age_seconds:.0f}s)"
                 )
                 return self._prep_cache_response(session)
             # Content-based fingerprint check — if inputs unchanged, return cache even after timeout
             # (avoids redundant AI call when therapist repeatedly clicks "generate")
             if session.prep_input_fingerprint:
                 from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
-                _fp_summaries = self._load_approved_summaries_for_prep(session.patient_id)
+                # We need the summaries to compute the fingerprint; fetch them now
+                _sessions_q_fp = (
+                    self.db.query(TherapySession)
+                    .options(joinedload(TherapySession.summary))
+                    .filter(
+                        TherapySession.patient_id == session.patient_id,
+                        TherapySession.summary_id.isnot(None),
+                    )
+                    .order_by(TherapySession.session_date.asc())
+                    .all()
+                )
+                _approved_fp = [
+                    {
+                        "summary_id": s.summary.id,
+                        "approved_at": str(s.summary.approved_at) if s.summary.approved_at else None,
+                        "full_summary": s.summary.full_summary,
+                    }
+                    for s in _sessions_q_fp
+                    if s.summary and s.summary.approved_by_therapist
+                ][-10:]
                 _fp = compute_fingerprint({
                     "mode": mode.value,
-                    "summaries": [
-                        {
-                            "summary_id": s.get("summary_id"),
-                            "approved_at": s.get("approved_at"),
-                            "full_summary": s["full_summary"],
-                        }
-                        for s in _fp_summaries
-                    ],
+                    "summaries": _approved_fp,
                     "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
                 })
                 if (
@@ -1214,14 +1226,10 @@ class SessionService:
                     and session.prep_input_fingerprint_version == FINGERPRINT_VERSION
                 ):
                     logger.info(
-                        f"[precompute] prep cache HIT — "
-                        f"session={session_id} mode={mode.value} therapist={therapist_id} patient={session.patient_id}"
+                        f"[prep_v2] session={session_id} mode={mode.value} — fingerprint cache hit "
+                        f"(inputs unchanged, age={age_seconds:.0f}s)"
                     )
                     return self._prep_cache_response(session)
-                logger.info(
-                    f"[precompute] prep cache MISS (fingerprint changed) — "
-                    f"session={session_id} mode={mode.value} therapist={therapist_id} patient={session.patient_id}"
-                )
 
         # Fetch ALL approved summaries for this patient, oldest → newest
         # SOURCE OF TRUTH: approved_by_therapist=True ONLY — never ai_draft_text
@@ -1256,15 +1264,6 @@ class SessionService:
             modality_prompt_module=modality_prompt_module,
             therapist_signature=signature_prompt,
             ai_context=ai_ctx,
-        )
-
-        # Diagnostic: log input shape so we can verify summaries are flowing correctly
-        _protocol_ids = (patient.protocol_ids or []) if patient else []
-        logger.info(
-            f"[prep_v2] CALLING PIPELINE — session={session_id} mode={mode.value} "
-            f"approved_summaries={len(approved_summaries)} modality={modality_name} "
-            f"protocol_ids={_protocol_ids} has_ai_context={bool(ai_ctx)} "
-            f"has_signature={bool(signature_prompt)}"
         )
 
         pipeline = PrepPipeline(agent)
@@ -1388,7 +1387,7 @@ class SessionService:
             if summary and summary.approved_by_therapist:
                 result.append({
                     "summary_id": summary.id,
-                    "approved_at": str(summary.updated_at),
+                    "approved_at": str(summary.approved_at) if summary.approved_at else None,
                     "session_date": str(s.session_date),
                     "session_number": s.session_number,
                     "full_summary": summary.full_summary,
