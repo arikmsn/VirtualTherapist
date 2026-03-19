@@ -535,6 +535,12 @@ export default function PatientProfilePage() {
   const [summaries, setSummaries] = useState<SummaryItem[]>([])
   const [summariesLoading, setSummariesLoading] = useState(false)
 
+  // Rotating spinner messages for AI generation flows
+  const INSIGHT_MESSAGES = ['מנתח סיכומי פגישות...', 'מזהה דפוסים טיפוליים...', 'מסנתז ממצאים מרכזיים...', 'מכין סיכום עומק...', 'מסיים...']
+  const PLAN_MESSAGES = ['בודק נתוני הטיפול...', 'מנסח מטרות ויעדים...', 'מכין את תוכנית הטיפול...', 'מסיים...']
+  const [insightMsgIdx, setInsightMsgIdx] = useState(0)
+  const [planMsgIdx, setPlanMsgIdx] = useState(0)
+
   // Deep summary (replaces old insight)
   const [insight, setInsight] = useState<DeepSummary | null>(null)
   const [insightLoading, setInsightLoading] = useState(false)
@@ -619,6 +625,21 @@ export default function PatientProfilePage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pid])
+
+  // Rotate spinner messages while AI generation is in progress
+  useEffect(() => {
+    if (!insightLoading) { setInsightMsgIdx(0); return }
+    const id = setInterval(() => setInsightMsgIdx((i) => (i + 1) % INSIGHT_MESSAGES.length), 1800)
+    return () => clearInterval(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [insightLoading])
+
+  useEffect(() => {
+    if (!planLoading) { setPlanMsgIdx(0); return }
+    const id = setInterval(() => setPlanMsgIdx((i) => (i + 1) % PLAN_MESSAGES.length), 1800)
+    return () => clearInterval(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planLoading])
 
   // Reset inline deep summary view when leaving the summaries tab
   useEffect(() => {
@@ -893,7 +914,10 @@ export default function PatientProfilePage() {
     setInsightLoading(true)
     setInsightError('')
     try {
-      const result = await patientSummariesAPI.generateDeepSummary(pid)
+      const [result] = await Promise.all([
+        patientSummariesAPI.generateDeepSummary(pid),
+        new Promise<void>((r) => setTimeout(r, 5000)),
+      ])
       if (result.summary_json) {
         setInsight(result.summary_json as unknown as DeepSummary)
       }
@@ -945,10 +969,11 @@ export default function PatientProfilePage() {
     setPlanError('')
     try {
       let saved: TreatmentPlanVersion
+      const minWait = new Promise<void>((r) => setTimeout(r, 5000))
       if (savedPlan && savedPlan.status === 'active') {
-        saved = await treatmentPlanAPI.update(pid)
+        ;[saved] = await Promise.all([treatmentPlanAPI.update(pid), minWait])
       } else {
-        saved = await treatmentPlanAPI.create(pid)
+        ;[saved] = await Promise.all([treatmentPlanAPI.create(pid), minWait])
       }
       setSavedPlan(saved)
       setPlanSaveSuccess(true)
@@ -1324,7 +1349,7 @@ export default function PatientProfilePage() {
                 {insightLoading ? (
                   <>
                     <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white flex-shrink-0"></span>
-                    מייצר סיכום מלא. זה עשוי לקחת דקה
+                    {INSIGHT_MESSAGES[insightMsgIdx]}
                   </>
                 ) : insight ? (
                   'יצירת סיכום מעודכן'
@@ -1711,7 +1736,7 @@ export default function PatientProfilePage() {
             {planLoading && (
               <div className="flex items-center justify-center py-12 gap-3">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-                <span className="text-indigo-700 text-sm">מייצר ושומר תוכנית טיפולית. זה עשוי לקחת דקה...</span>
+                <span className="text-indigo-700 text-sm">{PLAN_MESSAGES[planMsgIdx]}</span>
               </div>
             )}
 

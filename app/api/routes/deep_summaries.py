@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.api.deps import get_current_therapist, get_db
 from app.models.therapist import Therapist
 from app.services.deep_summary_service import DeepSummaryService
+from app.services.precompute import get_or_compute_deep_summary
 from app.services.therapist_service import TherapistService
 
 router = APIRouter()
@@ -89,14 +90,14 @@ async def generate_deep_summary(
     Generate a new deep longitudinal summary for a patient.
 
     Uses ALL approved session summaries. Runs vault entry extraction as a side effect.
-    Returns the saved DeepSummary (status=draft).
+    Returns a fresh DeepSummary (cached if inputs haven't changed, newly generated otherwise).
     """
     therapist_service = TherapistService(db)
-    summary_service = DeepSummaryService(db)
 
     try:
         agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
-        summary = await summary_service.generate_deep_summary(
+        summary = await get_or_compute_deep_summary(
+            db=db,
             patient_id=client_id,
             therapist_id=current_therapist.id,
             provider=agent.provider,
@@ -107,7 +108,10 @@ async def generate_deep_summary(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception(f"generate_deep_summary client={client_id} failed: {e!r}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="שגיאה זמנית ביצירת סיכום העומק, נסו שוב בעוד מספר דקות",
+        )
 
 
 @router.get(

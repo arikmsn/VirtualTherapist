@@ -1,7 +1,7 @@
 """Session management routes"""
 
 import json
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DBSession
 from pydantic import BaseModel
@@ -11,6 +11,10 @@ from app.api.deps import get_db, get_current_therapist
 from app.api.errors import AIMeta
 from app.models.therapist import Therapist
 from app.models.session import SessionType
+from app.services.precompute import (
+    precompute_deep_summary_for_patient,
+    precompute_treatment_plan_for_patient,
+)
 from app.services.session_service import SessionService
 from app.services.therapist_service import TherapistService
 from app.ai.prep import PrepMode
@@ -327,6 +331,7 @@ async def get_patient_sessions(
 @router.delete("/{session_id}", status_code=204)
 async def delete_session(
     session_id: int,
+    background_tasks: BackgroundTasks,
     notify_patient: bool = Query(default=False, description="Log intent to notify patient of cancellation"),
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
@@ -338,20 +343,35 @@ async def delete_session(
     service = SessionService(db)
 
     try:
-        # Log notify intent before deleting (need patient_id from the session)
-        if notify_patient:
-            from app.models.session import Session as _SessionModel
-            s = db.query(_SessionModel).filter(
-                _SessionModel.id == session_id,
-                _SessionModel.therapist_id == current_therapist.id,
-            ).first()
-            if s:
-                logger.info(
-                    f"[session_delete] therapist={current_therapist.id} "
-                    f"session={session_id} patient={s.patient_id} "
-                    f"notify_patient=True - notification queued (not yet implemented)"
-                )
+        # Resolve patient_id before deleting (it's gone after deletion)
+        from app.models.session import Session as _SessionModel
+        _s = db.query(_SessionModel).filter(
+            _SessionModel.id == session_id,
+            _SessionModel.therapist_id == current_therapist.id,
+        ).first()
+        patient_id = _s.patient_id if _s else None
+
+        if notify_patient and _s:
+            logger.info(
+                f"[session_delete] therapist={current_therapist.id} "
+                f"session={session_id} patient={_s.patient_id} "
+                f"notify_patient=True - notification queued (not yet implemented)"
+            )
+
         await service.delete_session(session_id, current_therapist.id)
+
+        # Session deletion changes the fingerprint → warm the caches
+        if patient_id:
+            background_tasks.add_task(
+                precompute_deep_summary_for_patient,
+                current_therapist.id,
+                patient_id,
+            )
+            background_tasks.add_task(
+                precompute_treatment_plan_for_patient,
+                current_therapist.id,
+                patient_id,
+            )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -617,6 +637,7 @@ async def regenerate_summary_from_transcript(
 @router.post("/summary/approve", response_model=SummaryResponse)
 async def approve_summary(
     request: ApproveSummaryRequest,
+    background_tasks: BackgroundTasks,
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
@@ -625,10 +646,37 @@ async def approve_summary(
     service = SessionService(db)
 
     try:
+        # Resolve patient_id before approval so we can schedule background precompute
+        from app.models.session import Session as _S
+        _session = db.query(_S).filter(
+            _S.id == request.session_id,
+            _S.therapist_id == current_therapist.id,
+        ).first()
+        patient_id = _session.patient_id if _session else None
+
         summary = await service.approve_summary(
             session_id=request.session_id,
             therapist_id=current_therapist.id,
         )
+
+        # Schedule best-effort cache warming for Deep Summary and Treatment Plan
+        # after a new summary is approved (fingerprint of inputs has changed).
+        if patient_id:
+            logger.info(
+                f"[approve_summary] scheduling precompute for "
+                f"therapist={current_therapist.id} patient={patient_id}"
+            )
+            background_tasks.add_task(
+                precompute_deep_summary_for_patient,
+                current_therapist.id,
+                patient_id,
+            )
+            background_tasks.add_task(
+                precompute_treatment_plan_for_patient,
+                current_therapist.id,
+                patient_id,
+            )
+
         return SummaryResponse.model_validate(summary)
 
     except ValueError as e:
