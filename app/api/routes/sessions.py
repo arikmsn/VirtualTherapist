@@ -864,9 +864,6 @@ async def stream_prep_v2(
 
     The UI can display text progressively while Call 1 is still low-latency.
     """
-    from app.ai.prep import PrepInput, PrepPipeline
-    from app.ai.signature import SignatureEngine, inject_into_prompt
-
     mode_str = ((request.mode if request else None) or "concise").lower()
     try:
         mode = PrepMode(mode_str)
@@ -942,80 +939,50 @@ async def stream_prep_v2(
             )
     # ── End cache check ───────────────────────────────────────────────────────
 
-    # Build approved summaries via service helper (joinedload, same logic as generate_prep_v2)
-    approved_summaries = session_service._load_approved_summaries_for_prep(session.patient_id)
-
-    modality_name = "generic_integrative"
-    modality_prompt_module = None
-    if agent.modality_pack:
-        modality_name = agent.modality_pack.name
-        modality_prompt_module = agent.modality_pack.prompt_module
-
-    sig_engine = SignatureEngine(db)
-    sig_profile = await sig_engine.get_active_profile(current_therapist.id)
-    signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
-
-    # AI protocol context
-    from app.core.ai_context import build_ai_context_for_patient as _build_ai_ctx
-    from app.models.patient import Patient as _Patient
-    _patient_for_ctx = db.query(_Patient).filter(_Patient.id == session.patient_id).first()
-    _ai_ctx = _build_ai_ctx(agent.profile if agent.profile else None, _patient_for_ctx, session_count=len(approved_summaries))
-
-    prep_inp = PrepInput(
-        client_id=session.patient_id,
-        session_id=session_id,
-        therapist_id=current_therapist.id,
-        mode=mode,
-        modality=modality_name,
-        approved_summaries=approved_summaries,
-        modality_prompt_module=modality_prompt_module,
-        therapist_signature=signature_prompt,
-        ai_context=_ai_ctx,
+    # Cache miss: delegate to the same generate_prep_v2 used by POST /sessions/{id}/prep.
+    # This guarantees quality parity: identical context, prompts, completeness check,
+    # fingerprint logic, and generation logs. No duplicate code here.
+    logger.info(
+        f"[stream_prep] session={session_id} mode={mode.value} — "
+        f"cache MISS, calling generate_prep_v2"
     )
+    try:
+        result_dict = await session_service.generate_prep_v2(
+            session_id=session_id,
+            therapist_id=current_therapist.id,
+            mode=mode,
+            agent=agent,
+        )
+        db.commit()
+    except Exception as exc:
+        logger.exception(f"stream_prep_v2 session={session_id} pipeline error: {exc!r}")
 
-    async def _sse_generator():
-        pipeline = PrepPipeline(agent)
-        full_text_chunks: list = []
-        try:
-            yield f"data: {json.dumps({'phase': 'extracting'})}\n\n"
-            prep_json = await pipeline.extract_only(prep_inp)
-
-            yield f"data: {json.dumps({'phase': 'rendering'})}\n\n"
-            async for chunk in pipeline.render_stream(prep_inp, prep_json):
-                full_text_chunks.append(chunk)
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-
-            yield f"data: {json.dumps({'phase': 'done', 'prep_json': prep_json, 'sessions_analyzed': len(approved_summaries)})}\n\n"
-            yield "data: [DONE]\n\n"
-
-            # Persist rendered text so subsequent requests hit the cache
-            from datetime import datetime as _dt
-            from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
-            session.prep_json = prep_json
-            session.prep_mode = mode.value
-            session.prep_rendered_text = "".join(full_text_chunks)
-            session.prep_generated_at = _dt.utcnow()
-            session.prep_input_fingerprint = compute_fingerprint({
-                "mode": mode.value,
-                "summaries": [
-                    {
-                        "summary_id": s.get("summary_id"),
-                        "approved_at": s.get("approved_at"),
-                        "full_summary": s.get("full_summary"),
-                    }
-                    for s in approved_summaries
-                ],
-                "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
-            })
-            session.prep_input_fingerprint_version = FINGERPRINT_VERSION
-            db.add(session)
-            db.commit()
-        except Exception as exc:
-            logger.exception(f"stream_prep_v2 session={session_id} error: {exc!r}")
+        async def _err_sse():
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 
+        return StreamingResponse(
+            _err_sse(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    rendered_text = result_dict.get("rendered_text") or ""
+    prep_json_out = result_dict.get("prep_json") or {}
+    sessions_analyzed = result_dict.get("sessions_analyzed", 0)
+
+    async def _sse_from_artifact():
+        """Stream the already-rendered artifact text in fixed-size chunks.
+        Never yields raw provider tokens — only completed, saved text."""
+        yield f"data: {json.dumps({'phase': 'extracting'})}\n\n"
+        yield f"data: {json.dumps({'phase': 'rendering'})}\n\n"
+        chunk_size = 80
+        for i in range(0, len(rendered_text), chunk_size):
+            yield f"data: {json.dumps({'chunk': rendered_text[i:i + chunk_size]})}\n\n"
+        yield f"data: {json.dumps({'phase': 'done', 'prep_json': prep_json_out, 'sessions_analyzed': sessions_analyzed})}\n\n"
+        yield "data: [DONE]\n\n"
+
     return StreamingResponse(
-        _sse_generator(),
+        _sse_from_artifact(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

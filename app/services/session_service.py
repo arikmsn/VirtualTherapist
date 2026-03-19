@@ -1258,6 +1258,15 @@ class SessionService:
             ai_context=ai_ctx,
         )
 
+        # Diagnostic: log input shape so we can verify summaries are flowing correctly
+        _protocol_ids = (patient.protocol_ids or []) if patient else []
+        logger.info(
+            f"[prep_v2] CALLING PIPELINE — session={session_id} mode={mode.value} "
+            f"approved_summaries={len(approved_summaries)} modality={modality_name} "
+            f"protocol_ids={_protocol_ids} has_ai_context={bool(ai_ctx)} "
+            f"has_signature={bool(signature_prompt)}"
+        )
+
         pipeline = PrepPipeline(agent)
         result: PrepResult = await pipeline.run(prep_inp)
 
