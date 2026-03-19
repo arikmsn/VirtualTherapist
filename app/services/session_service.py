@@ -1379,7 +1379,7 @@ class SessionService:
             if summary and summary.approved_by_therapist:
                 result.append({
                     "summary_id": summary.id,
-                    "approved_at": str(summary.approved_at) if summary.approved_at else None,
+                    "approved_at": str(summary.updated_at),
                     "session_date": str(s.session_date),
                     "session_number": s.session_number,
                     "full_summary": summary.full_summary,

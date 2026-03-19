@@ -1,7 +1,7 @@
 """Session management routes"""
 
 import json
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DBSession
 from pydantic import BaseModel
@@ -801,7 +801,7 @@ async def get_stored_prep(
 @router.post("/{session_id}/prep", response_model=PrepResponse)
 async def generate_prep_v2(
     session_id: int,
-    request: PrepRequest,
+    request: Optional[PrepRequest] = Body(None),
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
@@ -813,7 +813,7 @@ async def generate_prep_v2(
     Source of truth: only approved summaries (approved_by_therapist=True) are used.
     """
     try:
-        mode = PrepMode(request.mode)
+        mode = PrepMode((request.mode if request else "concise"))
     except ValueError:
         valid = [m.value for m in PrepMode]
         raise HTTPException(
@@ -848,7 +848,7 @@ async def generate_prep_v2(
 @router.post("/{session_id}/prep/stream")
 async def stream_prep_v2(
     session_id: int,
-    request: PrepRequest,
+    request: Optional[PrepRequest] = Body(None),
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
@@ -867,7 +867,7 @@ async def stream_prep_v2(
     from app.ai.prep import PrepInput, PrepPipeline
     from app.ai.signature import SignatureEngine, inject_into_prompt
 
-    mode_str = (request.mode or "concise").lower()
+    mode_str = ((request.mode if request else None) or "concise").lower()
     try:
         mode = PrepMode(mode_str)
     except ValueError:
