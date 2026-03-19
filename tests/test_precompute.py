@@ -294,3 +294,62 @@ async def test_treatment_plan_stale_triggers_update():
     MockService.return_value.update_plan.assert_called_once()
     MockService.return_value.create_plan.assert_not_called()
     assert updated_plan.input_fingerprint is not None
+
+
+# ---------------------------------------------------------------------------
+# Integration-style: verify AI is NOT called on HIT, IS called on MISS
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_deep_summary_hit_does_not_call_ai():
+    """When stored fingerprint matches current, generate_deep_summary must NOT be called."""
+    rows = [_make_approved_summary_row(1, "2025-01-10")]
+    db = _make_db(summary_rows=rows)
+
+    expected_fp = _compute_patient_fingerprint(db, patient_id=7, therapist_id=3)
+    cached_ds = _make_deep_summary_orm(fingerprint=expected_fp)
+
+    ds_chain = MagicMock()
+    ds_chain.filter.return_value = ds_chain
+    ds_chain.order_by.return_value = ds_chain
+    ds_chain.first.return_value = cached_ds
+
+    original_side_effect = db.query.side_effect
+
+    def _router(*args, **kwargs):
+        from app.models.deep_summary import DeepSummary
+        if args and args[0] is DeepSummary:
+            return ds_chain
+        return original_side_effect(*args, **kwargs)
+
+    db.query.side_effect = _router
+    mock_provider = MagicMock()
+
+    with patch("app.services.precompute.DeepSummaryService") as MockService:
+        result = await get_or_compute_deep_summary(
+            db=db, patient_id=7, therapist_id=3, provider=mock_provider
+        )
+
+    assert result is cached_ds
+    MockService.return_value.generate_deep_summary.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_treatment_plan_miss_calls_ai():
+    """When stored fingerprint differs from current, create_plan or update_plan must be called."""
+    db = _make_db(summary_rows=[], protocol_ids=[])
+    new_plan = MagicMock()
+    new_plan.input_fingerprint = None
+
+    mock_provider = MagicMock()
+
+    with patch("app.services.precompute.TreatmentPlanService") as MockService:
+        MockService.return_value.get_active_plan.return_value = None
+        MockService.return_value.create_plan = AsyncMock(return_value=new_plan)
+        result = await get_or_compute_treatment_plan(
+            db=db, patient_id=7, therapist_id=3, provider=mock_provider
+        )
+
+    assert result is new_plan
+    MockService.return_value.create_plan.assert_called_once()
+    assert new_plan.input_fingerprint is not None

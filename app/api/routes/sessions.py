@@ -832,6 +832,7 @@ async def generate_prep_v2(
             mode=mode,
             agent=agent,
         )
+        db.commit()
         return PrepResponse(**result)
 
     except ValueError as e:

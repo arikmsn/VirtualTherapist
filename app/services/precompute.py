@@ -106,14 +106,17 @@ async def get_or_compute_deep_summary(
         and latest.input_fingerprint_version == FINGERPRINT_VERSION
     ):
         logger.info(
-            f"[precompute_deep_summary] cache hit — "
-            f"patient={patient_id} therapist={therapist_id} summary_id={latest.id}"
+            f"[precompute] deep_summary cache HIT — "
+            f"patient={patient_id} therapist={therapist_id} summary_id={latest.id} "
+            f"fp={current_fp[:12]}"
         )
         return latest
 
     logger.info(
-        f"[precompute_deep_summary] cache miss — "
-        f"patient={patient_id} therapist={therapist_id} — generating"
+        f"[precompute] deep_summary cache MISS — "
+        f"patient={patient_id} therapist={therapist_id} "
+        f"stored_fp={latest.input_fingerprint[:12] if latest and latest.input_fingerprint else 'none'} "
+        f"current_fp={current_fp[:12]}"
     )
     service = DeepSummaryService(db)
     new_summary = await service.generate_deep_summary(
@@ -157,15 +160,18 @@ async def get_or_compute_treatment_plan(
         and active_plan.input_fingerprint_version == FINGERPRINT_VERSION
     ):
         logger.info(
-            f"[precompute_treatment_plan] cache hit — "
-            f"patient={patient_id} therapist={therapist_id} plan_id={active_plan.id}"
+            f"[precompute] treatment_plan cache HIT — "
+            f"patient={patient_id} therapist={therapist_id} plan_id={active_plan.id} "
+            f"fp={current_fp[:12]}"
         )
         return active_plan
 
     logger.info(
-        f"[precompute_treatment_plan] cache miss — "
-        f"patient={patient_id} therapist={therapist_id} — "
-        f"{'updating' if active_plan else 'creating'}"
+        f"[precompute] treatment_plan cache MISS — "
+        f"patient={patient_id} therapist={therapist_id} "
+        f"stored_fp={active_plan.input_fingerprint[:12] if active_plan and active_plan.input_fingerprint else 'none'} "
+        f"current_fp={current_fp[:12]} "
+        f"action={'update' if active_plan else 'create'}"
     )
     if active_plan:
         plan = await service.update_plan(
