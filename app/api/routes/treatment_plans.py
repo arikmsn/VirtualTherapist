@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.api.deps import get_db, get_current_therapist
 from app.models.therapist import Therapist
-from app.services.precompute import get_or_compute_treatment_plan
 from app.services.treatment_plan_service import TreatmentPlanService
 from app.services.therapist_service import TherapistService
 from loguru import logger
@@ -102,23 +101,26 @@ async def create_treatment_plan(
 
     Auth: therapist must own the patient.
     Source of truth: only approved summaries are used.
-    Returns a fresh plan from cache if inputs haven't changed; otherwise generates a new plan.
+    Returns 409 if an active plan already exists — use PUT to update.
     """
     therapist_service = TherapistService(db)
+    plan_service = TreatmentPlanService(db)
 
     try:
         agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
-        plan = await get_or_compute_treatment_plan(
-            db=db,
+        plan = await plan_service.create_plan(
             patient_id=client_id,
             therapist_id=current_therapist.id,
-            provider=agent.provider,
             session_ids=request.session_ids,
+            provider=agent.provider,
         )
         db.commit()
         return _plan_response(plan)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        msg = str(e)
+        if "already exists" in msg:
+            raise HTTPException(status_code=409, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
     except Exception as e:
         logger.exception(f"create_treatment_plan client={client_id} failed: {e!r}")
         raise HTTPException(
@@ -140,27 +142,18 @@ async def update_treatment_plan(
     """
     Update the active treatment plan (creates new version, archives old).
 
-    Returns a fresh plan from cache if inputs haven't changed; otherwise updates and returns.
     Returns 404 if no active plan exists — use POST to create one.
     """
     therapist_service = TherapistService(db)
     plan_service = TreatmentPlanService(db)
 
     try:
-        # Verify active plan exists before delegating (preserve 404 semantics)
-        existing = plan_service.get_active_plan(
-            patient_id=client_id, therapist_id=current_therapist.id
-        )
-        if not existing:
-            raise ValueError("No active treatment plan found — use POST to create one")
-
         agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
-        plan = await get_or_compute_treatment_plan(
-            db=db,
+        plan = await plan_service.update_plan(
             patient_id=client_id,
             therapist_id=current_therapist.id,
-            provider=agent.provider,
             session_ids=request.session_ids,
+            provider=agent.provider,
         )
         db.commit()
         return _plan_response(plan)
