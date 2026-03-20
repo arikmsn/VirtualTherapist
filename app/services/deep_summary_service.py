@@ -1,5 +1,6 @@
 """Deep Summary + Therapist Reference Vault service — Phase 8."""
 
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -147,6 +148,8 @@ class DeepSummaryService:
         Returns the saved DeepSummary ORM object (status=draft).
         Vault entries are extracted and stored as a side effect.
         """
+        _t0 = time.monotonic()
+
         patient = self.db.query(Patient).filter(
             Patient.id == patient_id,
             Patient.therapist_id == therapist_id,
@@ -203,8 +206,12 @@ class DeepSummaryService:
             ai_context=ai_ctx,
         )
 
+        _t_db = time.monotonic()
+
         pipeline = DeepSummaryPipeline(provider)
         result: DeepSummaryResult = await pipeline.run(inp, vault_context=vault_context)
+
+        _t_llm = time.monotonic()
 
         # Telemetry — one log per extraction/synthesis/render call
         for extraction_result in pipeline._extraction_results:
@@ -251,10 +258,16 @@ class DeepSummaryService:
         self.db.add(deep_summary)
         self.db.flush()
 
+        _t_post = time.monotonic()
+        _llm_calls = len(pipeline._extraction_results) + (1 if pipeline._synthesis_result else 0) + 1
         logger.info(
-            f"[deep_summary] GENERATE patient={patient_id} "
-            f"sessions={len(approved_summaries)} tokens={result.tokens_used} "
-            f"vault_entries={vault_created} id={deep_summary.id}"
+            f"[deep_timing] patient={patient_id} "
+            f"sessions={len(approved_summaries)} llm_calls={_llm_calls} "
+            f"total={int((_t_post - _t0) * 1000)}ms "
+            f"db={int((_t_db - _t0) * 1000)}ms "
+            f"llm={int((_t_llm - _t_db) * 1000)}ms "
+            f"post={int((_t_post - _t_llm) * 1000)}ms "
+            f"tokens={result.tokens_used} vault_entries={vault_created} id={deep_summary.id}"
         )
         return deep_summary
 

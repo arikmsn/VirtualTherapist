@@ -1,6 +1,7 @@
 """Session service - handles therapy sessions and summary generation"""
 
 import asyncio
+import time
 from typing import Optional, Dict, Any, List
 from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session, joinedload
@@ -1168,6 +1169,8 @@ class SessionService:
         Cache: if the same mode was generated in the last 10 minutes, returns the
         cached result from sessions.prep_json without an LLM call.
         """
+        _t0 = time.monotonic()
+
         session = self.db.query(TherapySession).filter(
             TherapySession.id == session_id,
             TherapySession.therapist_id == therapist_id,
@@ -1266,8 +1269,12 @@ class SessionService:
             ai_context=ai_ctx,
         )
 
+        _t_db = time.monotonic()
+
         pipeline = PrepPipeline(agent)
         result: PrepResult = await pipeline.run(prep_inp)
+
+        _t_llm = time.monotonic()
 
         # Completeness check on rendered text (fast model, best-effort)
         modality_pack = agent.modality_pack if hasattr(agent, "modality_pack") else None
@@ -1331,10 +1338,15 @@ class SessionService:
             generation_result=pipeline._last_render_result,
         )
 
+        _t_post = time.monotonic()
         logger.info(
-            f"[prep_v2] session={session_id} mode={mode.value} "
-            f"approved_summaries={len(approved_summaries)} "
-            f"tokens={result.tokens_used} completeness={result.completeness_score:.2f}"
+            f"[prep_timing] session={session_id} mode={mode.value} "
+            f"summaries_n={len(approved_summaries)} "
+            f"total={int((_t_post - _t0) * 1000)}ms "
+            f"db={int((_t_db - _t0) * 1000)}ms "
+            f"llm={int((_t_llm - _t_db) * 1000)}ms "
+            f"post={int((_t_post - _t_llm) * 1000)}ms "
+            f"tokens={result.tokens_used}"
         )
 
         return {
