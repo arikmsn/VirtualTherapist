@@ -164,6 +164,22 @@ class PatientService:
             data_category="personal",
         )
 
+        # PatientTreatmentState rebuild hook (spec §6.1, §6.3) — triggered when
+        # protocol_ids change, best-effort background call
+        if "protocol_ids" in update_data:
+            try:
+                import asyncio
+                from app.ai.state import rebuild_patient_treatment_state as _rebuild_pts
+                asyncio.create_task(
+                    _rebuild_pts(
+                        db=self.db,
+                        patient_id=patient_id,
+                        therapist_id=therapist_id,
+                    )
+                )
+            except RuntimeError:
+                pass  # no event loop in tests — skip silently
+
         logger.info(f"Updated patient {patient_id}")
         return self._with_decrypted_fields(patient)
 
