@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from loguru import logger
 
@@ -274,6 +274,192 @@ def _build_render_user_prompt(inp: PrepInput, prep_json: dict) -> str:
     )
 
 
+# ── Envelope-based prompt builders (spec §5.1, §5.2) ─────────────────────────
+# These replace the PrepInput-based builders for the v3 pipeline path.
+
+def _build_extraction_system_prompt_v2(envelope: Dict[str, Any]) -> str:
+    """
+    Implements spec §5.1 — extraction system prompt derived from LLMContextEnvelope.
+
+    Injects modality_prompt_module from envelope['extra']['modality_prompt_module'].
+    """
+    lines = [
+        "You are a clinical data extraction assistant preparing a pre-session brief.",
+        "Your ONLY job is to map the provided patient clinical state into the prep JSON schema.",
+        "Return ONLY valid JSON — no prose, no markdown fences, no explanation.",
+        "IMPORTANT: If a field has no data, set it to null or [] — never write explanatory text inside JSON values.",
+    ]
+    modality_prompt_module = envelope.get("extra", {}).get("modality_prompt_module")
+    if modality_prompt_module:
+        lines.append("")
+        lines.append("## Clinical framework for this therapist:")
+        lines.append(modality_prompt_module.strip())
+    return "\n".join(lines)
+
+
+def _build_extraction_user_prompt_v2(envelope: Dict[str, Any]) -> str:
+    """
+    Implements spec §5.1 — extraction user prompt built from LLMContextEnvelope.
+
+    Populates the prep schema from envelope.patient_state instead of raw summary text.
+    """
+    mode_str = envelope.get("request_mode") or "concise"
+    try:
+        mode = PrepMode(mode_str)
+    except ValueError:
+        mode = PrepMode.CONCISE
+
+    patient_state = envelope["patient_state"]
+    sessions_analyzed: int = patient_state["metadata"]["sessions_analyzed"]
+    modality: str = envelope.get("extra", {}).get("modality", "generic_integrative")
+    fields_to_fill = _MODE_FIELDS.get(mode, list(_MODE_FIELDS[PrepMode.DEEP]))
+    token_guidance = _MODE_TOKEN_GUIDANCE.get(mode, "")
+
+    parts = [
+        f"Prep mode: {mode.value}",
+        f"Modality: {modality}",
+        f"Sessions analyzed: {sessions_analyzed} approved session(s).",
+        "",
+        "FIELDS TO POPULATE (fill ONLY these; set everything else to null / empty list):",
+    ]
+    for f in fields_to_fill:
+        parts.append(f"  - {f}")
+
+    if modality.lower() == "cbt":
+        parts.append("")
+        parts.append(_CBT_EXTRACTION_ADDON.strip())
+
+    parts.append("")
+    parts.append(token_guidance)
+    parts.append("")
+
+    # Patient clinical state — structured input derived from approved summaries
+    parts.append("--- Patient clinical state (derived from approved session summaries) ---")
+    parts.append(json.dumps(patient_state, ensure_ascii=False, indent=2))
+    parts.append("--- End of patient state ---")
+
+    parts.append("")
+    parts.append(
+        f"Fill the JSON schema below. Set mode_used='{mode.value}' and "
+        f"sessions_analyzed={sessions_analyzed}. "
+        "Set confidence to your confidence level (0.0–1.0)."
+    )
+    parts.append(f"\nJSON schema:\n{_SCHEMA_STR}")
+    return "\n".join(parts)
+
+
+def _build_render_system_prompt_v2(envelope: Dict[str, Any]) -> str:
+    """
+    Implements spec §5.2 — render system prompt from LLMContextEnvelope.
+
+    Injects therapist style and enforces language + no-question-at-end rules.
+    """
+    style = envelope["therapist_style"]
+    constraints = envelope["ai_constraints"]
+    sessions_analyzed: int = envelope["patient_state"]["metadata"]["sessions_analyzed"]
+
+    lines = [
+        "You are preparing a pre-session brief for a therapist, in the therapist's voice.",
+        f"Write in natural, professional {'Hebrew' if constraints['language'] == 'he' else constraints['language'].upper()}.",
+        "Be concise and clinically useful.",
+        "Do NOT list fields mechanically — integrate the content into flowing prose or well-structured bullets.",
+        "Do NOT end the brief with a question or question mark.",
+    ]
+
+    # Prohibitions / custom rules (spec §5.2 — constraints)
+    if constraints["prohibitions"]:
+        lines.append("")
+        lines.append("RULES — you must NEVER:")
+        for p in constraints["prohibitions"]:
+            lines.append(f"  - {p}")
+
+    if constraints["custom_rules"]:
+        lines.append("")
+        lines.append("Additional rules:")
+        for r in constraints["custom_rules"]:
+            lines.append(f"  - {r}")
+
+    # Sessions-analyzed behavioral rules (spec §5.2)
+    lines.append("")
+    if sessions_analyzed == 0:
+        lines.append(
+            "NOTE: No approved session summaries exist yet for this patient. "
+            "You MAY state this clearly in Hebrew (e.g. 'אין עדיין סיכומים מאושרים'). "
+            "Base the brief ONLY on protocol context if available. Do NOT invent session content."
+        )
+    else:
+        lines.append(
+            f"CRITICAL: {sessions_analyzed} approved session summary(ies) were analyzed. "
+            "You MUST ground the brief in at least 2–3 concrete clinical details from the prep data. "
+            "FORBIDDEN phrases: 'אין נתונים', 'מבוסס על פרוטוקול בלבד', 'לא ידוע', 'no data', 'N/A'. "
+            "If a section lacks data, skip it — do NOT explain the absence."
+        )
+
+    # Therapist style injection (matches existing inject_into_prompt() output format)
+    sig_count = envelope.get("extra", {}).get("approved_sample_count", 0)
+    min_required = envelope.get("extra", {}).get("min_samples_required", 5)
+    if sig_count >= min_required and style.get("style_summary"):
+        lines.append("")
+        lines.append(f"סגנון הכתיבה המועדף של המטפל (למד מ-{sig_count} עריכות מאושרות):")
+        lines.append(style["style_summary"])
+        if style.get("style_examples"):
+            ex = '", "'.join(style["style_examples"][:3])
+            lines.append(f'דוגמאות לסגנון: "{ex}"')
+        hints = []
+        if style.get("preferred_sentence_length"):
+            hints.append(f"משפטים {style['preferred_sentence_length']}")
+        if style.get("preferred_voice"):
+            hints.append(f"גוף {'פעיל' if style['preferred_voice'] == 'active' else 'סביל' if style['preferred_voice'] == 'passive' else 'מעורב'}")
+        if style.get("uses_clinical_jargon") is not None:
+            hints.append("עם ז'רגון קליני" if style["uses_clinical_jargon"] else "ללא ז'רגון קליני")
+        if hints:
+            lines.append(f"הנחיות: {', '.join(hints)}.")
+
+    return "\n".join(lines)
+
+
+def _build_render_user_prompt_v2(envelope: Dict[str, Any], prep_json: Dict[str, Any]) -> str:
+    """
+    Implements spec §5.2 — render user prompt from LLMContextEnvelope.
+    """
+    mode_str = envelope.get("request_mode") or "concise"
+    try:
+        mode = PrepMode(mode_str)
+    except ValueError:
+        mode = PrepMode.CONCISE
+
+    modality: str = envelope.get("extra", {}).get("modality", "generic_integrative")
+    token_guidance = _MODE_TOKEN_GUIDANCE.get(mode, "")
+    length_guidance = _MODE_LENGTH_GUIDANCE_HE.get(mode, "")
+    cbt_block = f"\n\n{_CBT_RENDER_ADDON.strip()}" if modality.lower() == "cbt" else ""
+
+    # Protocol block comes from envelope's ai_context (stored in extra by the caller)
+    ai_context = envelope.get("extra", {}).get("ai_context")
+    protocol_block = format_protocol_block(ai_context) if ai_context else ""
+    protocol_guidance = ""
+    if protocol_block:
+        protocol_guidance = (
+            "\nWhen preparing the pre-session brief:\n"
+            "- If the patient has an active protocol in the JSON, align the focus, "
+            "suggested questions, and homework ideas with that protocol and its stage.\n"
+            "- Infer the treatment phase (early/middle/late) from completed_sessions / typical_sessions "
+            "and adapt the tone accordingly.\n"
+            "- Never state the numeric stage count in the Hebrew output.\n"
+            "- If no protocol is set, keep the brief general but respect the therapist's approaches.\n"
+        )
+
+    return (
+        f"Mode: {mode.value} — {token_guidance}{cbt_block}\n\n"
+        "The structured prep data has been extracted. Render it as a ready-to-use "
+        "pre-session brief that the therapist can scan in under 60 seconds.\n\n"
+        f"Structured prep data:\n{json.dumps(prep_json, ensure_ascii=False, indent=2)}\n\n"
+        f"{length_guidance}\n"
+        f"{protocol_guidance}"
+        f"{protocol_block}\n\n"
+        "Write the pre-session brief now."
+    )
+
+
 # ── JSON parser ───────────────────────────────────────────────────────────────
 
 def _parse_prep_json(raw: str, mode: PrepMode) -> dict:
@@ -426,18 +612,107 @@ class PrepPipeline:
         self.agent._last_result = result
         return result.content
 
-    async def extract_only(self, inp: PrepInput) -> dict:
-        """Run extraction call only (Call 1). Used by streaming endpoints."""
+    async def extract_only(self, inp: "PrepInput | dict") -> dict:
+        """
+        Run extraction Call 1.
+
+        Accepts either a legacy PrepInput (backward compat) or a LLMContextEnvelope dict
+        (spec §5.1).  Used by streaming endpoints and run_with_envelope().
+        """
+        if isinstance(inp, dict):
+            return await self._extract_v2(inp)
         return await self._extract(inp)
 
-    async def render_stream(self, inp: PrepInput, prep_json: dict):
+    async def render_stream(self, inp: "PrepInput | dict", prep_json: dict):
         """
-        Stream the render call (Call 2) token by token.
-        Yields raw text chunks. Used by the /prep/stream SSE endpoint.
+        Stream render Call 2, token by token.
+
+        Accepts either a legacy PrepInput or a LLMContextEnvelope dict (spec §5.2).
+        Yields raw text chunks.  Used by the /prep/stream SSE endpoint.
         """
+        if isinstance(inp, dict):
+            async for chunk in self._render_stream_v2(inp, prep_json):
+                yield chunk
+            return
+
+        # Legacy PrepInput path
         system_msg = _build_render_system_prompt(inp)
         user_msg = _build_render_user_prompt(inp, prep_json)
         model_id, route_reason = self._resolve_model(inp)
+        async for chunk in self.agent.provider.generate_stream(
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            model=model_id,
+            flow_type=FlowType.SESSION_PREP,
+            route_reason=route_reason,
+        ):
+            yield chunk
+
+    # ── Envelope-aware internal methods (spec §5.1, §5.2) ────────────────────
+
+    def _resolve_model_v2(self, envelope: dict) -> tuple:
+        """Return (model_id, route_reason) from envelope request_mode + sessions_analyzed."""
+        mode_str = envelope.get("request_mode") or "concise"
+        try:
+            mode = PrepMode(mode_str)
+        except ValueError:
+            mode = PrepMode.CONCISE
+        session_count: int = envelope["patient_state"]["metadata"]["sessions_analyzed"]
+        if mode == PrepMode.CONCISE:
+            return settings.AI_FAST_MODEL, "mode:concise,tier:fast"
+        if mode == PrepMode.DEEP and session_count > self._DEEP_ESCALATION_THRESHOLD:
+            return settings.AI_DEEP_MODEL, f"mode:deep,tier:deep,escalated:count>{self._DEEP_ESCALATION_THRESHOLD}"
+        return settings.AI_STANDARD_MODEL, f"mode:{mode.value},tier:standard"
+
+    async def _extract_v2(self, envelope: dict) -> dict:
+        """Envelope-based extraction call (spec §5.1)."""
+        system_msg = _build_extraction_system_prompt_v2(envelope)
+        user_msg = _build_extraction_user_prompt_v2(envelope)
+        model_id, route_reason = self._resolve_model_v2(envelope)
+
+        result = await self.agent.provider.generate(
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            model=model_id,
+            flow_type=FlowType.SESSION_PREP,
+            route_reason=route_reason,
+        )
+        self._last_extraction_result = result
+        mode_str = envelope.get("request_mode") or "concise"
+        try:
+            mode = PrepMode(mode_str)
+        except ValueError:
+            mode = PrepMode.CONCISE
+        return _parse_prep_json(result.content, mode)
+
+    async def _render_v2(self, envelope: dict, prep_json: dict) -> str:
+        """Envelope-based render call (spec §5.2)."""
+        system_msg = _build_render_system_prompt_v2(envelope)
+        user_msg = _build_render_user_prompt_v2(envelope, prep_json)
+        model_id, route_reason = self._resolve_model_v2(envelope)
+
+        result = await self.agent.provider.generate(
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            model=model_id,
+            flow_type=FlowType.SESSION_PREP,
+            route_reason=route_reason,
+        )
+        self._last_render_result = result
+        self.agent._last_result = result
+        return result.content
+
+    async def _render_stream_v2(self, envelope: dict, prep_json: dict):
+        """Streaming render call from envelope (spec §5.2)."""
+        system_msg = _build_render_system_prompt_v2(envelope)
+        user_msg = _build_render_user_prompt_v2(envelope, prep_json)
+        model_id, route_reason = self._resolve_model_v2(envelope)
 
         async for chunk in self.agent.provider.generate_stream(
             messages=[
@@ -449,3 +724,40 @@ class PrepPipeline:
             route_reason=route_reason,
         ):
             yield chunk
+
+    async def run_with_envelope(self, envelope: dict) -> "PrepResult":
+        """
+        Execute extraction + render using LLMContextEnvelope (spec §5.1, §5.2).
+
+        Returns graceful Hebrew fallback when sessions_analyzed == 0 (spec §5.2).
+        """
+        sessions_analyzed: int = envelope["patient_state"]["metadata"]["sessions_analyzed"]
+        if sessions_analyzed == 0:
+            return PrepResult(
+                prep_json={},
+                rendered_text=_ZERO_APPROVED_HEBREW,
+                completeness_score=0.0,
+                completeness_data={},
+                model_used="none",
+                tokens_used=0,
+            )
+
+        prep_json = await self._extract_v2(envelope)
+        rendered = await self._render_v2(envelope, prep_json)
+
+        render_result = self._last_render_result
+        extract_result = self._last_extraction_result
+        total_tokens = 0
+        if extract_result:
+            total_tokens += (extract_result.prompt_tokens or 0) + (extract_result.completion_tokens or 0)
+        if render_result:
+            total_tokens += (render_result.prompt_tokens or 0) + (render_result.completion_tokens or 0)
+
+        return PrepResult(
+            prep_json=prep_json,
+            rendered_text=rendered,
+            completeness_score=0.0,   # filled by caller after CompletenessChecker
+            completeness_data={},
+            model_used=render_result.model_used if render_result else "unknown",
+            tokens_used=total_tokens,
+        )
