@@ -837,9 +837,17 @@ async def stream_prep_v2(
         agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
 
         # ── Cache check ────────────────────────────────────────────────────────
+        # Guard: only use cache if it contains a real run (sessions_analyzed > 0).
+        # A previous broken run may have stored sessions_analyzed=0; we must not
+        # serve that stale content when real summaries now exist.
         _PREP_CACHE_SECONDS = 600  # 10 minutes
+        _cached_sessions_analyzed = (
+            (session.prep_json or {}).get("sessions_analyzed", 0)
+            if session.prep_json is not None else 0
+        )
         if (
             session.prep_json is not None
+            and _cached_sessions_analyzed > 0
             and session.prep_mode == mode.value
             and session.prep_generated_at is not None
         ):
@@ -847,9 +855,9 @@ async def stream_prep_v2(
             _use_cache = False
             if _age < _PREP_CACHE_SECONDS:
                 _use_cache = True
-                logger.info(
+                logger.warning(
                     f"[stream_prep] session={session_id} mode={mode.value} — "
-                    f"time-based cache hit (age={_age:.0f}s)"
+                    f"time-based cache hit (age={_age:.0f}s, sessions_analyzed={_cached_sessions_analyzed})"
                 )
             elif session.prep_input_fingerprint:
                 from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
@@ -871,7 +879,7 @@ async def stream_prep_v2(
                     and session.prep_input_fingerprint_version == FINGERPRINT_VERSION
                 ):
                     _use_cache = True
-                    logger.info(
+                    logger.warning(
                         f"[stream_prep] session={session_id} mode={mode.value} — "
                         f"fingerprint cache hit (inputs unchanged, age={_age:.0f}s)"
                     )
@@ -895,9 +903,10 @@ async def stream_prep_v2(
 
         # ── Build pipeline inputs ──────────────────────────────────────────────
         approved_summaries = session_service._load_approved_summaries_for_prep(session.patient_id)
-        logger.info(
+        logger.warning(
             f"[stream_prep] session={session_id} patient={session.patient_id} "
-            f"mode={mode.value} approved_summaries={len(approved_summaries)}"
+            f"mode={mode.value} approved_summaries={len(approved_summaries)} "
+            f"(stale_cache_bypassed: sessions_analyzed_was={_cached_sessions_analyzed})"
         )
 
         if not approved_summaries:

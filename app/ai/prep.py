@@ -215,7 +215,7 @@ def _build_extraction_user_prompt(inp: PrepInput) -> str:
     for i, s in enumerate(inp.approved_summaries, 1):
         date_str = str(s.get("session_date", ""))
         num = s.get("session_number", i)
-        text = s.get("full_summary", "")  # full text — no input truncation
+        text = s.get("full_summary") or ""  # guard: dict.get returns None if key present but None
         parts.append(f"\n[Session #{num} — {date_str}]\n{text}")
     parts.append("--- End of summaries ---")
 

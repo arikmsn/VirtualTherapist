@@ -1418,10 +1418,12 @@ class SessionService:
                     "clinical_json": summary.clinical_json,
                 })
         sliced = result[-limit:]
-        logger.info(
+        no_text = [s["summary_id"] for s in sliced if not s.get("full_summary")]
+        logger.warning(
             f"[_load_approved_summaries_for_prep] patient={patient_id}: "
             f"{total_with_summary} sessions with summaries, "
-            f"{len(result)} approved, {len(sliced)} returned (limit={limit})"
+            f"{len(result)} approved, {len(sliced)} returned (limit={limit}), "
+            f"summaries_with_no_full_summary={no_text}"
         )
         return sliced
 
