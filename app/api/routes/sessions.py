@@ -1,5 +1,6 @@
 """Session management routes"""
 
+import asyncio
 import json
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
@@ -799,26 +800,31 @@ async def generate_prep_v2(
 @router.post("/{session_id}/prep/stream")
 async def stream_prep_v2(
     session_id: int,
-    request: PrepRequest,
+    request: Optional[PrepRequest] = None,
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
     """
     Streaming variant of POST /{session_id}/prep.
 
-    SSE event stream:
-      data: {"phase": "extracting"}          — extraction started (Call 1)
-      data: {"phase": "rendering"}           — rendering started (Call 2, streaming)
-      data: {"chunk": "..."}                 — rendered text fragment
-      data: {"phase": "done", "prep_json": {...}, "sessions_analyzed": N}
-      data: [DONE]                           — stream end sentinel
+    Two-phase SSE stream:
+      Phase 1 — extraction (non-streaming, backend-only):
+        data: {"phase": "extracting"}        — extraction started
+        data: {"phase": "ping"}              — heartbeat every ~2 s (keep-alive)
+      Phase 2 — render (streamed token-by-token):
+        data: {"phase": "rendering"}         — render started
+        data: {"chunk": "..."}              — rendered text fragment (append in order)
+      Completion:
+        data: {"phase": "done", "prep_json": {...}, "sessions_analyzed": N}
+        data: [DONE]                         — stream end sentinel
 
-    The UI can display text progressively while Call 1 is still low-latency.
+    The LLM render call runs as a standalone asyncio.Task: the artifact is saved
+    even if the client disconnects mid-stream (disconnect-safe).
     """
     from app.ai.prep import PrepInput, PrepPipeline
     from app.ai.signature import SignatureEngine, inject_into_prompt
 
-    mode_str = (request.mode or "concise").lower()
+    mode_str = (request.mode if request else "concise").lower()
     try:
         mode = PrepMode(mode_str)
     except ValueError:
@@ -925,45 +931,121 @@ async def stream_prep_v2(
     )
 
     async def _sse_generator():
-        pipeline = PrepPipeline(agent)
-        full_text_chunks: list = []
-        try:
-            yield f"data: {json.dumps({'phase': 'extracting'})}\n\n"
-            prep_json = await pipeline.extract_only(prep_inp)
+        from datetime import datetime as _dt
+        from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
+        from app.core.database import SessionLocal
+        from app.models.session import Session as _TherapySession
 
-            yield f"data: {json.dumps({'phase': 'rendering'})}\n\n"
-            async for chunk in pipeline.render_stream(prep_inp, prep_json):
-                full_text_chunks.append(chunk)
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+        _queue: asyncio.Queue = asyncio.Queue()
 
-            yield f"data: {json.dumps({'phase': 'done', 'prep_json': prep_json, 'sessions_analyzed': len(approved_summaries)})}\n\n"
-            yield "data: [DONE]\n\n"
+        async def _pipeline_task() -> None:
+            """
+            Standalone asyncio Task — runs the full two-phase pipeline and persists
+            the artifact using its own DB session.
 
-            # Persist rendered text so subsequent requests hit the cache
-            from datetime import datetime as _dt
-            from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
-            session.prep_json = prep_json
-            session.prep_mode = mode.value
-            session.prep_rendered_text = "".join(full_text_chunks)
-            session.prep_generated_at = _dt.utcnow()
-            session.prep_input_fingerprint = compute_fingerprint({
-                "mode": mode.value,
-                "summaries": [
-                    {
-                        "summary_id": s.get("summary_id"),
-                        "approved_at": s.get("approved_at"),
-                        "full_summary": s.get("full_summary"),
-                    }
-                    for s in approved_summaries
-                ],
-                "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
-            })
-            session.prep_input_fingerprint_version = FINGERPRINT_VERSION
-            db.add(session)
-            db.commit()
-        except Exception as exc:
-            logger.exception(f"stream_prep_v2 session={session_id} error: {exc!r}")
-            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+            This task is NOT tied to the SSE generator's lifecycle: if the client
+            disconnects mid-stream, the task continues running, finishes the LLM
+            call, and saves the artifact so subsequent requests get a cache hit.
+            """
+            try:
+                pipeline = PrepPipeline(agent)
+
+                # ── Phase 1: extraction (non-streaming) ───────────────────────
+                prep_json = await pipeline.extract_only(prep_inp)
+                await _queue.put({"_phase": "rendering"})
+
+                # ── Phase 2: render (streaming — each chunk forwarded via queue)
+                chunks: list[str] = []
+                async for chunk in pipeline.render_stream(prep_inp, prep_json):
+                    chunks.append(chunk)
+                    await _queue.put({"chunk": chunk})
+
+                # ── Persist artifact via a fresh session (safe from request lifetime)
+                full_text = "".join(chunks)
+                fp = compute_fingerprint({
+                    "mode": mode.value,
+                    "summaries": [
+                        {
+                            "summary_id": s.get("summary_id"),
+                            "approved_at": s.get("approved_at"),
+                            "full_summary": s.get("full_summary"),
+                        }
+                        for s in approved_summaries
+                    ],
+                    "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
+                })
+                try:
+                    with SessionLocal() as _save_db:
+                        _sess = _save_db.query(_TherapySession).filter(
+                            _TherapySession.id == session_id
+                        ).first()
+                        if _sess:
+                            _sess.prep_json = prep_json
+                            _sess.prep_mode = mode.value
+                            _sess.prep_rendered_text = full_text
+                            _sess.prep_generated_at = _dt.utcnow()
+                            _sess.prep_input_fingerprint = fp
+                            _sess.prep_input_fingerprint_version = FINGERPRINT_VERSION
+                            _save_db.add(_sess)
+                            _save_db.commit()
+                            logger.info(
+                                f"[stream_prep] session={session_id} mode={mode.value} "
+                                f"artifact saved ({len(full_text)} chars)"
+                            )
+                except Exception as save_exc:
+                    logger.error(
+                        f"[stream_prep] persist failed session={session_id}: {save_exc!r}"
+                    )
+
+                await _queue.put({
+                    "_done": True,
+                    "prep_json": prep_json,
+                    "sessions_analyzed": len(approved_summaries),
+                })
+
+            except Exception as exc:
+                logger.exception(
+                    f"[stream_prep] pipeline_task session={session_id} error: {exc!r}"
+                )
+                await _queue.put({"_error": str(exc)})
+            finally:
+                await _queue.put(None)  # sentinel — always signals completion
+
+        # Launch as a standalone task.  asyncio.create_task() registers it with the
+        # event loop directly; it is not a child of this generator's coroutine, so it
+        # continues running (and saves the artifact) even if the client disconnects.
+        asyncio.create_task(_pipeline_task())
+
+        yield f"data: {json.dumps({'phase': 'extracting'})}\n\n"
+
+        # Poll the queue; send heartbeat pings every ~2 s so Nginx/proxies don't
+        # time out the idle SSE connection during Phase 1 extraction.
+        _PING_S = 2.0
+        _loop = asyncio.get_running_loop()
+        _last_ping = _loop.time()
+
+        while True:
+            try:
+                item = _queue.get_nowait()
+            except asyncio.QueueEmpty:
+                now = _loop.time()
+                if now - _last_ping >= _PING_S:
+                    yield f"data: {json.dumps({'phase': 'ping'})}\n\n"
+                    _last_ping = now
+                await asyncio.sleep(0.05)
+                continue
+
+            if item is None:
+                yield "data: [DONE]\n\n"
+                break
+            if "_phase" in item:
+                yield f"data: {json.dumps({'phase': item['_phase']})}\n\n"
+            elif "_done" in item:
+                yield f"data: {json.dumps({'phase': 'done', 'prep_json': item['prep_json'], 'sessions_analyzed': item['sessions_analyzed']})}\n\n"
+            elif "_error" in item:
+                yield f"data: {json.dumps({'error': item['_error']})}\n\n"
+            elif "chunk" in item:
+                yield f"data: {json.dumps({'chunk': item['chunk']})}\n\n"
 
     return StreamingResponse(
         _sse_generator(),
