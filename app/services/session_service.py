@@ -1378,8 +1378,10 @@ class SessionService:
         """
         Return the last *limit* approved summaries for *patient_id*, oldest → newest.
 
-        SOURCE OF TRUTH: only rows where approved_by_therapist=True are included.
-        Uses joinedload to avoid N+1 queries on the summary relationship.
+        A summary is considered approved when EITHER:
+          - approved_by_therapist is True, OR
+          - status == SummaryStatus.APPROVED
+        This handles summaries approved before approved_by_therapist was reliably set.
 
         Shared by generate_prep_v2 (non-streaming) and stream_prep_v2 (streaming).
         """
@@ -1393,10 +1395,15 @@ class SessionService:
             .order_by(TherapySession.session_date.asc())
             .all()
         )
+        total_with_summary = sum(1 for s in patient_sessions if s.summary)
         result = []
         for s in patient_sessions:
             summary = s.summary
-            if summary and summary.approved_by_therapist:
+            is_approved = summary and (
+                summary.approved_by_therapist
+                or summary.status == SummaryStatus.APPROVED
+            )
+            if is_approved:
                 result.append({
                     "summary_id": summary.id,
                     "approved_at": str(summary.edit_ended_at) if summary.edit_ended_at else None,
@@ -1410,7 +1417,13 @@ class SessionService:
                     "mood_observed": summary.mood_observed,
                     "clinical_json": summary.clinical_json,
                 })
-        return result[-limit:]
+        sliced = result[-limit:]
+        logger.info(
+            f"[_load_approved_summaries_for_prep] patient={patient_id}: "
+            f"{total_with_summary} sessions with summaries, "
+            f"{len(result)} approved, {len(sliced)} returned (limit={limit})"
+        )
+        return sliced
 
     async def delete_session(self, session_id: int, therapist_id: int) -> None:
         """

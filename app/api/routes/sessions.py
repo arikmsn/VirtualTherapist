@@ -895,6 +895,23 @@ async def stream_prep_v2(
 
         # ── Build pipeline inputs ──────────────────────────────────────────────
         approved_summaries = session_service._load_approved_summaries_for_prep(session.patient_id)
+        logger.info(
+            f"[stream_prep] session={session_id} patient={session.patient_id} "
+            f"mode={mode.value} approved_summaries={len(approved_summaries)}"
+        )
+
+        if not approved_summaries:
+            async def _no_summaries_sse():
+                msg = (
+                    "לא קיימים סיכומים מאושרים עבור מטופל זה. "
+                    "אנא אשר לפחות סיכום אחד לפני יצירת ההכנה."
+                )
+                yield f"data: {json.dumps({'error': msg})}\n\n"
+            return StreamingResponse(
+                _no_summaries_sse(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
 
         modality_name = "generic_integrative"
         modality_prompt_module = None
