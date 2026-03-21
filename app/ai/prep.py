@@ -161,13 +161,6 @@ def _build_extraction_system_prompt(inp: PrepInput) -> str:
         "You are a clinical data extraction assistant preparing a pre-session brief.",
         "Your ONLY job is to extract structured prep data from approved session summaries and return it as JSON.",
         "Return ONLY valid JSON — no prose, no markdown fences, no explanation.",
-        "",
-        "EXTRACTION RULES (strictly enforced):",
-        "- Extract every concrete detail that appears in the summaries, even if a summary is short or partial.",
-        "- If a field has no data, set it to null or [] — never write explanatory text inside a JSON value.",
-        "- NEVER insert strings like 'no data available', 'based on protocol only', 'no previous sessions',",
-        "  'insufficient information', or any similar fallback note anywhere in the JSON output.",
-        "- Do not comment on what is missing. Silently omit empty fields.",
     ]
     if inp.modality_prompt_module:
         lines.append("")
@@ -222,7 +215,7 @@ def _build_extraction_user_prompt(inp: PrepInput) -> str:
     for i, s in enumerate(inp.approved_summaries, 1):
         date_str = str(s.get("session_date", ""))
         num = s.get("session_number", i)
-        text = s.get("full_summary") or ""  # guard: dict.get returns None if key present but None
+        text = s.get("full_summary", "")  # full text — no input truncation
         parts.append(f"\n[Session #{num} — {date_str}]\n{text}")
     parts.append("--- End of summaries ---")
 
@@ -241,13 +234,6 @@ def _build_render_system_prompt(inp: PrepInput) -> str:
         "You are preparing a pre-session brief for a therapist, in the therapist's voice.",
         "Write in natural, professional Hebrew. Be concise and clinically useful.",
         "Do NOT list fields mechanically — integrate the content into flowing prose or well-structured bullets.",
-        "",
-        "ABSOLUTE RULES (violations are critical errors):",
-        "- NEVER write phrases like 'no structured data available', 'based only on protocol', 'no previous sessions",
-        "  in file', 'no data exists', 'the file does not contain', or any similar fallback or disclaimer.",
-        "- If a section of the JSON is empty, skip it silently — do not mention the gap.",
-        "- Even a single data point (one theme, one homework item, one risk flag) is enough to write a useful brief.",
-        "- Write only what is concretely known. Do not comment on what is missing.",
     ]
     if inp.therapist_signature:
         lines.append("")
@@ -276,14 +262,10 @@ def _build_render_user_prompt(inp: PrepInput, prep_json: dict) -> str:
             "therapist's profession and approaches.\n"
             "- Do not invent protocol names or stages that are not present in the JSON.\n"
         )
-    sessions_analyzed = prep_json.get("sessions_analyzed", len(inp.approved_summaries))
     return (
         f"Mode: {inp.mode.value} — {token_guidance}{cbt_block}\n\n"
-        f"Below is structured data extracted from {sessions_analyzed} real approved session "
-        f"summary(ies) for this patient. Write a ready-to-use pre-session brief the therapist "
-        f"can scan in under 60 seconds, based directly on this data.\n\n"
-        "DO NOT write any disclaimer, fallback note, or comment about missing data. "
-        "If a section is sparse, simply write what is available and move on.\n\n"
+        "The structured prep data has been extracted. Render it as a ready-to-use "
+        "pre-session brief that the therapist can scan in under 60 seconds.\n\n"
         f"Structured prep data:\n{json.dumps(prep_json, ensure_ascii=False, indent=2)}\n\n"
         f"{length_guidance}\n"
         f"{protocol_guidance}"

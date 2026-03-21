@@ -1,6 +1,5 @@
 """Treatment plan service — Phase 7: Treatment Plan 2.0 + Drift Helper."""
 
-import time
 from datetime import datetime
 from typing import Optional
 
@@ -196,8 +195,6 @@ class TreatmentPlanService:
 
         Returns the saved TreatmentPlan ORM object (status=active).
         """
-        _t0 = time.monotonic()
-
         patient = self.db.query(Patient).filter(
             Patient.id == patient_id,
             Patient.therapist_id == therapist_id,
@@ -237,8 +234,6 @@ class TreatmentPlanService:
         # Compute version BEFORE the AI call so we don't hold a DB query open after a long await
         next_version = self._next_plan_version(patient_id, therapist_id)
 
-        _t_db = time.monotonic()
-
         inp = TreatmentPlanInput(
             client_id=patient_id,
             therapist_id=therapist_id,
@@ -252,8 +247,6 @@ class TreatmentPlanService:
 
         pipeline = TreatmentPlanPipeline(provider)
         result: TreatmentPlanResult = await pipeline.run(inp)
-
-        _t_llm = time.monotonic()
 
         plan = TreatmentPlan(
             patient_id=patient_id,
@@ -285,15 +278,9 @@ class TreatmentPlanService:
             generation_result=pipeline._last_render_result,
         )
 
-        _t_post = time.monotonic()
         logger.info(
-            f"[plan_timing] type=create patient={patient_id} version={next_version} "
-            f"summaries_n={len(approved_summaries)} "
-            f"total={int((_t_post - _t0) * 1000)}ms "
-            f"db={int((_t_db - _t0) * 1000)}ms "
-            f"llm={int((_t_llm - _t_db) * 1000)}ms "
-            f"post={int((_t_post - _t_llm) * 1000)}ms "
-            f"tokens={result.tokens_used} plan_id={plan.id}"
+            f"[treatment_plan] CREATE patient={patient_id} version={next_version} "
+            f"summaries={len(approved_summaries)} tokens={result.tokens_used} plan_id={plan.id}"
         )
         return plan
 
@@ -309,8 +296,6 @@ class TreatmentPlanService:
 
         Returns the new TreatmentPlan ORM object.
         """
-        _t0_upd = time.monotonic()
-
         patient = self.db.query(Patient).filter(
             Patient.id == patient_id,
             Patient.therapist_id == therapist_id,
@@ -345,8 +330,6 @@ class TreatmentPlanService:
         # Compute version BEFORE the AI call so we don't hold a DB query open after a long await
         next_version = self._next_plan_version(patient_id, therapist_id)
 
-        _t_db_upd = time.monotonic()
-
         inp = TreatmentPlanInput(
             client_id=patient_id,
             therapist_id=therapist_id,
@@ -360,8 +343,6 @@ class TreatmentPlanService:
 
         pipeline = TreatmentPlanPipeline(provider)
         result: TreatmentPlanResult = await pipeline.run(inp)
-
-        _t_llm_upd = time.monotonic()
 
         # Archive old plan
         existing.status = PlanStatus.ARCHIVED.value
@@ -395,15 +376,9 @@ class TreatmentPlanService:
             generation_result=pipeline._last_render_result,
         )
 
-        _t_post_upd = time.monotonic()
         logger.info(
-            f"[plan_timing] type=update patient={patient_id} version={next_version} "
-            f"summaries_n={len(approved_summaries)} "
-            f"total={int((_t_post_upd - _t0_upd) * 1000)}ms "
-            f"db={int((_t_db_upd - _t0_upd) * 1000)}ms "
-            f"llm={int((_t_llm_upd - _t_db_upd) * 1000)}ms "
-            f"post={int((_t_post_upd - _t_llm_upd) * 1000)}ms "
-            f"tokens={result.tokens_used} plan_id={new_plan.id}"
+            f"[treatment_plan] UPDATE patient={patient_id} version={next_version} "
+            f"parent={existing.id} tokens={result.tokens_used} plan_id={new_plan.id}"
         )
         return new_plan
 

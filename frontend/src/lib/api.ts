@@ -2,7 +2,6 @@ import axios from 'axios'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
 
-// API client — backend rolled back to 6251920 (classic prep flow, no precompute)
 // Create axios instance
 export const api = axios.create({
   baseURL: API_URL,

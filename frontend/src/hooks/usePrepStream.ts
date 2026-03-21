@@ -13,8 +13,6 @@ import { sessionsAPI } from '@/lib/api'
 
 export type PrepPhase = 'idle' | 'extracting' | 'rendering' | 'done' | 'error'
 
-const MIN_VISIBLE_MS = 5000
-
 const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000/api/v1'
 
 export function usePrepStream() {
@@ -28,19 +26,6 @@ export function usePrepStream() {
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
-
-    const startedAt = Date.now()
-
-    /** Delay setPhase('done') until at least MIN_VISIBLE_MS have elapsed */
-    const finishWithMinDelay = () => {
-      const elapsed = Date.now() - startedAt
-      const remaining = MIN_VISIBLE_MS - elapsed
-      if (remaining > 0) {
-        setTimeout(() => setPhase('done'), remaining)
-      } else {
-        setPhase('done')
-      }
-    }
 
     setPhase('extracting')
     setText('')
@@ -75,7 +60,7 @@ export function usePrepStream() {
               const data = line.slice(6)
 
               if (data === '[DONE]') {
-                finishWithMinDelay()
+                setPhase('done')
                 return
               }
 
@@ -86,7 +71,7 @@ export function usePrepStream() {
                 } else if (parsed.phase === 'rendering') {
                   setPhase('rendering')
                 } else if (parsed.phase === 'done') {
-                  finishWithMinDelay()
+                  setPhase('done')
                   return
                 } else if (parsed.chunk != null) {
                   setText((t) => t + parsed.chunk)
@@ -101,7 +86,7 @@ export function usePrepStream() {
             }
           }
 
-          finishWithMinDelay()
+          setPhase('done')
           return
         }
         // Non-OK HTTP response — fall through to legacy
@@ -126,7 +111,7 @@ export function usePrepStream() {
       if (data.watch_out_for?.length)
         parts.push('שים לב:\n' + (data.watch_out_for as string[]).map((s) => `• ${s}`).join('\n'))
       setText(parts.join('\n\n'))
-      finishWithMinDelay()
+      setPhase('done')
     } catch (e: unknown) {
       if ((e as { name?: string }).name === 'AbortError') return
       const axiosErr = e as { response?: { data?: { detail?: string } }; message?: string }

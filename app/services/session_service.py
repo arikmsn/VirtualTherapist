@@ -1,7 +1,6 @@
 """Session service - handles therapy sessions and summary generation"""
 
 import asyncio
-import time
 from typing import Optional, Dict, Any, List
 from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session, joinedload
@@ -1169,8 +1168,6 @@ class SessionService:
         Cache: if the same mode was generated in the last 10 minutes, returns the
         cached result from sessions.prep_json without an LLM call.
         """
-        _t0 = time.monotonic()
-
         session = self.db.query(TherapySession).filter(
             TherapySession.id == session_id,
             TherapySession.therapist_id == therapist_id,
@@ -1213,7 +1210,7 @@ class SessionService:
                 _approved_fp = [
                     {
                         "summary_id": s.summary.id,
-                        "approved_at": str(s.summary.edit_ended_at) if s.summary.edit_ended_at else None,
+                        "approved_at": str(s.summary.approved_at) if s.summary.approved_at else None,
                         "full_summary": s.summary.full_summary,
                     }
                     for s in _sessions_q_fp
@@ -1269,12 +1266,8 @@ class SessionService:
             ai_context=ai_ctx,
         )
 
-        _t_db = time.monotonic()
-
         pipeline = PrepPipeline(agent)
         result: PrepResult = await pipeline.run(prep_inp)
-
-        _t_llm = time.monotonic()
 
         # Completeness check on rendered text (fast model, best-effort)
         modality_pack = agent.modality_pack if hasattr(agent, "modality_pack") else None
@@ -1338,15 +1331,10 @@ class SessionService:
             generation_result=pipeline._last_render_result,
         )
 
-        _t_post = time.monotonic()
         logger.info(
-            f"[prep_timing] session={session_id} mode={mode.value} "
-            f"summaries_n={len(approved_summaries)} "
-            f"total={int((_t_post - _t0) * 1000)}ms "
-            f"db={int((_t_db - _t0) * 1000)}ms "
-            f"llm={int((_t_llm - _t_db) * 1000)}ms "
-            f"post={int((_t_post - _t_llm) * 1000)}ms "
-            f"tokens={result.tokens_used}"
+            f"[prep_v2] session={session_id} mode={mode.value} "
+            f"approved_summaries={len(approved_summaries)} "
+            f"tokens={result.tokens_used} completeness={result.completeness_score:.2f}"
         )
 
         return {
@@ -1378,10 +1366,8 @@ class SessionService:
         """
         Return the last *limit* approved summaries for *patient_id*, oldest → newest.
 
-        A summary is considered approved when EITHER:
-          - approved_by_therapist is True, OR
-          - status == SummaryStatus.APPROVED
-        This handles summaries approved before approved_by_therapist was reliably set.
+        SOURCE OF TRUTH: only rows where approved_by_therapist=True are included.
+        Uses joinedload to avoid N+1 queries on the summary relationship.
 
         Shared by generate_prep_v2 (non-streaming) and stream_prep_v2 (streaming).
         """
@@ -1395,18 +1381,13 @@ class SessionService:
             .order_by(TherapySession.session_date.asc())
             .all()
         )
-        total_with_summary = sum(1 for s in patient_sessions if s.summary)
         result = []
         for s in patient_sessions:
             summary = s.summary
-            is_approved = summary and (
-                summary.approved_by_therapist
-                or summary.status == SummaryStatus.APPROVED
-            )
-            if is_approved:
+            if summary and summary.approved_by_therapist:
                 result.append({
                     "summary_id": summary.id,
-                    "approved_at": str(summary.edit_ended_at) if summary.edit_ended_at else None,
+                    "approved_at": str(summary.approved_at) if summary.approved_at else None,
                     "session_date": str(s.session_date),
                     "session_number": s.session_number,
                     "full_summary": summary.full_summary,
@@ -1417,15 +1398,7 @@ class SessionService:
                     "mood_observed": summary.mood_observed,
                     "clinical_json": summary.clinical_json,
                 })
-        sliced = result[-limit:]
-        no_text = [s["summary_id"] for s in sliced if not s.get("full_summary")]
-        logger.warning(
-            f"[_load_approved_summaries_for_prep] patient={patient_id}: "
-            f"{total_with_summary} sessions with summaries, "
-            f"{len(result)} approved, {len(sliced)} returned (limit={limit}), "
-            f"summaries_with_no_full_summary={no_text}"
-        )
-        return sliced
+        return result[-limit:]
 
     async def delete_session(self, session_id: int, therapist_id: int) -> None:
         """
