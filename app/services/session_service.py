@@ -707,6 +707,19 @@ class SessionService:
         except RuntimeError:
             pass  # no event loop in tests — skip silently
 
+        # PatientTreatmentState rebuild hook (spec §6.3) — fire-and-forget, non-blocking
+        try:
+            from app.ai.state import rebuild_patient_treatment_state as _rebuild_pts
+            asyncio.create_task(
+                _rebuild_pts(
+                    db=self.db,
+                    patient_id=session.patient_id,
+                    therapist_id=therapist_id,
+                )
+            )
+        except RuntimeError:
+            pass  # no event loop in tests — skip silently
+
         # Audit log
         await self.audit_service.log_action(
             user_id=therapist_id,
@@ -1188,8 +1201,9 @@ class SessionService:
             age_seconds = (datetime.utcnow() - session.prep_generated_at).total_seconds()
             if age_seconds < self._PREP_CACHE_SECONDS:
                 logger.info(
-                    f"[prep_v2] session={session_id} mode={mode.value} — cache hit "
-                    f"(age={age_seconds:.0f}s)"
+                    f"[prep] session={session_id} patient={session.patient_id} "
+                    f"therapist={therapist_id} mode={mode.value} cache=hit reason=time "
+                    f"age={age_seconds:.0f}s"
                 )
                 return self._prep_cache_response(session)
             # Content-based fingerprint check — if inputs unchanged, return cache even after timeout
@@ -1226,8 +1240,9 @@ class SessionService:
                     and session.prep_input_fingerprint_version == FINGERPRINT_VERSION
                 ):
                     logger.info(
-                        f"[prep_v2] session={session_id} mode={mode.value} — fingerprint cache hit "
-                        f"(inputs unchanged, age={age_seconds:.0f}s)"
+                        f"[prep] session={session_id} patient={session.patient_id} "
+                        f"therapist={therapist_id} mode={mode.value} cache=hit reason=fingerprint "
+                        f"age={age_seconds:.0f}s"
                     )
                     return self._prep_cache_response(session)
 
@@ -1238,39 +1253,79 @@ class SessionService:
         # Resolve modality info from the agent's modality pack
         modality_name = "generic_integrative"
         modality_prompt_module = None
-        if agent.modality_pack:
-            modality_name = agent.modality_pack.name
-            modality_prompt_module = agent.modality_pack.prompt_module
+        modality_pack = agent.modality_pack if hasattr(agent, "modality_pack") else None
+        if modality_pack:
+            modality_name = modality_pack.name
+            modality_prompt_module = modality_pack.prompt_module
 
-        # Signature injection (Phase 6)
+        # Signature profile (used for style injection + envelope metadata)
         sig_engine = SignatureEngine(self.db)
         sig_profile = await sig_engine.get_active_profile(therapist_id)
-        signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
 
-        # AI protocol context
+        # AI protocol context (kept for protocol_block in render prompt)
         ai_ctx = build_ai_context_for_patient(
             agent.profile if agent.profile else None,
             patient,
             session_count=len(approved_summaries),
         )
 
-        prep_inp = PrepInput(
-            client_id=session.patient_id,
-            session_id=session_id,
-            therapist_id=therapist_id,
-            mode=mode,
-            modality=modality_name,
-            approved_summaries=approved_summaries,
-            modality_prompt_module=modality_prompt_module,
-            therapist_signature=signature_prompt,
-            ai_context=ai_ctx,
+        # Build LLMContextEnvelope (spec §4.2, §5.1)
+        from app.ai.context import build_llm_context_envelope_for_session
+        from app.models.therapist import Therapist as _Therapist
+        _therapist_obj = self.db.query(_Therapist).filter(_Therapist.id == therapist_id).first()
+        summary_orms = self._load_approved_summary_orms(session.patient_id)
+        _envelope_ok = False
+        try:
+            envelope = build_llm_context_envelope_for_session(
+                therapist=_therapist_obj,
+                profile=agent.profile,
+                signature=sig_profile,
+                patient=patient,
+                modality_pack=modality_pack,
+                summaries=summary_orms,
+                request_type="prep",
+                request_mode=mode.value,
+                extra={
+                    "modality": modality_name,
+                    "modality_prompt_module": modality_prompt_module,
+                    "ai_context": ai_ctx,
+                    "approved_sample_count": getattr(sig_profile, "approved_sample_count", 0) if sig_profile else 0,
+                    "min_samples_required": getattr(sig_profile, "min_samples_required", 5) if sig_profile else 5,
+                },
+            )
+            _envelope_ok = True
+        except Exception as _env_exc:
+            logger.warning(f"[prep_envelope] build failed, falling back to legacy path: {_env_exc!r}")
+            envelope = None
+
+        logger.info(
+            f"[prep] session={session_id} patient={session.patient_id} therapist={therapist_id} "
+            f"mode={mode.value} sessions_analyzed={len(approved_summaries)} "
+            f"style_version={getattr(agent.profile, 'style_version', 1) if agent.profile else 1} "
+            f"envelope_ok={_envelope_ok} cache=miss"
         )
 
         pipeline = PrepPipeline(agent)
-        result: PrepResult = await pipeline.run(prep_inp)
+        if envelope is not None:
+            # v3 path — envelope-based (spec §5.1, §5.2)
+            result: PrepResult = await pipeline.run_with_envelope(envelope)
+        else:
+            # Fallback to legacy PrepInput path
+            signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
+            prep_inp = PrepInput(
+                client_id=session.patient_id,
+                session_id=session_id,
+                therapist_id=therapist_id,
+                mode=mode,
+                modality=modality_name,
+                approved_summaries=approved_summaries,
+                modality_prompt_module=modality_prompt_module,
+                therapist_signature=signature_prompt,
+                ai_context=ai_ctx,
+            )
+            result = await pipeline.run(prep_inp)
 
         # Completeness check on rendered text (fast model, best-effort)
-        modality_pack = agent.modality_pack if hasattr(agent, "modality_pack") else None
         if agent.provider and result.rendered_text != "" and approved_summaries:
             checker = CompletenessChecker(agent.provider)
             completeness = await checker.check(
@@ -1332,9 +1387,10 @@ class SessionService:
         )
 
         logger.info(
-            f"[prep_v2] session={session_id} mode={mode.value} "
-            f"approved_summaries={len(approved_summaries)} "
-            f"tokens={result.tokens_used} completeness={result.completeness_score:.2f}"
+            f"[prep] session={session_id} mode={mode.value} "
+            f"sessions_analyzed={len(approved_summaries)} "
+            f"tokens={result.tokens_used} completeness={result.completeness_score:.2f} "
+            f"envelope_ok={_envelope_ok}"
         )
 
         return {
@@ -1357,6 +1413,35 @@ class SessionService:
             "sessions_analyzed": prep_json.get("sessions_analyzed", 0),
             "generated_at": session.prep_generated_at.isoformat() if session.prep_generated_at else None,
         }
+
+    def _load_approved_summary_orms(
+        self,
+        patient_id: int,
+        limit: int = 10,
+    ) -> list:
+        """
+        Return the last *limit* approved SessionSummary ORM objects for *patient_id*,
+        oldest → newest.
+
+        Used by envelope builders (build_patient_treatment_state etc.) which need ORM
+        objects rather than serialised dicts.  Same filter as _load_approved_summaries_for_prep.
+        """
+        patient_sessions = (
+            self.db.query(TherapySession)
+            .options(joinedload(TherapySession.summary))
+            .filter(
+                TherapySession.patient_id == patient_id,
+                TherapySession.summary_id.isnot(None),
+            )
+            .order_by(TherapySession.session_date.asc())
+            .all()
+        )
+        summaries = [
+            s.summary
+            for s in patient_sessions
+            if s.summary and s.summary.approved_by_therapist
+        ]
+        return summaries[-limit:]
 
     def _load_approved_summaries_for_prep(
         self,

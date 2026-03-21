@@ -893,46 +893,86 @@ async def stream_prep_v2(
             )
     # ── End cache check ───────────────────────────────────────────────────────
 
-    # Build approved summaries via service helper (joinedload, same logic as generate_prep_v2)
+    # Build approved summaries and envelope (same logic as generate_prep_v2)
     approved_summaries = session_service._load_approved_summaries_for_prep(session.patient_id)
 
     modality_name = "generic_integrative"
     modality_prompt_module = None
-    if agent.modality_pack:
-        modality_name = agent.modality_pack.name
-        modality_prompt_module = agent.modality_pack.prompt_module
+    modality_pack = agent.modality_pack if hasattr(agent, "modality_pack") else None
+    if modality_pack:
+        modality_name = modality_pack.name
+        modality_prompt_module = modality_pack.prompt_module
 
     sig_engine = SignatureEngine(db)
     sig_profile = await sig_engine.get_active_profile(current_therapist.id)
-    signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
 
-    # AI protocol context
     from app.core.ai_context import build_ai_context_for_patient as _build_ai_ctx
     from app.models.patient import Patient as _Patient
     _patient_for_ctx = db.query(_Patient).filter(_Patient.id == session.patient_id).first()
     _ai_ctx = _build_ai_ctx(agent.profile if agent.profile else None, _patient_for_ctx, session_count=len(approved_summaries))
 
-    prep_inp = PrepInput(
-        client_id=session.patient_id,
-        session_id=session_id,
-        therapist_id=current_therapist.id,
-        mode=mode,
-        modality=modality_name,
-        approved_summaries=approved_summaries,
-        modality_prompt_module=modality_prompt_module,
-        therapist_signature=signature_prompt,
-        ai_context=_ai_ctx,
+    # Build LLMContextEnvelope (spec §4.2, §5.1)
+    from app.ai.context import build_llm_context_envelope_for_session as _build_envelope
+    _summary_orms = session_service._load_approved_summary_orms(session.patient_id)
+    _envelope: dict | None = None
+    _envelope_ok = False
+    try:
+        _envelope = _build_envelope(
+            therapist=current_therapist,  # Therapist ORM object from get_current_therapist dep
+            profile=agent.profile,
+            signature=sig_profile,
+            patient=_patient_for_ctx,
+            modality_pack=modality_pack,
+            summaries=_summary_orms,
+            request_type="prep",
+            request_mode=mode.value,
+            extra={
+                "modality": modality_name,
+                "modality_prompt_module": modality_prompt_module,
+                "ai_context": _ai_ctx,
+                "approved_sample_count": getattr(sig_profile, "approved_sample_count", 0) if sig_profile else 0,
+                "min_samples_required": getattr(sig_profile, "min_samples_required", 5) if sig_profile else 5,
+            },
+        )
+        _envelope_ok = True
+    except Exception as _env_exc:
+        logger.warning(f"[stream_prep_envelope] build failed, falling back to legacy path: {_env_exc!r}")
+
+    logger.info(
+        f"[prep] session={session_id} patient={session.patient_id} therapist={current_therapist.id} "
+        f"mode={mode.value} sessions_analyzed={len(approved_summaries)} "
+        f"style_version={getattr(agent.profile, 'style_version', 1) if agent.profile else 1} "
+        f"envelope_ok={_envelope_ok} cache=miss stream=true"
     )
+
+    # Legacy PrepInput fallback (used only when envelope build fails)
+    _prep_inp = None
+    if not _envelope_ok:
+        signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
+        _prep_inp = PrepInput(
+            client_id=session.patient_id,
+            session_id=session_id,
+            therapist_id=current_therapist.id,
+            mode=mode,
+            modality=modality_name,
+            approved_summaries=approved_summaries,
+            modality_prompt_module=modality_prompt_module,
+            therapist_signature=signature_prompt,
+            ai_context=_ai_ctx,
+        )
 
     async def _sse_generator():
         pipeline = PrepPipeline(agent)
         full_text_chunks: list = []
+        # Use envelope if available, else legacy PrepInput
+        _extract_arg = _envelope if _envelope_ok else _prep_inp
+        _render_arg = _envelope if _envelope_ok else _prep_inp
         try:
             yield f"data: {json.dumps({'phase': 'extracting'})}\n\n"
-            prep_json = await pipeline.extract_only(prep_inp)
+            prep_json = await pipeline.extract_only(_extract_arg)
 
             yield f"data: {json.dumps({'phase': 'rendering'})}\n\n"
-            async for chunk in pipeline.render_stream(prep_inp, prep_json):
+            async for chunk in pipeline.render_stream(_render_arg, prep_json):
                 full_text_chunks.append(chunk)
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
 
@@ -962,7 +1002,7 @@ async def stream_prep_v2(
             db.add(session)
             db.commit()
         except Exception as exc:
-            logger.exception(f"stream_prep_v2 session={session_id} error: {exc!r}")
+            logger.exception(f"stream_prep session={session_id} error: {exc!r}")
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 
     return StreamingResponse(
