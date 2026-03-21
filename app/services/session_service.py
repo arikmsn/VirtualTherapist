@@ -1213,7 +1213,7 @@ class SessionService:
                 _approved_fp = [
                     {
                         "summary_id": s.summary.id,
-                        "approved_at": str(s.summary.approved_at) if s.summary.approved_at else None,
+                        "approved_at": str(s.summary.edit_ended_at) if s.summary.edit_ended_at else None,
                         "full_summary": s.summary.full_summary,
                     }
                     for s in _sessions_q_fp
@@ -1399,7 +1399,7 @@ class SessionService:
             if summary and summary.approved_by_therapist:
                 result.append({
                     "summary_id": summary.id,
-                    "approved_at": str(summary.approved_at) if summary.approved_at else None,
+                    "approved_at": str(summary.edit_ended_at) if summary.edit_ended_at else None,
                     "session_date": str(s.session_date),
                     "session_number": s.session_number,
                     "full_summary": summary.full_summary,
