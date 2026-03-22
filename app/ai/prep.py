@@ -725,6 +725,40 @@ class PrepPipeline:
         ):
             yield chunk
 
+    async def render_only(self, envelope: dict, prep_json: dict) -> "PrepResult":
+        """
+        Run the render call only — skip extraction.
+
+        Used by the render_only cache tier: the existing session.prep_json (previous
+        extraction) is rendered with a fresh envelope (current therapist style /
+        patient state). One LLM call → ~10–15 s response time.
+        """
+        sessions_analyzed: int = envelope["patient_state"]["metadata"]["sessions_analyzed"]
+        if sessions_analyzed == 0:
+            return PrepResult(
+                prep_json=prep_json,
+                rendered_text=_ZERO_APPROVED_HEBREW,
+                completeness_score=0.0,
+                completeness_data={},
+                model_used="none",
+                tokens_used=0,
+            )
+
+        rendered = await self._render_v2(envelope, prep_json)
+        render_result = self._last_render_result
+        tokens = 0
+        if render_result:
+            tokens = (render_result.prompt_tokens or 0) + (render_result.completion_tokens or 0)
+
+        return PrepResult(
+            prep_json=prep_json,
+            rendered_text=rendered,
+            completeness_score=0.0,
+            completeness_data={},
+            model_used=render_result.model_used if render_result else "unknown",
+            tokens_used=tokens,
+        )
+
     async def run_with_envelope(self, envelope: dict) -> "PrepResult":
         """
         Execute extraction + render using LLMContextEnvelope (spec §5.1, §5.2).
