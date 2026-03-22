@@ -143,6 +143,19 @@ async def register(
         except Exception:
             pass  # non-blocking
 
+        # Loops.so — fire-and-forget signup notification
+        try:
+            from app.services.loops_service import notify_loops_signup
+            import asyncio
+            name_parts = (therapist.full_name or "").split(" ", 1)
+            asyncio.create_task(notify_loops_signup(
+                email=therapist.email,
+                first_name=name_parts[0],
+                last_name=name_parts[1] if len(name_parts) > 1 else "",
+            ))
+        except Exception:
+            pass  # non-blocking
+
         return {
             "access_token": access_token,
             "token_type": "bearer",
@@ -616,6 +629,19 @@ async def google_complete_signup(
             db.commit()
         except Exception:
             pass
+
+        # Loops.so — fire-and-forget signup notification
+        try:
+            from app.services.loops_service import notify_loops_signup
+            import asyncio
+            name_parts = (therapist.full_name or "").split(" ", 1)
+            asyncio.create_task(notify_loops_signup(
+                email=therapist.email,
+                first_name=name_parts[0],
+                last_name=name_parts[1] if len(name_parts) > 1 else "",
+            ))
+        except Exception:
+            pass  # non-blocking
     else:
         # Edge case: account already exists — link Google if not linked yet
         if not therapist.google_sub:
