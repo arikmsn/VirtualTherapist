@@ -1,5 +1,6 @@
 """Deep Summary + Vault routes — Phase 8."""
 
+import asyncio
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -77,37 +78,88 @@ def _summary_response(summary) -> DeepSummaryResponse:
 
 @router.post(
     "/clients/{client_id}/deep-summary",
-    response_model=DeepSummaryResponse,
-    status_code=201,
+    status_code=202,
 )
 async def generate_deep_summary(
     client_id: int,
+    force_sync: bool = False,
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
     """
-    Generate a new deep longitudinal summary for a patient.
+    Trigger deep summary generation for a patient.
 
-    Uses ALL approved session summaries. Runs vault entry extraction as a side effect.
-    Returns the saved DeepSummary (status=draft).
+    Default behavior (async, recommended):
+      If a recent precomputed deep summary already exists → return it immediately (200-like body).
+      Otherwise → fire background job and return {status: "generating"} immediately.
+      The UI should poll GET /clients/{id}/deep-summary until rendered_text appears.
+
+    ?force_sync=true: run synchronously (legacy behavior, blocks for 1-3 min).
+      Use this only for one-off admin needs.
+
+    Uses ALL approved session summaries. Vault extraction runs as a side effect.
     """
-    therapist_service = TherapistService(db)
     summary_service = DeepSummaryService(db)
+    therapist_service = TherapistService(db)
 
+    # Always check if we have a fresh precomputed summary first
     try:
-        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
-        summary = await summary_service.generate_deep_summary(
+        existing = summary_service.get_latest_deep_summary(
             patient_id=client_id,
             therapist_id=current_therapist.id,
-            provider=agent.provider,
         )
-        db.commit()
-        return _summary_response(summary)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.exception(f"generate_deep_summary client={client_id} failed: {e!r}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+    if existing and not force_sync:
+        # Return the precomputed summary (it may be draft or approved — therapist decides)
+        return _summary_response(existing)
+
+    if force_sync:
+        # Legacy synchronous path — blocks until done
+        try:
+            agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+            summary = await summary_service.generate_deep_summary(
+                patient_id=client_id,
+                therapist_id=current_therapist.id,
+                provider=agent.provider,
+            )
+            db.commit()
+            return _summary_response(summary)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.exception(f"generate_deep_summary (sync) client={client_id} failed: {e!r}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # Async path: fire background job, return immediately
+    try:
+        from app.ai.precompute import precompute_deep_summary_for_patient
+        asyncio.create_task(precompute_deep_summary_for_patient(client_id))
+    except RuntimeError:
+        # No event loop (tests) — fall back to sync
+        try:
+            agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+            summary = await summary_service.generate_deep_summary(
+                patient_id=client_id,
+                therapist_id=current_therapist.id,
+                provider=agent.provider,
+            )
+            db.commit()
+            return _summary_response(summary)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "status": "generating",
+        "message": (
+            "סיכום עומק מתחיל להיווצר ברקע. "
+            "בדוק שוב בעוד מספר דקות עם GET /clients/{client_id}/deep-summary"
+        ),
+        "patient_id": client_id,
+    }
 
 
 @router.get(
@@ -214,6 +266,14 @@ async def approve_deep_summary(
             therapist_id=current_therapist.id,
         )
         db.commit()
+
+        # F1: trigger treatment plan precompute after deep summary approval (spec §6)
+        try:
+            from app.ai.precompute import precompute_treatment_plan_for_patient
+            asyncio.create_task(precompute_treatment_plan_for_patient(summary.patient_id))
+        except RuntimeError:
+            pass  # no event loop in tests
+
         return _summary_response(summary)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

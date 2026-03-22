@@ -3,6 +3,8 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
@@ -87,84 +89,133 @@ def _plan_response(plan) -> TreatmentPlanResponse:
 
 @router.post(
     "/clients/{client_id}/treatment-plan",
-    response_model=TreatmentPlanResponse,
-    status_code=201,
+    status_code=202,
 )
 async def create_treatment_plan(
     client_id: int,
     request: CreatePlanRequest,
+    force_sync: bool = False,
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
     """
-    Generate a new treatment plan for a patient (version 1).
+    Generate a treatment plan for a patient.
 
-    Auth: therapist must own the patient.
-    Source of truth: only approved summaries are used.
-    Returns 409 if an active plan already exists — use PUT to update.
+    Default behavior (async, recommended):
+      If an active plan already exists → return it immediately (no LLM call).
+      If no plan → fire background precompute job and return {status: "generating"}.
+      Poll GET /clients/{id}/treatment-plan to get the result.
+
+    ?force_sync=true: run synchronously (legacy, blocks for ~60-90 s).
     """
-    therapist_service = TherapistService(db)
     plan_service = TreatmentPlanService(db)
 
+    # Return existing active plan immediately (read-only, no LLM)
+    existing = plan_service.get_active_plan(
+        patient_id=client_id,
+        therapist_id=current_therapist.id,
+    )
+    if existing and not force_sync:
+        return _plan_response(existing)
+
+    if force_sync:
+        # Legacy synchronous path
+        therapist_service = TherapistService(db)
+        try:
+            agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+            plan = await plan_service.create_plan(
+                patient_id=client_id,
+                therapist_id=current_therapist.id,
+                session_ids=request.session_ids,
+                provider=agent.provider,
+            )
+            db.commit()
+            return _plan_response(plan)
+        except ValueError as e:
+            msg = str(e)
+            if "already exists" in msg:
+                raise HTTPException(status_code=409, detail=msg)
+            raise HTTPException(status_code=400, detail=msg)
+        except Exception as e:
+            logger.exception(f"create_treatment_plan client={client_id} failed: {e!r}")
+            raise HTTPException(
+                status_code=500,
+                detail="שגיאה זמנית בשמירת התוכנית הטיפולית, נסו שוב בעוד מספר דקות",
+            )
+
+    # Async path: fire background job, return immediately
     try:
-        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
-        plan = await plan_service.create_plan(
-            patient_id=client_id,
-            therapist_id=current_therapist.id,
-            session_ids=request.session_ids,
-            provider=agent.provider,
-        )
-        db.commit()
-        return _plan_response(plan)
-    except ValueError as e:
-        msg = str(e)
-        if "already exists" in msg:
-            raise HTTPException(status_code=409, detail=msg)
-        raise HTTPException(status_code=400, detail=msg)
-    except Exception as e:
-        logger.exception(f"create_treatment_plan client={client_id} failed: {e!r}")
-        raise HTTPException(
-            status_code=500,
-            detail="שגיאה זמנית בשמירת התוכנית הטיפולית, נסו שוב בעוד מספר דקות",
-        )
+        from app.ai.precompute import precompute_treatment_plan_for_patient
+        asyncio.create_task(precompute_treatment_plan_for_patient(client_id))
+    except RuntimeError:
+        pass  # no event loop in tests
+
+    return {
+        "status": "generating",
+        "message": "תוכנית טיפול מתחילה להיבנות ברקע. בדוק שוב בעוד מספר דקות.",
+        "patient_id": client_id,
+    }
 
 
 @router.put(
     "/clients/{client_id}/treatment-plan",
-    response_model=TreatmentPlanResponse,
+    status_code=202,
 )
 async def update_treatment_plan(
     client_id: int,
     request: UpdatePlanRequest,
+    force_sync: bool = False,
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
     """
     Update the active treatment plan (creates new version, archives old).
 
+    Default (async): fire background precompute job and return {status: "generating"}.
+    ?force_sync=true: run synchronously (blocks ~60-90 s).
     Returns 404 if no active plan exists — use POST to create one.
     """
-    therapist_service = TherapistService(db)
     plan_service = TreatmentPlanService(db)
+    existing = plan_service.get_active_plan(
+        patient_id=client_id,
+        therapist_id=current_therapist.id,
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="No active treatment plan found. Use POST to create one.")
 
+    if force_sync:
+        therapist_service = TherapistService(db)
+        try:
+            agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+            plan = await plan_service.update_plan(
+                patient_id=client_id,
+                therapist_id=current_therapist.id,
+                session_ids=request.session_ids,
+                provider=agent.provider,
+            )
+            db.commit()
+            return _plan_response(plan)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except Exception as e:
+            logger.exception(f"update_treatment_plan client={client_id} failed: {e!r}")
+            raise HTTPException(
+                status_code=500,
+                detail="שגיאה זמנית בשמירת התוכנית הטיפולית, נסו שוב בעוד מספר דקות",
+            )
+
+    # Async path: fire background job, return immediately
     try:
-        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
-        plan = await plan_service.update_plan(
-            patient_id=client_id,
-            therapist_id=current_therapist.id,
-            session_ids=request.session_ids,
-            provider=agent.provider,
-        )
-        db.commit()
-        return _plan_response(plan)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.exception(f"update_treatment_plan client={client_id} failed: {e!r}")
-        raise HTTPException(
-            status_code=500,
-            detail="שגיאה זמנית בשמירת התוכנית הטיפולית, נסו שוב בעוד מספר דקות",
-        )
+        from app.ai.precompute import precompute_treatment_plan_for_patient
+        asyncio.create_task(precompute_treatment_plan_for_patient(client_id))
+    except RuntimeError:
+        pass  # no event loop in tests
+
+    return {
+        "status": "generating",
+        "message": "עדכון תוכנית הטיפול החל ברקע. בדוק שוב בעוד מספר דקות.",
+        "patient_id": client_id,
+    }
 
 
 @router.get(
