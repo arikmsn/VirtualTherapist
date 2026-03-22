@@ -160,7 +160,11 @@ def _build_extraction_system_prompt(inp: PrepInput) -> str:
     lines = [
         "You are a clinical data extraction assistant preparing a pre-session brief.",
         "Your ONLY job is to extract structured prep data from approved session summaries and return it as JSON.",
-        "Return ONLY valid JSON — no prose, no markdown fences, no explanation.",
+        "OUTPUT RULES (strictly enforced):",
+        "  1. Respond with ONLY valid JSON — no explanations, no markdown, no prose.",
+        "  2. Start your response with { and end it with }.",
+        "  3. Use ONLY the field names defined in the schema below. Do not add extra fields.",
+        "  4. If a field has no data, use null or [] — never write explanatory text inside JSON values.",
     ]
     if inp.modality_prompt_module:
         lines.append("")
@@ -223,9 +227,46 @@ def _build_extraction_user_prompt(inp: PrepInput) -> str:
     parts.append(
         f"Fill the JSON schema below. Set mode_used='{inp.mode.value}' and "
         f"sessions_analyzed={len(inp.approved_summaries)}. "
-        "Set confidence to your confidence level (0.0–1.0)."
+        "Set confidence to your confidence level (0.0–1.0). "
+        "Keep all string values concise (≤ 100 chars each). "
+        "Start your response immediately with { and end it with }."
     )
     parts.append(f"\nJSON schema:\n{_SCHEMA_STR}")
+
+    # Minimal Hebrew example — structure reference only, not clinical content
+    _example = {
+        "client_snapshot": {
+            "primary_themes": ["חרדה חברתית", "דפוסי הימנעות"],
+            "active_goals": ["הפחתת הימנעות"],
+            "coping_strengths": ["מודעות עצמית"],
+            "persistent_challenges": ["קושי בחשיפה"],
+        },
+        "last_session_summary": {
+            "key_points": ["עבדנו על מחשבות אוטומטיות"],
+            "homework_given": "יומן מחשבות יומי",
+            "homework_status": "לא נבדק",
+            "open_threads": ["חרדה בעבודה"],
+        },
+        "upcoming_session_focus": {
+            "suggested_agenda": ["בדיקת מטלה", "ניסוי חשיפה"],
+            "questions_to_explore": ["מה הפעיל את החרדה השבוע?"],
+            "modality_checklist": [],
+            "risk_flags": [],
+        },
+        "longitudinal_patterns": {
+            "progress_narrative": "שיפור הדרגתי בוויסות רגשי",
+            "regression_signals": [],
+            "pattern_since_session_n": None,
+        },
+        "gaps": {"missing_information": [], "untouched_areas": [], "assessment_due": []},
+        "mode_used": inp.mode.value,
+        "sessions_analyzed": len(inp.approved_summaries),
+        "confidence": 0.8,
+    }
+    parts.append(
+        "\nMinimal valid example (structure only — use real data from summaries above):\n"
+        + json.dumps(_example, ensure_ascii=False)
+    )
     return "\n".join(parts)
 
 
@@ -286,8 +327,11 @@ def _build_extraction_system_prompt_v2(envelope: Dict[str, Any]) -> str:
     lines = [
         "You are a clinical data extraction assistant preparing a pre-session brief.",
         "Your ONLY job is to map the provided patient clinical state into the prep JSON schema.",
-        "Return ONLY valid JSON — no prose, no markdown fences, no explanation.",
-        "IMPORTANT: If a field has no data, set it to null or [] — never write explanatory text inside JSON values.",
+        "OUTPUT RULES (strictly enforced):",
+        "  1. Respond with ONLY valid JSON — no explanations, no markdown, no prose.",
+        "  2. Start your response with { and end it with }.",
+        "  3. Use ONLY the field names defined in the schema below. Do not add extra fields.",
+        "  4. If a field has no data, use null or [] — never write explanatory text inside JSON values.",
     ]
     modality_prompt_module = envelope.get("extra", {}).get("modality_prompt_module")
     if modality_prompt_module:
@@ -342,9 +386,46 @@ def _build_extraction_user_prompt_v2(envelope: Dict[str, Any]) -> str:
     parts.append(
         f"Fill the JSON schema below. Set mode_used='{mode.value}' and "
         f"sessions_analyzed={sessions_analyzed}. "
-        "Set confidence to your confidence level (0.0–1.0)."
+        "Set confidence to your confidence level (0.0–1.0). "
+        "Keep all string values concise (≤ 100 chars each). "
+        "Start your response immediately with { and end it with }."
     )
     parts.append(f"\nJSON schema:\n{_SCHEMA_STR}")
+
+    # Minimal Hebrew example — structure reference only
+    _example = {
+        "client_snapshot": {
+            "primary_themes": ["חרדה חברתית"],
+            "active_goals": ["הפחתת הימנעות"],
+            "coping_strengths": ["מודעות עצמית"],
+            "persistent_challenges": ["קושי בחשיפה"],
+        },
+        "last_session_summary": {
+            "key_points": ["עבדנו על מחשבות אוטומטיות"],
+            "homework_given": "יומן מחשבות",
+            "homework_status": "לא נבדק",
+            "open_threads": ["חרדה בעבודה"],
+        },
+        "upcoming_session_focus": {
+            "suggested_agenda": ["בדיקת מטלה"],
+            "questions_to_explore": ["מה הפעיל את החרדה?"],
+            "modality_checklist": [],
+            "risk_flags": [],
+        },
+        "longitudinal_patterns": {
+            "progress_narrative": "שיפור הדרגתי",
+            "regression_signals": [],
+            "pattern_since_session_n": None,
+        },
+        "gaps": {"missing_information": [], "untouched_areas": [], "assessment_due": []},
+        "mode_used": mode.value,
+        "sessions_analyzed": sessions_analyzed,
+        "confidence": 0.8,
+    }
+    parts.append(
+        "\nMinimal valid example (structure only — use real data from patient state above):\n"
+        + json.dumps(_example, ensure_ascii=False)
+    )
     return "\n".join(parts)
 
 
@@ -506,33 +587,114 @@ def _contains_no_data_phrase(text: str) -> bool:
 
 # ── JSON parser ───────────────────────────────────────────────────────────────
 
-def _parse_prep_json(raw: str, mode: PrepMode) -> dict:
-    """Parse extraction response into a dict. Falls back to empty scaffold on failure."""
-    cleaned = raw.strip()
-    if cleaned.startswith("```"):
-        parts = cleaned.split("```")
-        cleaned = parts[1] if len(parts) > 1 else cleaned
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
-    cleaned = cleaned.strip()
+def _empty_prep_scaffold(mode: PrepMode, sessions_analyzed: int = 0) -> dict:
+    """Return an empty prep scaffold. sessions_analyzed=0 signals a failed extraction."""
+    return {
+        "client_snapshot": {
+            "primary_themes": [], "active_goals": [],
+            "coping_strengths": [], "persistent_challenges": [],
+        },
+        "last_session_summary": {
+            "key_points": [], "homework_given": None,
+            "homework_status": None, "open_threads": [],
+        },
+        "upcoming_session_focus": {
+            "suggested_agenda": [], "questions_to_explore": [],
+            "modality_checklist": [], "risk_flags": [],
+        },
+        "longitudinal_patterns": {
+            "progress_narrative": "", "regression_signals": [],
+            "pattern_since_session_n": None,
+        },
+        "gaps": {"missing_information": [], "untouched_areas": [], "assessment_due": []},
+        "mode_used": mode.value,
+        "sessions_analyzed": sessions_analyzed,
+        "confidence": 0.0,
+    }
 
+
+def _parse_prep_json(raw: "str | dict", mode: PrepMode, sessions_analyzed: int = 0) -> dict:
+    """
+    Parse extraction response into a dict.
+
+    Accepts str or dict (dict pass-through for callers that pre-parsed).
+    Tries in order:
+      1. Direct json.loads if string.
+      2. Regex fence strip (```json ... ```) then json.loads.
+      3. Brace-matching: find first { and its matching } by depth counting.
+    Falls back to empty scaffold only when all three fail.
+    """
+    import re
+
+    # Already a dict — pass through
+    if isinstance(raw, dict):
+        return raw
+
+    cleaned = raw.strip()
+
+    # Attempt 1: direct parse
     try:
         data = json.loads(cleaned)
         if isinstance(data, dict):
             return data
     except json.JSONDecodeError:
-        logger.warning("PrepPipeline._extract: non-JSON response, using empty scaffold")
+        pass
 
-    return {
-        "client_snapshot": {"primary_themes": [], "active_goals": [], "coping_strengths": [], "persistent_challenges": []},
-        "last_session_summary": {"key_points": [], "homework_given": None, "homework_status": None, "open_threads": []},
-        "upcoming_session_focus": {"suggested_agenda": [], "questions_to_explore": [], "modality_checklist": [], "risk_flags": []},
-        "longitudinal_patterns": {"progress_narrative": "", "regression_signals": [], "pattern_since_session_n": None},
-        "gaps": {"missing_information": [], "untouched_areas": [], "assessment_due": []},
-        "mode_used": mode.value,
-        "sessions_analyzed": 0,
-        "confidence": 0.0,
-    }
+    # Attempt 2: strip markdown fences
+    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL)
+    if fence_match:
+        try:
+            data = json.loads(fence_match.group(1))
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError:
+            pass
+
+    # Attempt 3: brace-matching salvage — find first { and walk to its closing }
+    start = cleaned.find("{")
+    if start != -1:
+        depth = 0
+        in_string = False
+        escape_next = False
+        for i, ch in enumerate(cleaned[start:], start):
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == "\\" and in_string:
+                escape_next = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = cleaned[start:i + 1]
+                    try:
+                        data = json.loads(candidate)
+                        if isinstance(data, dict):
+                            logger.warning(
+                                "PrepPipeline._extract: salvaged JSON via brace-matching "
+                                "(prefix=%d chars, suffix=%d chars)",
+                                start,
+                                len(cleaned) - i - 1,
+                            )
+                            return data
+                    except json.JSONDecodeError:
+                        break
+
+    # All attempts failed — log debug info and return empty scaffold
+    logger.warning(
+        "PrepPipeline._extract: non-JSON response, using empty scaffold "
+        "(first 300: %r … last 100: %r)",
+        cleaned[:300],
+        cleaned[-100:],
+    )
+    return _empty_prep_scaffold(mode, sessions_analyzed=0)
 
 
 # ── PrepPipeline ──────────────────────────────────────────────────────────────
@@ -633,9 +795,13 @@ class PrepPipeline:
             model=model_id,
             flow_type=FlowType.SESSION_PREP,
             route_reason=route_reason,
+            # max_tokens for extraction: production traces show fully-populated DEEP JSON
+            # is ~1200–1800 tokens. 3200 gives a 2× safety buffer without being wasteful.
+            # (Default 2000 caused truncation: production log showed out=2000 exactly.)
+            max_tokens=3200,
         )
         self._last_extraction_result = result
-        return _parse_prep_json(result.content, inp.mode)
+        return _parse_prep_json(result.content, inp.mode, sessions_analyzed=len(inp.approved_summaries))
 
     async def _render(self, inp: PrepInput, prep_json: dict) -> str:
         """Call 2: render prep_json into Hebrew prose with optional therapist signature."""
@@ -724,14 +890,19 @@ class PrepPipeline:
             model=model_id,
             flow_type=FlowType.SESSION_PREP,
             route_reason=route_reason,
+            # max_tokens for extraction: production traces show fully-populated DEEP JSON
+            # is ~1200–1800 tokens. 3200 gives a 2× safety buffer without being wasteful.
+            # (Default 2000 caused truncation: production log showed out=2000 exactly.)
+            max_tokens=3200,
         )
         self._last_extraction_result = result
+        sessions_analyzed: int = envelope["patient_state"]["metadata"]["sessions_analyzed"]
         mode_str = envelope.get("request_mode") or "concise"
         try:
             mode = PrepMode(mode_str)
         except ValueError:
             mode = PrepMode.CONCISE
-        return _parse_prep_json(result.content, mode)
+        return _parse_prep_json(result.content, mode, sessions_analyzed=sessions_analyzed)
 
     async def _render_v2(self, envelope: dict, prep_json: dict) -> str:
         """Envelope-based render call (spec §5.2)."""
