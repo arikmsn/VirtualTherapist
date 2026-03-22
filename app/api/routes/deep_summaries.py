@@ -102,6 +102,28 @@ async def generate_deep_summary(
     summary_service = DeepSummaryService(db)
     therapist_service = TherapistService(db)
 
+    # Threshold gate: require ≥ 3 approved summaries before generating
+    from app.models.session import Session as TherapySession, SessionSummary
+    approved_count = (
+        db.query(TherapySession)
+        .join(SessionSummary, TherapySession.summary_id == SessionSummary.id)
+        .filter(
+            TherapySession.patient_id == client_id,
+            TherapySession.therapist_id == current_therapist.id,
+            SessionSummary.approved_by_therapist.is_(True),
+        )
+        .count()
+    )
+    if approved_count < 3:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Deep Summary requires at least 3 approved session summaries."
+                if approved_count == 0
+                else "Deep Summary is available only after at least 3 approved session summaries."
+            ),
+        )
+
     # Always check if we have a fresh precomputed summary first
     try:
         existing = summary_service.get_latest_deep_summary(

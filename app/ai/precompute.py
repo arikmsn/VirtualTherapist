@@ -321,6 +321,17 @@ async def precompute_deep_summary_for_patient(patient_id: int) -> None:
         therapist, profile, patient, modality_pack = _load_context(db, patient_id)
         therapist_id = patient.therapist_id
 
+        # Minimum threshold: require ≥ 3 approved summaries
+        approved_summaries = _load_approved_summary_orms(db, patient_id, therapist_id)
+        summary_count = len(approved_summaries)
+        if summary_count < 3:
+            logger.warning(
+                "[deep_precompute] patient=%s skipped: only %d approved summaries (need 3)",
+                patient_id,
+                summary_count,
+            )
+            return
+
         should_run, reason = _should_precompute_deep_summary(db, patient_id, therapist_id)
         if not should_run:
             logger.warning(
@@ -332,8 +343,6 @@ async def precompute_deep_summary_for_patient(patient_id: int) -> None:
         from app.services.deep_summary_service import DeepSummaryService
 
         agent = await TherapistService(db).get_agent_for_therapist(therapist_id)
-        approved_summaries = _load_approved_summary_orms(db, patient_id, therapist_id)
-        summary_count = len(approved_summaries)
         logger.warning(
             "[deep_precompute] patient=%s summaries=%d reason=%s",
             patient_id,
