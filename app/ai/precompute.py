@@ -324,11 +324,10 @@ async def precompute_deep_summary_for_patient(patient_id: int) -> None:
         # Minimum threshold: require ≥ 3 approved summaries
         approved_summaries = _load_approved_summary_orms(db, patient_id, therapist_id)
         summary_count = len(approved_summaries)
-        if summary_count < 3:
+        if summary_count == 0:
             logger.warning(
-                "[deep_precompute] patient=%s skipped: only %d approved summaries (need 3)",
+                "[deep_precompute] patient=%s skipped: 0 approved summaries",
                 patient_id,
-                summary_count,
             )
             return
 

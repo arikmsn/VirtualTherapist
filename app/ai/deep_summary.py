@@ -360,9 +360,22 @@ def _build_render_user(
             "naturally in Hebrew.\n"
         )
 
+    n_sessions = len(inp.approved_summaries)
+    if n_sessions < 3:
+        initial_note = (
+            f"סיכום עומק ראשוני המבוסס על {n_sessions} "
+            f"{'פגישה ראשונה' if n_sessions == 1 else 'פגישות ראשונות'}.\n"
+            "הצמד באופן הדוק לתוכן הסיכומים הקיימים בלבד. "
+            "אל תסיק היסטוריה ארוכה, דפוסים או תובנות שאינם מתועדים מפורשות. "
+            "הצג זאת כנקודת מבט אורכית ראשונית המבוססת על נתונים מוגבלים.\n\n"
+        )
+    else:
+        initial_note = ""
+
     return (
         "The structured treatment data has been extracted. "
         "Render it as a complete formal Hebrew clinical narrative.\n\n"
+        f"{initial_note}"
         f"{protocol_guidance}"
         f"{protocol_block}\n"
         f"Structured summary:\n{json.dumps(summary_json, ensure_ascii=False, indent=2)}\n"
@@ -682,9 +695,22 @@ class DeepSummaryPipeline:
                 "naturally in Hebrew.\n"
             )
 
+        n_sessions = len(inp.approved_summaries)
+        if n_sessions < 3:
+            initial_note = (
+                f"סיכום עומק ראשוני המבוסס על {n_sessions} "
+                f"{'פגישה ראשונה' if n_sessions == 1 else 'פגישות ראשונות'}.\n"
+                "הצמד באופן הדוק לתוכן הסיכומים הקיימים בלבד. "
+                "אל תסיק היסטוריה ארוכה, דפוסים או תובנות שאינם מתועדים מפורשות. "
+                "הצג זאת כנקודת מבט אורכית ראשונית המבוססת על נתונים מוגבלים.\n\n"
+            )
+        else:
+            initial_note = ""
+
         user = (
             f"Modality: {inp.modality}\n"
-            f"Total sessions: {len(inp.approved_summaries)}\n"
+            f"Total sessions: {n_sessions}\n"
+            f"{initial_note}"
             f"{vault_section}\n"
             f"{protocol_guidance}"
             f"{protocol_block}\n"

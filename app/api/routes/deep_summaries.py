@@ -114,14 +114,10 @@ async def generate_deep_summary(
         )
         .count()
     )
-    if approved_count < 3:
+    if approved_count == 0:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Deep Summary requires at least 3 approved session summaries."
-                if approved_count == 0
-                else "Deep Summary is available only after at least 3 approved session summaries."
-            ),
+            detail="כדי לייצר סיכום עומק יש ליצור קודם סיכומי פגישות מאושרים למטופל.",
         )
 
     # Always check if we have a fresh precomputed summary first
