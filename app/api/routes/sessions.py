@@ -895,6 +895,11 @@ async def stream_prep_v2(
 
     # Shared setup for TIER 2 and 3
     approved_summaries = session_service._load_approved_summaries_for_prep(session.patient_id)
+    logger.warning(
+        "[prep_stream] loaded %d approved summaries for patient=%s",
+        len(approved_summaries),
+        session.patient_id,
+    )
 
     modality_name = "generic_integrative"
     modality_prompt_module = None
