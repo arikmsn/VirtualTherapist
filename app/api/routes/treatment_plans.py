@@ -227,15 +227,53 @@ async def get_treatment_plan(
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
-    """Return the active treatment plan with current drift_score and drift_flags."""
+    """
+    Return the active treatment plan.
+
+    If no plan exists yet, generates an initial protocol-based plan on the fly,
+    saves it, and returns it. Never returns 404 — there is always a plan.
+    """
     plan_service = TreatmentPlanService(db)
+    therapist_service = TherapistService(db)
     try:
         plan = plan_service.get_active_plan(
             patient_id=client_id,
             therapist_id=current_therapist.id,
         )
         if not plan:
-            raise HTTPException(status_code=404, detail="No active treatment plan found")
+            # No plan yet — generate initial protocol-based plan synchronously
+            logger.warning(
+                "[treatment_plan] GET client=%s no plan found — generating initial plan",
+                client_id,
+            )
+            try:
+                agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+                plan = await plan_service.create_plan(
+                    patient_id=client_id,
+                    therapist_id=current_therapist.id,
+                    session_ids=None,
+                    provider=agent.provider,
+                )
+                db.commit()
+                logger.warning(
+                    "[treatment_plan] GET client=%s initial plan created plan_id=%s",
+                    client_id,
+                    plan.id,
+                )
+            except ValueError as e:
+                if "already exists" in str(e):
+                    # Race condition: created between our check and create
+                    plan = plan_service.get_active_plan(client_id, current_therapist.id)
+                    if not plan:
+                        raise HTTPException(status_code=500, detail="Treatment plan race condition")
+                else:
+                    raise HTTPException(status_code=400, detail=str(e))
+            except Exception as e:
+                logger.exception(f"get_treatment_plan initial generation client={client_id} failed: {e!r}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="שגיאה זמנית ביצירת התוכנית הטיפולית, נסו שוב בעוד מספר דקות",
+                )
         return _plan_response(plan)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

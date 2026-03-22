@@ -103,12 +103,6 @@ TREATMENT_PLAN_JSON_SCHEMA: dict = {
 
 _SCHEMA_STR = json.dumps(TREATMENT_PLAN_JSON_SCHEMA, ensure_ascii=False, indent=2)
 
-# ── Zero-summary fallback ─────────────────────────────────────────────────────
-
-_ZERO_APPROVED_HEBREW = (
-    "לא קיימים סיכומים מאושרים עבור לקוח זה. "
-    "לא ניתן להפיק תוכנית טיפול ללא לפחות סיכום אחד מאושר."
-)
 
 
 # ── Drift threshold constants ─────────────────────────────────────────────────
@@ -131,22 +125,50 @@ _CBT_PLAN_ADDON = """\
 
 def _build_extraction_system_prompt(inp: TreatmentPlanInput) -> str:
     is_update = inp.existing_plan is not None
-    mode_note = (
-        "You are UPDATING an existing treatment plan. "
-        "CRITICAL rules for updates:\n"
-        "- Preserve all existing goal_id and milestone_id identifiers exactly.\n"
-        "- Update 'status' fields based on evidence from the session summaries.\n"
-        "- Add new goals only if clearly warranted by the summaries.\n"
-        "- Never silently remove goals — if a goal is no longer pursued, "
-        "set its status to 'dropped'.\n"
-        "- Increment the 'version' field by 1.\n"
-        if is_update
-        else (
+    no_summaries = not inp.approved_summaries
+    cbt_block = f"\n\n{_CBT_PLAN_ADDON.strip()}" if inp.modality.lower() == "cbt" else ""
+
+    if no_summaries:
+        mode_note = (
+            "You are CREATING an initial protocol-based treatment plan. "
+            "No approved session summaries exist yet for this patient. "
+            "Assign sequential goal IDs (G1, G2, …) and milestone IDs (M1, M2, …)."
+        )
+        data_instruction = (
+            "IMPORTANT: No session history exists yet. "
+            "Create a protocol-based initial plan using the therapist profile, modality, "
+            "and protocol context provided below. "
+            "Do NOT say 'no data', 'unknown', or 'none' — always propose concrete initial "
+            "goals, interventions, and milestones appropriate for this modality and protocol. "
+            "Set all goal statuses to 'not_started'. "
+            "Set confidence to 0.6 (reflecting protocol-based estimates without session data)."
+            f"{cbt_block}"
+        )
+    elif is_update:
+        mode_note = (
+            "You are UPDATING an existing treatment plan. "
+            "CRITICAL rules for updates:\n"
+            "- Preserve all existing goal_id and milestone_id identifiers exactly.\n"
+            "- Update 'status' fields based on evidence from the session summaries.\n"
+            "- Add new goals only if clearly warranted by the summaries.\n"
+            "- Never silently remove goals — if a goal is no longer pursued, "
+            "set its status to 'dropped'.\n"
+            "- Increment the 'version' field by 1.\n"
+        )
+        data_instruction = (
+            "IMPORTANT: Do not fabricate clinical information. "
+            f"Extract only what is documented in the approved summaries.{cbt_block}"
+        )
+    else:
+        mode_note = (
             "You are CREATING a new treatment plan. "
             "Assign sequential goal IDs (G1, G2, …) and milestone IDs (M1, M2, …)."
         )
-    )
-    cbt_block = f"\n\n{_CBT_PLAN_ADDON.strip()}" if inp.modality.lower() == "cbt" else ""
+        data_instruction = (
+            "IMPORTANT: Do not fabricate clinical information. "
+            f"Extract only what is documented in the approved summaries.{cbt_block}"
+        )
+
     return "\n".join([
         "You are a clinical data extraction assistant.",
         "Your ONLY job is to return valid JSON conforming exactly to the schema below.",
@@ -156,8 +178,7 @@ def _build_extraction_system_prompt(inp: TreatmentPlanInput) -> str:
         "",
         mode_note,
         "",
-        "IMPORTANT: Do not fabricate clinical information. "
-        f"Extract only what is documented in the approved summaries.{cbt_block}",
+        data_instruction,
     ])
 
 
@@ -199,13 +220,24 @@ def _build_extraction_user_prompt(inp: TreatmentPlanInput) -> str:
         parts.append(json.dumps(inp.existing_plan, ensure_ascii=False, indent=2))
         parts.append("")
 
-    parts.append("--- Approved session summaries (oldest → newest) ---")
-    for i, s in enumerate(inp.approved_summaries, 1):
-        date_str = str(s.get("session_date", ""))
-        num = s.get("session_number", i)
-        text = (s.get("full_summary") or "")[:3000]
-        parts.append(f"\n[Session #{num} — {date_str}]\n{text}")
-    parts.append("--- End of summaries ---")
+    if inp.approved_summaries:
+        parts.append("--- Approved session summaries (oldest → newest) ---")
+        for i, s in enumerate(inp.approved_summaries, 1):
+            date_str = str(s.get("session_date", ""))
+            num = s.get("session_number", i)
+            text = (s.get("full_summary") or "")[:3000]
+            parts.append(f"\n[Session #{num} — {date_str}]\n{text}")
+        parts.append("--- End of summaries ---")
+    else:
+        parts.append("--- No session history available yet ---")
+        parts.append(
+            "No approved session summaries exist for this patient. "
+            "Propose a protocol-based initial treatment plan based on the therapist profile "
+            "and protocol context above. Use the modality's typical structure (phases, "
+            "standard goals, core interventions). "
+            "All goals must have status='not_started'. Never leave fields empty or null — "
+            "always fill in clinically appropriate initial values."
+        )
 
     parts.append("")
     version = (inp.existing_plan.get("version", 1) + 1) if inp.existing_plan else 1
@@ -304,9 +336,20 @@ def _build_render_user_prompt(inp: TreatmentPlanInput, plan_json: dict) -> str:
             "or clearly separate sections (e.g., CBT vs. OT), depending on what fits the summaries.\n"
             "- Do not mention protocol IDs or JSON terms; describe the plan in natural clinical Hebrew.\n\n"
         )
+    if not inp.approved_summaries:
+        initial_label = (
+            "⚠️ תוכנית ראשונית מבוססת פרוטוקול — טרם התקיימו פגישות מאושרות.\n"
+            "Begin the document with this label on the first line, prominently. "
+            "Explain briefly that this plan is based on the therapist's approach and protocols "
+            "and will be refined as session summaries accumulate.\n\n"
+        )
+    else:
+        initial_label = ""
+
     return (
         "The structured treatment plan has been extracted. "
         "Render it as a formal Hebrew clinical treatment plan document.\n\n"
+        f"{initial_label}"
         f"{protocol_guidance}"
         f"{protocol_block}\n"
         f"Structured plan data:\n{json.dumps(plan_json, ensure_ascii=False, indent=2)}\n\n"
@@ -448,15 +491,6 @@ class TreatmentPlanPipeline:
 
     async def run(self, inp: TreatmentPlanInput) -> TreatmentPlanResult:
         """Execute both calls and return a TreatmentPlanResult."""
-        if not inp.approved_summaries:
-            return TreatmentPlanResult(
-                plan_json={},
-                rendered_text=_ZERO_APPROVED_HEBREW,
-                version=1,
-                model_used="none",
-                tokens_used=0,
-            )
-
         plan_json = await self._extract(inp)
 
         if not _has_plan_content(plan_json):
