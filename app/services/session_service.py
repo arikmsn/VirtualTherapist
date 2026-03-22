@@ -720,6 +720,18 @@ class SessionService:
         except RuntimeError:
             pass  # no event loop in tests — skip silently
 
+        # Precompute hooks — fire-and-forget background jobs (spec D1, E1)
+        # Each job creates its own DB session; safe to call here.
+        try:
+            from app.ai.precompute import (
+                precompute_prep_for_patient,
+                precompute_deep_summary_for_patient,
+            )
+            asyncio.create_task(precompute_prep_for_patient(session.patient_id))
+            asyncio.create_task(precompute_deep_summary_for_patient(session.patient_id))
+        except RuntimeError:
+            pass  # no event loop in tests
+
         # Audit log
         await self.audit_service.log_action(
             user_id=therapist_id,
@@ -1163,7 +1175,8 @@ class SessionService:
 
     # ── Pre-Session Prep 2.0 (Phase 4) ───────────────────────────────────────
 
-    _PREP_CACHE_SECONDS = 600  # 10 minutes
+    _PREP_CACHE_SECONDS = 600   # fast-path: skip fingerprint check if age < 10 min
+    _PREP_FRESH_SECONDS = 86_400  # 24 h — serve precomputed rendered_text within this window
 
     async def generate_prep_v2(
         self,
@@ -1173,14 +1186,16 @@ class SessionService:
         agent: "TherapyAgent",
     ) -> dict:
         """
-        Generate a structured pre-session prep brief using the Phase 4 two-call pipeline.
+        Generate a pre-session prep brief.  Three-tier cache (latency spec §D3):
 
-        SOURCE OF TRUTH RULE: only summaries where approved_by_therapist=True are used.
-        Returns a dict suitable for the PrepResponse schema.
+        TIER 1 source=precomputed  — rendered_text fresh + fingerprint match → DB read only (~1 s)
+        TIER 2 source=render_only  — prep_json exists, rendered_text stale → one LLM render call (~10–15 s)
+        TIER 3 source=full_pipeline — no prep_json → extraction + render (~60–90 s, rare)
 
-        Cache: if the same mode was generated in the last 10 minutes, returns the
-        cached result from sessions.prep_json without an LLM call.
+        SOURCE OF TRUTH: only summaries with approved_by_therapist=True are used.
         """
+        from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
+
         session = self.db.query(TherapySession).filter(
             TherapySession.id == session_id,
             TherapySession.therapist_id == therapist_id,
@@ -1192,48 +1207,41 @@ class SessionService:
         if not patient:
             raise ValueError("Patient not found")
 
-        # Cache check — same mode, generated within last 10 minutes
+        style_version = getattr(agent.profile, "style_version", 1) if agent.profile else 1
+
+        # ── TIER 1: precomputed rendered text ─────────────────────────────────
+        # Serve immediately if: same mode + rendered_text exists + within 24 h + fingerprint OK
         if (
-            session.prep_json is not None
+            session.prep_rendered_text is not None
+            and session.prep_json is not None
             and session.prep_mode == mode.value
             and session.prep_generated_at is not None
+            and session.prep_input_fingerprint is not None
         ):
             age_seconds = (datetime.utcnow() - session.prep_generated_at).total_seconds()
-            if age_seconds < self._PREP_CACHE_SECONDS:
-                logger.warning(
-                    f"[prep_v3] session={session_id} patient={session.patient_id} "
-                    f"therapist={therapist_id} mode={mode.value} cache=hit reason=time "
-                    f"age={age_seconds:.0f}s"
-                )
-                return self._prep_cache_response(session)
-            # Content-based fingerprint check — if inputs unchanged, return cache even after timeout
-            # (avoids redundant AI call when therapist repeatedly clicks "generate")
-            if session.prep_input_fingerprint:
-                from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
-                # We need the summaries to compute the fingerprint; fetch them now
-                _sessions_q_fp = (
-                    self.db.query(TherapySession)
-                    .options(joinedload(TherapySession.summary))
-                    .filter(
-                        TherapySession.patient_id == session.patient_id,
-                        TherapySession.summary_id.isnot(None),
+            if age_seconds <= self._PREP_FRESH_SECONDS:
+                # Fast path: skip fingerprint if age < 10 min (just generated / precomputed)
+                if age_seconds < self._PREP_CACHE_SECONDS:
+                    logger.warning(
+                        f"[prep_v3] session={session_id} patient={session.patient_id} "
+                        f"therapist={therapist_id} mode={mode.value} source=precomputed "
+                        f"cache=hit reason=time age={age_seconds:.0f}s"
                     )
-                    .order_by(TherapySession.session_date.asc())
-                    .all()
-                )
-                _approved_fp = [
-                    {
-                        "summary_id": s.summary.id,
-                        "approved_at": str(s.summary.approved_at) if s.summary.approved_at else None,
-                        "full_summary": s.summary.full_summary,
-                    }
-                    for s in _sessions_q_fp
-                    if s.summary and s.summary.approved_by_therapist
-                ][-10:]
+                    return self._prep_cache_response(session)
+
+                # Full fingerprint check: re-verify inputs still match
+                _approved_fp = self._load_approved_summaries_for_prep(session.patient_id)
                 _fp = compute_fingerprint({
                     "mode": mode.value,
-                    "summaries": _approved_fp,
-                    "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
+                    "summaries": [
+                        {
+                            "summary_id": s.get("summary_id"),
+                            "approved_at": s.get("approved_at"),
+                            "full_summary": s.get("full_summary"),
+                        }
+                        for s in _approved_fp
+                    ],
+                    "style_version": style_version,
                 })
                 if (
                     _fp == session.prep_input_fingerprint
@@ -1241,16 +1249,15 @@ class SessionService:
                 ):
                     logger.warning(
                         f"[prep_v3] session={session_id} patient={session.patient_id} "
-                        f"therapist={therapist_id} mode={mode.value} cache=hit reason=fingerprint "
-                        f"age={age_seconds:.0f}s"
+                        f"therapist={therapist_id} mode={mode.value} source=precomputed "
+                        f"cache=hit reason=fingerprint age={age_seconds:.0f}s"
                     )
                     return self._prep_cache_response(session)
+                # Fingerprint mismatch → inputs changed → fall through to TIER 2
 
-        # Fetch ALL approved summaries for this patient, oldest → newest
-        # SOURCE OF TRUTH: approved_by_therapist=True ONLY — never ai_draft_text
+        # ── Shared setup (used by TIER 2 and TIER 3) ─────────────────────────
         approved_summaries = self._load_approved_summaries_for_prep(session.patient_id)
 
-        # Resolve modality info from the agent's modality pack
         modality_name = "generic_integrative"
         modality_prompt_module = None
         modality_pack = agent.modality_pack if hasattr(agent, "modality_pack") else None
@@ -1258,23 +1265,21 @@ class SessionService:
             modality_name = modality_pack.name
             modality_prompt_module = modality_pack.prompt_module
 
-        # Signature profile (used for style injection + envelope metadata)
         sig_engine = SignatureEngine(self.db)
         sig_profile = await sig_engine.get_active_profile(therapist_id)
 
-        # AI protocol context (kept for protocol_block in render prompt)
         ai_ctx = build_ai_context_for_patient(
             agent.profile if agent.profile else None,
             patient,
             session_count=len(approved_summaries),
         )
 
-        # Build LLMContextEnvelope (spec §4.2, §5.1)
         from app.ai.context import build_llm_context_envelope_for_session
         from app.models.therapist import Therapist as _Therapist
         _therapist_obj = self.db.query(_Therapist).filter(_Therapist.id == therapist_id).first()
         summary_orms = self._load_approved_summary_orms(session.patient_id)
         _envelope_ok = False
+        envelope = None
         try:
             envelope = build_llm_context_envelope_for_session(
                 therapist=_therapist_obj,
@@ -1289,44 +1294,58 @@ class SessionService:
                     "modality": modality_name,
                     "modality_prompt_module": modality_prompt_module,
                     "ai_context": ai_ctx,
-                    "approved_sample_count": getattr(sig_profile, "approved_sample_count", 0) if sig_profile else 0,
-                    "min_samples_required": getattr(sig_profile, "min_samples_required", 5) if sig_profile else 5,
+                    "approved_sample_count": (
+                        getattr(sig_profile, "approved_sample_count", 0) if sig_profile else 0
+                    ),
+                    "min_samples_required": (
+                        getattr(sig_profile, "min_samples_required", 5) if sig_profile else 5
+                    ),
                 },
             )
             _envelope_ok = True
         except Exception as _env_exc:
-            logger.warning(f"[prep_envelope] build failed, falling back to legacy path: {_env_exc!r}")
-            envelope = None
-
-        logger.warning(
-            f"[prep_v3] session={session_id} patient={session.patient_id} therapist={therapist_id} "
-            f"mode={mode.value} sessions_analyzed={len(approved_summaries)} "
-            f"style_version={getattr(agent.profile, 'style_version', 1) if agent.profile else 1} "
-            f"envelope_ok={_envelope_ok} cache=miss"
-        )
+            logger.warning(f"[prep_envelope] build failed, falling back to legacy: {_env_exc!r}")
 
         pipeline = PrepPipeline(agent)
-        if envelope is not None:
-            # v3 path — envelope-based (spec §5.1, §5.2)
-            result: PrepResult = await pipeline.run_with_envelope(envelope)
-        else:
-            # Fallback to legacy PrepInput path
-            signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
-            prep_inp = PrepInput(
-                client_id=session.patient_id,
-                session_id=session_id,
-                therapist_id=therapist_id,
-                mode=mode,
-                modality=modality_name,
-                approved_summaries=approved_summaries,
-                modality_prompt_module=modality_prompt_module,
-                therapist_signature=signature_prompt,
-                ai_context=ai_ctx,
-            )
-            result = await pipeline.run(prep_inp)
 
-        # Completeness check on rendered text (fast model, best-effort)
-        if agent.provider and result.rendered_text != "" and approved_summaries:
+        # ── TIER 2: render-only (extraction JSON exists, rendered_text stale) ─
+        if session.prep_json is not None and envelope is not None:
+            logger.warning(
+                f"[prep_v3] session={session_id} patient={session.patient_id} "
+                f"therapist={therapist_id} mode={mode.value} source=render_only "
+                f"sessions_analyzed={len(approved_summaries)} style_version={style_version} "
+                f"envelope_ok={_envelope_ok}"
+            )
+            result: PrepResult = await pipeline.render_only(envelope, session.prep_json)
+
+        # ── TIER 3: full pipeline (no extraction JSON — cold start / new session) ─
+        else:
+            logger.warning(
+                f"[prep_v3] session={session_id} patient={session.patient_id} "
+                f"therapist={therapist_id} mode={mode.value} source=full_pipeline "
+                f"sessions_analyzed={len(approved_summaries)} style_version={style_version} "
+                f"envelope_ok={_envelope_ok}"
+            )
+            if envelope is not None:
+                result = await pipeline.run_with_envelope(envelope)
+            else:
+                # Envelope build failed — legacy PrepInput path
+                signature_prompt = inject_into_prompt(sig_profile) if sig_profile else None
+                prep_inp = PrepInput(
+                    client_id=session.patient_id,
+                    session_id=session_id,
+                    therapist_id=therapist_id,
+                    mode=mode,
+                    modality=modality_name,
+                    approved_summaries=approved_summaries,
+                    modality_prompt_module=modality_prompt_module,
+                    therapist_signature=signature_prompt,
+                    ai_context=ai_ctx,
+                )
+                result = await pipeline.run(prep_inp)
+
+        # Completeness check (TIER 2 + 3 only — not for precomputed hits)
+        if agent.provider and result.rendered_text and approved_summaries:
             checker = CompletenessChecker(agent.provider)
             completeness = await checker.check(
                 summary_text=result.rendered_text,
@@ -1334,7 +1353,6 @@ class SessionService:
             )
             result.completeness_score = completeness.score if completeness.score >= 0 else 0.0
             result.completeness_data = completeness.to_dict()
-            # Log completeness check
             self._write_generation_log(
                 therapist_id=therapist_id,
                 flow_type=FlowType.COMPLETENESS_CHECK,
@@ -1344,31 +1362,29 @@ class SessionService:
                 generation_result=checker._last_result,
             )
 
-        # Persist to session record
+        # Persist
         session.prep_json = result.prep_json
         session.prep_rendered_text = result.rendered_text
         session.prep_mode = mode.value
         session.prep_completeness_score = result.completeness_score
         session.prep_completeness_data = result.completeness_data
         session.prep_generated_at = datetime.utcnow()
-        # Store fingerprint of inputs so future calls can skip regeneration on no-change
-        from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
         session.prep_input_fingerprint = compute_fingerprint({
             "mode": mode.value,
             "summaries": [
                 {
                     "summary_id": s.get("summary_id"),
                     "approved_at": s.get("approved_at"),
-                    "full_summary": s["full_summary"],
+                    "full_summary": s.get("full_summary"),
                 }
                 for s in approved_summaries
             ],
-            "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
+            "style_version": style_version,
         })
         session.prep_input_fingerprint_version = FINGERPRINT_VERSION
         self.db.flush()
 
-        # Log extraction and rendering calls
+        # Telemetry
         self._write_generation_log(
             therapist_id=therapist_id,
             flow_type=FlowType.PRE_SESSION_PREP,
@@ -1390,7 +1406,7 @@ class SessionService:
             f"[prep_v3] session={session_id} mode={mode.value} "
             f"sessions_analyzed={len(approved_summaries)} "
             f"tokens={result.tokens_used} completeness={result.completeness_score:.2f} "
-            f"envelope_ok={_envelope_ok}"
+            f"envelope_ok={_envelope_ok} done"
         )
 
         return {

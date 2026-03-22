@@ -164,12 +164,12 @@ class PatientService:
             data_category="personal",
         )
 
-        # PatientTreatmentState rebuild hook (spec §6.1, §6.3) — triggered when
-        # protocol_ids change, best-effort background call
+        # PatientTreatmentState rebuild + prep precompute — triggered on protocol_ids change
         if "protocol_ids" in update_data:
             try:
                 import asyncio
                 from app.ai.state import rebuild_patient_treatment_state as _rebuild_pts
+                from app.ai.precompute import precompute_prep_for_patient
                 asyncio.create_task(
                     _rebuild_pts(
                         db=self.db,
@@ -177,6 +177,7 @@ class PatientService:
                         therapist_id=therapist_id,
                     )
                 )
+                asyncio.create_task(precompute_prep_for_patient(patient_id))
             except RuntimeError:
                 pass  # no event loop in tests — skip silently
 
