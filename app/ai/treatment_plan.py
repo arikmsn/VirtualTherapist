@@ -148,10 +148,11 @@ def _build_extraction_system_prompt(inp: TreatmentPlanInput) -> str:
     )
     cbt_block = f"\n\n{_CBT_PLAN_ADDON.strip()}" if inp.modality.lower() == "cbt" else ""
     return "\n".join([
-        "You are a clinical treatment planning assistant.",
-        "Your ONLY job is to extract a structured treatment plan from approved session summaries "
-        "and return it as JSON.",
-        "Return ONLY valid JSON — no prose, no markdown fences, no explanation.",
+        "You are a clinical data extraction assistant.",
+        "Your ONLY job is to return valid JSON conforming exactly to the schema below.",
+        "Return ONLY the JSON object — no prose, no markdown fences (no ```), no explanation.",
+        "Start your response with '{' and end it with '}'.",
+        "Do not add any text before or after the JSON.",
         "",
         mode_note,
         "",
@@ -210,13 +211,45 @@ def _build_extraction_user_prompt(inp: TreatmentPlanInput) -> str:
     version = (inp.existing_plan.get("version", 1) + 1) if inp.existing_plan else 1
     session_count = len(inp.approved_summaries)
     parts.append(
-        f"Fill the JSON schema below. Set version={version}. "
-        f"Set created_at_session={session_count}. "
-        "Set confidence to your confidence level (0.0–1.0). "
-        "Populate focus_areas as a list of short Hebrew strings (2–5 words each) "
-        "describing the primary therapeutic focus areas."
+        f"Return a JSON object that EXACTLY matches the schema below. "
+        f"Set version={version}, created_at_session={session_count}, "
+        "confidence=<your confidence 0.0–1.0>. "
+        "Populate focus_areas with short Hebrew strings (2–5 words each). "
+        "Keep string values concise (≤ 120 chars each) to stay within the output budget. "
+        "Start your response immediately with '{' — no preamble, no markdown, no code fences."
     )
-    parts.append(f"\nJSON schema:\n{_SCHEMA_STR}")
+    parts.append(f"\nRequired JSON schema (fill every field):\n{_SCHEMA_STR}")
+    parts.append(
+        "\nMinimal valid example (for structure only — use real data from the summaries):\n"
+        + json.dumps({
+            "presenting_problem": "חרדה חברתית וקשיי ויסות רגשי",
+            "focus_areas": ["ויסות רגשי", "כישורים חברתיים"],
+            "primary_goals": [{
+                "goal_id": "G1",
+                "description": "הפחתת עוצמת החרדה החברתית",
+                "priority": "high",
+                "status": "in_progress",
+                "target_sessions": 12,
+            }],
+            "interventions_planned": [{
+                "intervention": "חשיפה הדרגתית לסיטואציות חברתיות",
+                "linked_goal_ids": ["G1"],
+                "frequency": "שבועי",
+            }],
+            "milestones": [{
+                "milestone_id": "M1",
+                "description": "הצלחה ב-3 מצבים חברתיים שהיו מעוררי חרדה",
+                "target_by_session": 8,
+                "achieved": False,
+            }],
+            "risk_considerations": [],
+            "review_frequency_sessions": 6,
+            "modality": inp.modality,
+            "created_at_session": session_count,
+            "version": version,
+            "confidence": 0.85,
+        }, ensure_ascii=False)
+    )
     return "\n".join(parts)
 
 
@@ -293,25 +326,96 @@ def _has_plan_content(plan_json: dict) -> bool:
     )
 
 
-def _parse_plan_json(raw: str) -> dict:
-    """Parse extraction response into a dict. Falls back to empty scaffold on failure."""
-    cleaned = raw.strip()
-    if cleaned.startswith("```"):
-        parts = cleaned.split("```")
-        cleaned = parts[1] if len(parts) > 1 else cleaned
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:]
-    cleaned = cleaned.strip()
+def _parse_plan_json(raw: str | dict) -> dict:
+    """
+    Parse extraction response into a plan dict.
 
+    Handles:
+    - Already-parsed dicts (pass-through)
+    - Raw JSON strings
+    - Strings wrapped in code fences (```json ... ```)
+    - Strings with leading/trailing prose (best-effort JSON extraction via brace matching)
+
+    Logs clearly on failure (first 300 + last 100 chars of raw response).
+    Falls back to empty scaffold ONLY when truly no JSON can be salvaged.
+    Never silently discards a response that begins with '{'.
+    """
+    # Already parsed — return as-is
+    if isinstance(raw, dict):
+        return raw
+
+    if not raw or not isinstance(raw, str):
+        logger.warning("TreatmentPlanPipeline: _parse_plan_json received empty/non-string input")
+        return _empty_plan_scaffold()
+
+    cleaned = raw.strip()
+
+    # Strip code fences: ```json\n...\n``` or ```\n...\n```
+    if "```" in cleaned:
+        import re
+        fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL)
+        if fence_match:
+            cleaned = fence_match.group(1).strip()
+        else:
+            # Fall back to crude split: take between first ``` and last ```
+            inner = cleaned.split("```")
+            # inner[1] is the fenced block; strip leading "json\n" if present
+            if len(inner) >= 3:
+                candidate = inner[1]
+                if candidate.startswith("json"):
+                    candidate = candidate[4:]
+                cleaned = candidate.strip()
+
+    # Try direct parse
     try:
         data = json.loads(cleaned)
         if isinstance(data, dict):
             return data
-    except json.JSONDecodeError:
-        logger.warning("TreatmentPlanPipeline: non-JSON response, returning empty scaffold")
+        logger.warning(
+            f"TreatmentPlanPipeline: JSON parsed but not a dict (type={type(data).__name__}), "
+            f"first 100 chars: {cleaned[:100]!r}"
+        )
+    except json.JSONDecodeError as exc:
+        # Try to find the JSON object via brace matching (handles leading/trailing prose)
+        start = cleaned.find("{")
+        if start != -1:
+            depth = 0
+            for i, ch in enumerate(cleaned[start:], start):
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = cleaned[start:i + 1]
+                        try:
+                            data = json.loads(candidate)
+                            if isinstance(data, dict):
+                                logger.warning(
+                                    "TreatmentPlanPipeline: extracted JSON via brace-matching "
+                                    "(model added leading/trailing prose). "
+                                    f"Prefix was: {repr(cleaned[:start])[:80]}"
+                                )
+                                return data
+                        except json.JSONDecodeError:
+                            pass
+                        break
 
+        # Nothing worked — log enough context to debug
+        preview_head = cleaned[:300]
+        preview_tail = cleaned[-100:] if len(cleaned) > 300 else ""
+        logger.warning(
+            f"TreatmentPlanPipeline: non-JSON response — parse error: {exc}; "
+            f"response head: {preview_head!r}"
+            + (f"; response tail: {preview_tail!r}" if preview_tail else "")
+        )
+
+    return _empty_plan_scaffold()
+
+
+def _empty_plan_scaffold() -> dict:
     return {
         "presenting_problem": "",
+        "focus_areas": [],
         "primary_goals": [],
         "interventions_planned": [],
         "milestones": [],
@@ -399,7 +503,7 @@ class TreatmentPlanPipeline:
             model=model_id,
             flow_type=FlowType.TREATMENT_PLAN,
             route_reason=route_reason,
-            max_tokens=4096,
+            max_tokens=8192,   # was 4096 — truncated at limit causing empty-scaffold fallback
         )
         self._last_extraction_result = result
         return _parse_plan_json(result.content)
