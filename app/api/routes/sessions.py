@@ -938,8 +938,8 @@ async def stream_prep_v2(
     except Exception as _env_exc:
         logger.warning(f"[stream_prep_envelope] build failed, falling back to legacy path: {_env_exc!r}")
 
-    logger.info(
-        f"[prep] session={session_id} patient={session.patient_id} therapist={current_therapist.id} "
+    logger.warning(
+        f"[prep_v3] session={session_id} patient={session.patient_id} therapist={current_therapist.id} "
         f"mode={mode.value} sessions_analyzed={len(approved_summaries)} "
         f"style_version={getattr(agent.profile, 'style_version', 1) if agent.profile else 1} "
         f"envelope_ok={_envelope_ok} cache=miss stream=true"

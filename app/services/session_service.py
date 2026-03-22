@@ -1200,8 +1200,8 @@ class SessionService:
         ):
             age_seconds = (datetime.utcnow() - session.prep_generated_at).total_seconds()
             if age_seconds < self._PREP_CACHE_SECONDS:
-                logger.info(
-                    f"[prep] session={session_id} patient={session.patient_id} "
+                logger.warning(
+                    f"[prep_v3] session={session_id} patient={session.patient_id} "
                     f"therapist={therapist_id} mode={mode.value} cache=hit reason=time "
                     f"age={age_seconds:.0f}s"
                 )
@@ -1239,8 +1239,8 @@ class SessionService:
                     _fp == session.prep_input_fingerprint
                     and session.prep_input_fingerprint_version == FINGERPRINT_VERSION
                 ):
-                    logger.info(
-                        f"[prep] session={session_id} patient={session.patient_id} "
+                    logger.warning(
+                        f"[prep_v3] session={session_id} patient={session.patient_id} "
                         f"therapist={therapist_id} mode={mode.value} cache=hit reason=fingerprint "
                         f"age={age_seconds:.0f}s"
                     )
@@ -1298,8 +1298,8 @@ class SessionService:
             logger.warning(f"[prep_envelope] build failed, falling back to legacy path: {_env_exc!r}")
             envelope = None
 
-        logger.info(
-            f"[prep] session={session_id} patient={session.patient_id} therapist={therapist_id} "
+        logger.warning(
+            f"[prep_v3] session={session_id} patient={session.patient_id} therapist={therapist_id} "
             f"mode={mode.value} sessions_analyzed={len(approved_summaries)} "
             f"style_version={getattr(agent.profile, 'style_version', 1) if agent.profile else 1} "
             f"envelope_ok={_envelope_ok} cache=miss"
@@ -1386,8 +1386,8 @@ class SessionService:
             generation_result=pipeline._last_render_result,
         )
 
-        logger.info(
-            f"[prep] session={session_id} mode={mode.value} "
+        logger.warning(
+            f"[prep_v3] session={session_id} mode={mode.value} "
             f"sessions_analyzed={len(approved_summaries)} "
             f"tokens={result.tokens_used} completeness={result.completeness_score:.2f} "
             f"envelope_ok={_envelope_ok}"
