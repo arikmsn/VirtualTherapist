@@ -2038,7 +2038,7 @@ export default function PatientProfilePage() {
           {/* Patient info edit */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-800">פרטי מטופל</h3>
+              <h3 className="font-semibold text-gray-800">{strings.patientProfile.settings_info_title}</h3>
               {!editingPatientInfo && (
                 <button
                   type="button"
@@ -2053,7 +2053,7 @@ export default function PatientProfilePage() {
                   className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
                 >
                   <PencilSquareIcon className="h-4 w-4" />
-                  ערוך
+                  {strings.patientProfile.settings_edit_link}
                 </button>
               )}
             </div>
@@ -2231,7 +2231,7 @@ export default function PatientProfilePage() {
                 onClick={() => { setInactiveStep(1); setShowInactiveConfirm(true) }}
                 className="text-sm text-red-600 hover:text-red-800 border border-red-300 hover:border-red-500 rounded-lg px-3 py-2 transition-colors touch-manipulation"
               >
-                סמן כלא פעיל
+                {strings.patientProfile.settings_deactivate_button}
               </button>
             </div>
           )}
