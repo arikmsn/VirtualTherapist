@@ -831,59 +831,57 @@ async def stream_prep_v2(
 
     agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
 
-    # ── Cache check (mirrors generate_prep_v2 logic) ──────────────────────────
-    # If the same mode was generated recently, stream the cached text immediately
-    # without calling the AI model.
+    # ── Three-tier cache (mirrors generate_prep_v2 — spec §D3) ───────────────
     from datetime import datetime as _dt
-    _PREP_CACHE_SECONDS = 600  # 10 minutes
+    from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
+    _PREP_CACHE_SECONDS = 600
+    _PREP_FRESH_SECONDS = 86_400
+    _style_version = getattr(agent.profile, "style_version", 1) if agent.profile else 1
+
+    # TIER 1: precomputed rendered_text exists and is fresh
     if (
-        session.prep_json is not None
+        session.prep_rendered_text is not None
+        and session.prep_json is not None
         and session.prep_mode == mode.value
         and session.prep_generated_at is not None
+        and session.prep_input_fingerprint is not None
     ):
         _age = (_dt.utcnow() - session.prep_generated_at).total_seconds()
-        _use_cache = False
+        _use_precomputed = False
         if _age < _PREP_CACHE_SECONDS:
-            _use_cache = True
-            logger.info(
-                f"[stream_prep] session={session_id} mode={mode.value} — "
-                f"time-based cache hit (age={_age:.0f}s)"
-            )
-        elif session.prep_input_fingerprint:
-            # Outside time window — do fingerprint check
-            from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
+            _use_precomputed = True
+            _reason = f"time age={_age:.0f}s"
+        elif _age <= _PREP_FRESH_SECONDS:
             _fp_summaries = session_service._load_approved_summaries_for_prep(session.patient_id)
             _fp = compute_fingerprint({
                 "mode": mode.value,
                 "summaries": [
-                    {
-                        "summary_id": s.get("summary_id"),
-                        "approved_at": s.get("approved_at"),
-                        "full_summary": s["full_summary"],
-                    }
+                    {"summary_id": s.get("summary_id"), "approved_at": s.get("approved_at"),
+                     "full_summary": s.get("full_summary")}
                     for s in _fp_summaries
                 ],
-                "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
+                "style_version": _style_version,
             })
-            if (
-                _fp == session.prep_input_fingerprint
-                and session.prep_input_fingerprint_version == FINGERPRINT_VERSION
-            ):
-                _use_cache = True
-                logger.info(
-                    f"[stream_prep] session={session_id} mode={mode.value} — "
-                    f"fingerprint cache hit (inputs unchanged, age={_age:.0f}s)"
-                )
-        if _use_cache:
+            if _fp == session.prep_input_fingerprint and session.prep_input_fingerprint_version == FINGERPRINT_VERSION:
+                _use_precomputed = True
+                _reason = f"fingerprint age={_age:.0f}s"
+
+        if _use_precomputed:
             cached_text = session.prep_rendered_text or ""
+            logger.warning(
+                f"[prep_v3] session={session_id} patient={session.patient_id} "
+                f"therapist={current_therapist.id} mode={mode.value} source=precomputed "
+                f"cache=hit reason={_reason} stream=true"
+            )
 
             async def _cached_sse():
                 yield f"data: {json.dumps({'phase': 'rendering'})}\n\n"
-                # Stream in chunks so the UI still sees progressive output
                 chunk_size = 80
                 for i in range(0, len(cached_text), chunk_size):
                     yield f"data: {json.dumps({'chunk': cached_text[i:i + chunk_size]})}\n\n"
-                yield f"data: {json.dumps({'phase': 'done', 'prep_json': session.prep_json, 'sessions_analyzed': 0, 'cached': True})}\n\n"
+                prep_json_val = session.prep_json or {}
+                sessions_n = prep_json_val.get("sessions_analyzed", 0)
+                yield f"data: {json.dumps({'phase': 'done', 'prep_json': prep_json_val, 'sessions_analyzed': sessions_n, 'cached': True})}\n\n"
                 yield "data: [DONE]\n\n"
 
             return StreamingResponse(
@@ -891,9 +889,9 @@ async def stream_prep_v2(
                 media_type="text/event-stream",
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
-    # ── End cache check ───────────────────────────────────────────────────────
+    # ── End TIER 1 ────────────────────────────────────────────────────────────
 
-    # Build approved summaries and envelope (same logic as generate_prep_v2)
+    # Shared setup for TIER 2 and 3
     approved_summaries = session_service._load_approved_summaries_for_prep(session.patient_id)
 
     modality_name = "generic_integrative"
@@ -909,16 +907,19 @@ async def stream_prep_v2(
     from app.core.ai_context import build_ai_context_for_patient as _build_ai_ctx
     from app.models.patient import Patient as _Patient
     _patient_for_ctx = db.query(_Patient).filter(_Patient.id == session.patient_id).first()
-    _ai_ctx = _build_ai_ctx(agent.profile if agent.profile else None, _patient_for_ctx, session_count=len(approved_summaries))
+    _ai_ctx = _build_ai_ctx(
+        agent.profile if agent.profile else None,
+        _patient_for_ctx,
+        session_count=len(approved_summaries),
+    )
 
-    # Build LLMContextEnvelope (spec §4.2, §5.1)
     from app.ai.context import build_llm_context_envelope_for_session as _build_envelope
     _summary_orms = session_service._load_approved_summary_orms(session.patient_id)
     _envelope: dict | None = None
     _envelope_ok = False
     try:
         _envelope = _build_envelope(
-            therapist=current_therapist,  # Therapist ORM object from get_current_therapist dep
+            therapist=current_therapist,
             profile=agent.profile,
             signature=sig_profile,
             patient=_patient_for_ctx,
@@ -930,19 +931,26 @@ async def stream_prep_v2(
                 "modality": modality_name,
                 "modality_prompt_module": modality_prompt_module,
                 "ai_context": _ai_ctx,
-                "approved_sample_count": getattr(sig_profile, "approved_sample_count", 0) if sig_profile else 0,
-                "min_samples_required": getattr(sig_profile, "min_samples_required", 5) if sig_profile else 5,
+                "approved_sample_count": (
+                    getattr(sig_profile, "approved_sample_count", 0) if sig_profile else 0
+                ),
+                "min_samples_required": (
+                    getattr(sig_profile, "min_samples_required", 5) if sig_profile else 5
+                ),
             },
         )
         _envelope_ok = True
     except Exception as _env_exc:
-        logger.warning(f"[stream_prep_envelope] build failed, falling back to legacy path: {_env_exc!r}")
+        logger.warning(f"[stream_prep_envelope] build failed, falling back to legacy: {_env_exc!r}")
 
+    # Determine source tier
+    _has_prep_json = session.prep_json is not None
+    _source = "render_only" if (_has_prep_json and _envelope_ok) else "full_pipeline"
     logger.warning(
-        f"[prep_v3] session={session_id} patient={session.patient_id} therapist={current_therapist.id} "
-        f"mode={mode.value} sessions_analyzed={len(approved_summaries)} "
-        f"style_version={getattr(agent.profile, 'style_version', 1) if agent.profile else 1} "
-        f"envelope_ok={_envelope_ok} cache=miss stream=true"
+        f"[prep_v3] session={session_id} patient={session.patient_id} "
+        f"therapist={current_therapist.id} mode={mode.value} source={_source} "
+        f"sessions_analyzed={len(approved_summaries)} style_version={_style_version} "
+        f"envelope_ok={_envelope_ok} stream=true"
     )
 
     # Legacy PrepInput fallback (used only when envelope build fails)
@@ -964,39 +972,43 @@ async def stream_prep_v2(
     async def _sse_generator():
         pipeline = PrepPipeline(agent)
         full_text_chunks: list = []
-        # Use envelope if available, else legacy PrepInput
-        _extract_arg = _envelope if _envelope_ok else _prep_inp
-        _render_arg = _envelope if _envelope_ok else _prep_inp
         try:
-            yield f"data: {json.dumps({'phase': 'extracting'})}\n\n"
-            prep_json = await pipeline.extract_only(_extract_arg)
+            # ── TIER 2: render_only — stream render from existing prep_json ──
+            if _has_prep_json and _envelope_ok:
+                yield f"data: {json.dumps({'phase': 'rendering'})}\n\n"
+                async for chunk in pipeline._render_stream_v2(_envelope, session.prep_json):
+                    full_text_chunks.append(chunk)
+                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                final_prep_json = session.prep_json
 
-            yield f"data: {json.dumps({'phase': 'rendering'})}\n\n"
-            async for chunk in pipeline.render_stream(_render_arg, prep_json):
-                full_text_chunks.append(chunk)
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            # ── TIER 3: full pipeline — extract then render ──────────────────
+            else:
+                yield f"data: {json.dumps({'phase': 'extracting'})}\n\n"
+                _extract_arg = _envelope if _envelope_ok else _prep_inp
+                final_prep_json = await pipeline.extract_only(_extract_arg)
 
-            yield f"data: {json.dumps({'phase': 'done', 'prep_json': prep_json, 'sessions_analyzed': len(approved_summaries)})}\n\n"
+                yield f"data: {json.dumps({'phase': 'rendering'})}\n\n"
+                _render_arg = _envelope if _envelope_ok else _prep_inp
+                async for chunk in pipeline.render_stream(_render_arg, final_prep_json):
+                    full_text_chunks.append(chunk)
+                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+
+            yield f"data: {json.dumps({'phase': 'done', 'prep_json': final_prep_json, 'sessions_analyzed': len(approved_summaries)})}\n\n"
             yield "data: [DONE]\n\n"
 
-            # Persist rendered text so subsequent requests hit the cache
-            from datetime import datetime as _dt
-            from app.core.fingerprint import compute_fingerprint, FINGERPRINT_VERSION
-            session.prep_json = prep_json
+            # Persist rendered text so subsequent requests hit TIER 1
+            session.prep_json = final_prep_json
             session.prep_mode = mode.value
             session.prep_rendered_text = "".join(full_text_chunks)
             session.prep_generated_at = _dt.utcnow()
             session.prep_input_fingerprint = compute_fingerprint({
                 "mode": mode.value,
                 "summaries": [
-                    {
-                        "summary_id": s.get("summary_id"),
-                        "approved_at": s.get("approved_at"),
-                        "full_summary": s.get("full_summary"),
-                    }
+                    {"summary_id": s.get("summary_id"), "approved_at": s.get("approved_at"),
+                     "full_summary": s.get("full_summary")}
                     for s in approved_summaries
                 ],
-                "style_version": getattr(agent.profile, "style_version", 1) if agent.profile else 1,
+                "style_version": _style_version,
             })
             session.prep_input_fingerprint_version = FINGERPRINT_VERSION
             db.add(session)
