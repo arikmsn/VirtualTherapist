@@ -2135,7 +2135,7 @@ export default function PatientProfilePage() {
             <div>
               <h3 className="font-semibold text-gray-800">פרוטוקולים עבור מטופל זה</h3>
               <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-                בחר פרוטוקולים ייעודיים למטופל זה — יגברו על ברירת המחדל של הפרופיל שלך ב-AI
+                בחרו פרוטוקולים ייעודיים המותאמים למטופל זה
               </p>
             </div>
 
@@ -2208,8 +2208,7 @@ export default function PatientProfilePage() {
 
                 {availableProtocols.filter((p) => p.is_used || patientProtocolIds.includes(p.id)).length === 0 && (
                   <p className="text-xs text-gray-400 text-center py-3">
-                    לא הוגדרו פרוטוקולים מועדפים עדיין —{' '}
-                    <a href="/twin" className="text-therapy-calm underline">הגדר בפרופיל המקצועי</a>
+                    לא הוגדרו פרוטוקולים מועדפים, ניתן להגדיר במסך הגדרות מקצועיות
                   </p>
                 )}
               </div>
