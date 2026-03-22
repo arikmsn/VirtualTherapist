@@ -1755,8 +1755,8 @@ export default function PatientProfilePage() {
               type Milestone = { description?: string; target_by_session?: number; achieved?: boolean }
               const milestones = (pj.milestones ?? []) as Milestone[]
               const risks = (pj.risk_considerations ?? []) as string[]
-              const PRIORITY_HE: Record<string, string> = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' }
-              const STATUS_HE: Record<string, string> = { not_started: 'לא החלה', in_progress: 'בתהליך', achieved: 'הושגה', dropped: 'הופסקה' }
+              const PRIORITY_HE: Record<string, string> = { high: strings.printPatient.priority_high, medium: strings.printPatient.priority_medium, low: strings.printPatient.priority_low }
+              const STATUS_HE: Record<string, string> = { not_started: strings.printPatient.status_not_started, in_progress: strings.printPatient.status_in_progress, achieved: strings.printPatient.status_achieved, dropped: strings.printPatient.status_dropped }
               return (
                 <div className="space-y-4 mt-2">
                   {presenting && (
@@ -2384,8 +2384,8 @@ export default function PatientProfilePage() {
         const vRisks = (pjv.risk_consideration ?? pjv.risk_considerations ?? []) as string[]
         const vPresenting = pjv.presenting_problem as string | undefined
         const vFocusAreas = (pjv.focus_areas ?? []) as string[]
-        const PRIO: Record<string, string> = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' }
-        const STAT: Record<string, string> = { not_started: 'לא החלה', in_progress: 'בתהליך', achieved: 'הושגה', dropped: 'הופסקה' }
+        const PRIO: Record<string, string> = { high: strings.printPatient.priority_high, medium: strings.printPatient.priority_medium, low: strings.printPatient.priority_low }
+        const STAT: Record<string, string> = { not_started: strings.printPatient.status_not_started, in_progress: strings.printPatient.status_in_progress, achieved: strings.printPatient.status_achieved, dropped: strings.printPatient.status_dropped }
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir="rtl">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh]">

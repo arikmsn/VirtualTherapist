@@ -34,12 +34,12 @@ interface Patient {
 }
 
 const SESSION_TYPES = [
-  { value: 'individual', label: 'פרטני' },
-  { value: 'couples', label: 'זוגי' },
-  { value: 'family', label: 'משפחתי' },
-  { value: 'group', label: 'קבוצתי' },
-  { value: 'intake', label: 'אינטייק' },
-  { value: 'follow_up', label: 'מעקב' },
+  { value: 'individual', label: strings.patients.session_type_individual },
+  { value: 'couples', label: strings.patients.session_type_couples },
+  { value: 'family', label: strings.patients.session_type_family },
+  { value: 'group', label: strings.patients.session_type_group },
+  { value: 'intake', label: strings.patients.session_type_intake },
+  { value: 'follow_up', label: strings.patients.session_type_followup },
 ]
 
 const todayStr = new Date().toISOString().split('T')[0]

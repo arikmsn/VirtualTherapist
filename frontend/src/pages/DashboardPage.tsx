@@ -40,12 +40,12 @@ interface DailySession {
 }
 
 const SESSION_TYPE_LABELS: Record<string, string> = {
-  individual: 'פרטני',
-  couples: 'זוגי',
-  family: 'משפחתי',
-  group: 'קבוצתי',
-  intake: 'אינטייק',
-  follow_up: 'מעקב',
+  individual: strings.patients.session_type_individual,
+  couples: strings.patients.session_type_couples,
+  family: strings.patients.session_type_family,
+  group: strings.patients.session_type_group,
+  intake: strings.patients.session_type_intake,
+  follow_up: strings.patients.session_type_followup,
 }
 
 /** Format a Date to YYYY-MM-DD using local timezone (never UTC). */
