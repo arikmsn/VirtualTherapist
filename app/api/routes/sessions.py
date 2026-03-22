@@ -799,12 +799,14 @@ async def generate_prep_v2(
 @router.post("/{session_id}/prep/stream")
 async def stream_prep_v2(
     session_id: int,
-    request: PrepRequest,
+    mode: str = Query(default="deep"),
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
     """
     Streaming variant of POST /{session_id}/prep.
+
+    No request body required — mode is a query param (default: deep).
 
     SSE event stream:
       data: {"phase": "extracting"}          — extraction started (Call 1)
@@ -818,7 +820,7 @@ async def stream_prep_v2(
     from app.ai.prep import PrepInput, PrepPipeline
     from app.ai.signature import SignatureEngine, inject_into_prompt
 
-    mode_str = (request.mode or "concise").lower()
+    mode_str = (mode or "deep").lower()
     try:
         mode = PrepMode(mode_str)
     except ValueError:

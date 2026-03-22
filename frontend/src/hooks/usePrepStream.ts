@@ -41,7 +41,16 @@ export function usePrepStream() {
           signal: ctrl.signal,
         })
 
-        if (response.ok && response.body) {
+        if (!response.ok) {
+          // Hard failure (4xx/5xx) — do NOT silently fall back; surface the error.
+          const errText = await response.text().catch(() => '')
+          console.error(`[prep/stream] HTTP ${response.status}: ${errText}`)
+          setError(`שגיאה בטעינת ההכנה לפגישה (${response.status})`)
+          setPhase('error')
+          return
+        }
+
+        if (response.body) {
           const reader = response.body.getReader()
           const decoder = new TextDecoder()
           let buf = ''
@@ -89,10 +98,10 @@ export function usePrepStream() {
           setPhase('done')
           return
         }
-        // Non-OK HTTP response — fall through to legacy
       } catch (e: unknown) {
         if ((e as { name?: string }).name === 'AbortError') return
-        // Network error — fall through to legacy
+        // Network / CORS error only — fall through to legacy prep-brief
+        console.warn('[prep/stream] network error, falling back to prep-brief:', e)
       }
     }
 
