@@ -573,14 +573,14 @@ export const treatmentPlanAPI = {
   },
 
   create: async (patientId: number, sessionIds?: number[]) => {
-    const response = await api.post(`/clients/${patientId}/treatment-plan`, {
+    const response = await api.post(`/clients/${patientId}/treatment-plan?force_sync=true`, {
       session_ids: sessionIds ?? null,
     })
     return response.data as TreatmentPlanVersion
   },
 
   update: async (patientId: number, sessionIds?: number[]) => {
-    const response = await api.put(`/clients/${patientId}/treatment-plan`, {
+    const response = await api.put(`/clients/${patientId}/treatment-plan?force_sync=true`, {
       session_ids: sessionIds ?? null,
     })
     return response.data as TreatmentPlanVersion
