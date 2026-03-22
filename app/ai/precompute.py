@@ -134,6 +134,7 @@ async def precompute_prep_for_patient(patient_id: int) -> None:
 
     db = SessionLocal()
     t0 = time.monotonic()
+    logger.warning("[prep_precompute] patient=%s started", patient_id)
     try:
         therapist, profile, patient, modality_pack = _load_context(db, patient_id)
         therapist_id = patient.therapist_id
@@ -148,17 +149,19 @@ async def precompute_prep_for_patient(patient_id: int) -> None:
             .first()
         )
         if not target_session:
-            logger.warning(
-                f"[prep_precompute] patient={patient_id} no sessions found, skipping"
-            )
+            logger.warning("[prep_precompute] patient=%s no sessions found, skipping", patient_id)
             return
 
         summary_orms = _load_approved_summary_orms(db, patient_id, therapist_id)
         if not summary_orms:
-            logger.warning(
-                f"[prep_precompute] patient={patient_id} no approved summaries, skipping"
-            )
+            logger.warning("[prep_precompute] patient=%s no approved summaries, skipping", patient_id)
             return
+
+        logger.warning(
+            "[prep_precompute] patient=%s sessions_analyzed=%d",
+            patient_id,
+            len(summary_orms),
+        )
 
         # Signature
         from app.ai.signature import SignatureEngine
@@ -313,6 +316,7 @@ async def precompute_deep_summary_for_patient(patient_id: int) -> None:
 
     db = SessionLocal()
     t0 = time.monotonic()
+    logger.warning("[deep_precompute] patient=%s started", patient_id)
     try:
         therapist, profile, patient, modality_pack = _load_context(db, patient_id)
         therapist_id = patient.therapist_id
@@ -328,7 +332,14 @@ async def precompute_deep_summary_for_patient(patient_id: int) -> None:
         from app.services.deep_summary_service import DeepSummaryService
 
         agent = await TherapistService(db).get_agent_for_therapist(therapist_id)
-        summary_count = len(_load_approved_summary_orms(db, patient_id, therapist_id))
+        approved_summaries = _load_approved_summary_orms(db, patient_id, therapist_id)
+        summary_count = len(approved_summaries)
+        logger.warning(
+            "[deep_precompute] patient=%s summaries=%d reason=%s",
+            patient_id,
+            summary_count,
+            reason,
+        )
 
         deep_summary = await DeepSummaryService(db).generate_deep_summary(
             patient_id=patient_id,
@@ -367,6 +378,7 @@ async def precompute_treatment_plan_for_patient(patient_id: int) -> None:
 
     db = SessionLocal()
     t0 = time.monotonic()
+    logger.warning("[plan_precompute] patient=%s started", patient_id)
     try:
         therapist, profile, patient, modality_pack = _load_context(db, patient_id)
         therapist_id = patient.therapist_id

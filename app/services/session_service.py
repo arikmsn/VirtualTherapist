@@ -976,6 +976,18 @@ class SessionService:
         self.db.commit()
         self.db.refresh(summary)
 
+        # Precompute hooks — fire when the summary transitions to approved
+        if summary.status == SummaryStatus.APPROVED:
+            try:
+                from app.ai.precompute import (
+                    precompute_prep_for_patient,
+                    precompute_deep_summary_for_patient,
+                )
+                asyncio.create_task(precompute_prep_for_patient(session.patient_id))
+                asyncio.create_task(precompute_deep_summary_for_patient(session.patient_id))
+            except RuntimeError:
+                pass  # no event loop in tests
+
         action = "approve" if summary.status == SummaryStatus.APPROVED else "edit"
         await self.audit_service.log_action(
             user_id=therapist_id,
