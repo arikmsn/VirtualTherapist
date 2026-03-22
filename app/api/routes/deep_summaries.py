@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from loguru import logger
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
@@ -78,7 +79,7 @@ def _summary_response(summary) -> DeepSummaryResponse:
 
 @router.post(
     "/clients/{client_id}/deep-summary",
-    status_code=202,
+    status_code=200,
 )
 async def generate_deep_summary(
     client_id: int,
@@ -87,22 +88,21 @@ async def generate_deep_summary(
     db: DBSession = Depends(get_db),
 ):
     """
-    Trigger deep summary generation for a patient.
+    Generate (or return) a deep summary for a patient.
 
-    Default behavior (async, recommended):
-      If a recent precomputed deep summary already exists → return it immediately (200-like body).
-      Otherwise → fire background job and return {status: "generating"} immediately.
-      The UI should poll GET /clients/{id}/deep-summary until rendered_text appears.
-
-    ?force_sync=true: run synchronously (legacy behavior, blocks for 1-3 min).
-      Use this only for one-off admin needs.
+    N == 0 approved summaries       → 400 (Hebrew error).
+    Existing summary present        → 200 with summary (fast, no LLM).
+    No existing + force_sync=true   → run synchronously, return 200 when done.
+      Use this for interactive UI clicks ("Generate Deep Summary" button).
+    No existing + force_sync=false  → fire background precompute, return 202
+      {status: "generating"}.  UI polls GET /clients/{id}/deep-summary.
 
     Uses ALL approved session summaries. Vault extraction runs as a side effect.
     """
     summary_service = DeepSummaryService(db)
     therapist_service = TherapistService(db)
 
-    # Threshold gate: require ≥ 3 approved summaries before generating
+    # Gate: require ≥ 1 approved summary
     from app.models.session import Session as TherapySession, SessionSummary
     approved_count = (
         db.query(TherapySession)
@@ -120,7 +120,7 @@ async def generate_deep_summary(
             detail="כדי לייצר סיכום עומק יש ליצור קודם סיכומי פגישות מאושרים למטופל.",
         )
 
-    # Always check if we have a fresh precomputed summary first
+    # If a summary already exists, return it immediately — regardless of force_sync.
     try:
         existing = summary_service.get_latest_deep_summary(
             patient_id=client_id,
@@ -129,12 +129,12 @@ async def generate_deep_summary(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    if existing and not force_sync:
-        # Return the precomputed summary (it may be draft or approved — therapist decides)
+    if existing:
         return _summary_response(existing)
 
+    # No existing summary — generate one.
     if force_sync:
-        # Legacy synchronous path — blocks until done
+        # Interactive click: run synchronously, block until done, return 200.
         try:
             agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
             summary = await summary_service.generate_deep_summary(
@@ -148,14 +148,17 @@ async def generate_deep_summary(
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             logger.exception(f"generate_deep_summary (sync) client={client_id} failed: {e!r}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(
+                status_code=500,
+                detail="שגיאה זמנית בהפקת סיכום העומק, נסו שוב בעוד מספר דקות",
+            )
 
-    # Async path: fire background job, return immediately
+    # Background path: fire precompute, return 202 immediately.
     try:
         from app.ai.precompute import precompute_deep_summary_for_patient
         asyncio.create_task(precompute_deep_summary_for_patient(client_id))
     except RuntimeError:
-        # No event loop (tests) — fall back to sync
+        # No event loop (tests / sync context) — fall back to synchronous.
         try:
             agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
             summary = await summary_service.generate_deep_summary(
@@ -170,26 +173,24 @@ async def generate_deep_summary(
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    return {
-        "status": "generating",
-        "message": (
-            "סיכום עומק מתחיל להיווצר ברקע. "
-            "בדוק שוב בעוד מספר דקות עם GET /clients/{client_id}/deep-summary"
-        ),
-        "patient_id": client_id,
-    }
+    return JSONResponse(
+        status_code=202,
+        content={"status": "generating", "patient_id": client_id},
+    )
 
 
-@router.get(
-    "/clients/{client_id}/deep-summary",
-    response_model=DeepSummaryResponse,
-)
+@router.get("/clients/{client_id}/deep-summary")
 async def get_latest_deep_summary(
     client_id: int,
     current_therapist: Therapist = Depends(get_current_therapist),
     db: DBSession = Depends(get_db),
 ):
-    """Return the most recent deep summary for a patient."""
+    """
+    Return the most recent deep summary for a patient.
+
+    Never returns 404. If no summary exists yet, returns {status: "not_started"}.
+    The UI can display a prompt to generate one.
+    """
     summary_service = DeepSummaryService(db)
     try:
         summary = summary_service.get_latest_deep_summary(
@@ -197,12 +198,10 @@ async def get_latest_deep_summary(
             therapist_id=current_therapist.id,
         )
         if not summary:
-            raise HTTPException(status_code=404, detail="No deep summary found for this patient")
+            return {"status": "not_started"}
         return _summary_response(summary)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
     except Exception as e:
         logger.exception(f"get_latest_deep_summary client={client_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))

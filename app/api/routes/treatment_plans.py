@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 
@@ -89,7 +90,7 @@ def _plan_response(plan) -> TreatmentPlanResponse:
 
 @router.post(
     "/clients/{client_id}/treatment-plan",
-    status_code=202,
+    status_code=200,
 )
 async def create_treatment_plan(
     client_id: int,
@@ -101,25 +102,23 @@ async def create_treatment_plan(
     """
     Generate a treatment plan for a patient.
 
-    Default behavior (async, recommended):
-      If an active plan already exists → return it immediately (no LLM call).
-      If no plan → fire background precompute job and return {status: "generating"}.
-      Poll GET /clients/{id}/treatment-plan to get the result.
-
-    ?force_sync=true: run synchronously (legacy, blocks for ~60-90 s).
+    Active plan already exists    → 200 with plan (no LLM call).
+    No plan + force_sync=true     → run synchronously, return 200 when done.
+      Use for interactive "Create Plan" button.
+    No plan + force_sync=false    → fire background precompute, return 202
+      {status: "generating"}.  Poll GET /clients/{id}/treatment-plan.
     """
     plan_service = TreatmentPlanService(db)
 
-    # Return existing active plan immediately (read-only, no LLM)
+    # Always return existing plan immediately (both sync and async callers).
     existing = plan_service.get_active_plan(
         patient_id=client_id,
         therapist_id=current_therapist.id,
     )
-    if existing and not force_sync:
+    if existing:
         return _plan_response(existing)
 
     if force_sync:
-        # Legacy synchronous path
         therapist_service = TherapistService(db)
         try:
             agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
@@ -134,6 +133,10 @@ async def create_treatment_plan(
         except ValueError as e:
             msg = str(e)
             if "already exists" in msg:
+                # Race condition — return whatever is now active
+                existing = plan_service.get_active_plan(client_id, current_therapist.id)
+                if existing:
+                    return _plan_response(existing)
                 raise HTTPException(status_code=409, detail=msg)
             raise HTTPException(status_code=400, detail=msg)
         except Exception as e:
@@ -143,23 +146,22 @@ async def create_treatment_plan(
                 detail="שגיאה זמנית בשמירת התוכנית הטיפולית, נסו שוב בעוד מספר דקות",
             )
 
-    # Async path: fire background job, return immediately
+    # Background path: fire precompute, return 202 immediately.
     try:
         from app.ai.precompute import precompute_treatment_plan_for_patient
         asyncio.create_task(precompute_treatment_plan_for_patient(client_id))
     except RuntimeError:
         pass  # no event loop in tests
 
-    return {
-        "status": "generating",
-        "message": "תוכנית טיפול מתחילה להיבנות ברקע. בדוק שוב בעוד מספר דקות.",
-        "patient_id": client_id,
-    }
+    return JSONResponse(
+        status_code=202,
+        content={"status": "generating", "patient_id": client_id},
+    )
 
 
 @router.put(
     "/clients/{client_id}/treatment-plan",
-    status_code=202,
+    status_code=200,
 )
 async def update_treatment_plan(
     client_id: int,
@@ -169,11 +171,12 @@ async def update_treatment_plan(
     db: DBSession = Depends(get_db),
 ):
     """
-    Update the active treatment plan (creates new version, archives old).
+    Regenerate the active treatment plan (creates new version, archives old).
 
-    Default (async): fire background precompute job and return {status: "generating"}.
-    ?force_sync=true: run synchronously (blocks ~60-90 s).
-    Returns 404 if no active plan exists — use POST to create one.
+    force_sync=true   → run synchronously, return 200 with new plan.
+      Use for interactive "Regenerate Plan" button.
+    force_sync=false  → fire background precompute, return 202 {status: "generating"}.
+    Returns 404 if no active plan — use POST to create one first.
     """
     plan_service = TreatmentPlanService(db)
     existing = plan_service.get_active_plan(
@@ -196,7 +199,7 @@ async def update_treatment_plan(
             db.commit()
             return _plan_response(plan)
         except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             logger.exception(f"update_treatment_plan client={client_id} failed: {e!r}")
             raise HTTPException(
@@ -204,18 +207,17 @@ async def update_treatment_plan(
                 detail="שגיאה זמנית בשמירת התוכנית הטיפולית, נסו שוב בעוד מספר דקות",
             )
 
-    # Async path: fire background job, return immediately
+    # Background path: fire precompute, return 202 immediately.
     try:
         from app.ai.precompute import precompute_treatment_plan_for_patient
         asyncio.create_task(precompute_treatment_plan_for_patient(client_id))
     except RuntimeError:
         pass  # no event loop in tests
 
-    return {
-        "status": "generating",
-        "message": "עדכון תוכנית הטיפול החל ברקע. בדוק שוב בעוד מספר דקות.",
-        "patient_id": client_id,
-    }
+    return JSONResponse(
+        status_code=202,
+        content={"status": "generating", "patient_id": client_id},
+    )
 
 
 @router.get(
