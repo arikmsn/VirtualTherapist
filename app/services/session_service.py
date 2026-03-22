@@ -1309,7 +1309,13 @@ class SessionService:
         pipeline = PrepPipeline(agent)
 
         # ── TIER 2: render-only (extraction JSON exists, rendered_text stale) ─
-        if session.prep_json is not None and envelope is not None:
+        # Require prep_json.sessions_analyzed > 0 to avoid re-rendering a stale
+        # empty scaffold (produced when the pipeline previously crashed).
+        _prep_json_has_data = (
+            session.prep_json is not None
+            and session.prep_json.get("sessions_analyzed", 0) > 0
+        )
+        if _prep_json_has_data and envelope is not None:
             logger.warning(
                 f"[prep_v3] session={session_id} patient={session.patient_id} "
                 f"therapist={therapist_id} mode={mode.value} source=render_only "

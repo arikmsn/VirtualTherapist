@@ -389,10 +389,24 @@ def _build_render_system_prompt_v2(envelope: Dict[str, Any]) -> str:
         )
     else:
         lines.append(
-            f"CRITICAL: {sessions_analyzed} approved session summary(ies) were analyzed. "
-            "You MUST ground the brief in at least 2–3 concrete clinical details from the prep data. "
-            "FORBIDDEN phrases: 'אין נתונים', 'מבוסס על פרוטוקול בלבד', 'לא ידוע', 'no data', 'N/A'. "
-            "If a section lacks data, skip it — do NOT explain the absence."
+            f"CRITICAL — {sessions_analyzed} approved session summaries are available. "
+            "These are real clinical records. You MUST produce a clinically grounded prep brief. "
+            "The user prompt contains both structured prep_json AND the full patient_state "
+            "(longitudinal_state, last_session_state, etc.) — draw from ALL of it.\n"
+            "\n"
+            "ABSOLUTELY FORBIDDEN — never write any of the following, under any circumstances:\n"
+            "  • 'אין נתונים' or any claim that data is missing\n"
+            "  • 'לא ניתן לגבש תמונה קלינית' or 'cannot generate clinical picture'\n"
+            "  • 'מבוסס על פרוטוקול בלבד' or 'protocol only'\n"
+            "  • 'סיכומי הפגישות שהועברו אינם מכילים מידע קליני' or similar\n"
+            "  • 'לא ידוע', 'N/A', 'no data'\n"
+            "  • Any sentence saying the summaries lack clinical information\n"
+            "\n"
+            "REQUIRED — the brief MUST include at least 2–3 concrete clinical details "
+            "(themes, events, homework, risk, progress) drawn from the data below. "
+            "If a specific JSON field is empty, draw from other non-empty fields or from "
+            "patient_state — there is always something to write when sessions exist. "
+            "Skip empty sections silently rather than explaining their absence."
         )
 
     # Therapist style injection (matches existing inject_into_prompt() output format)
@@ -448,16 +462,46 @@ def _build_render_user_prompt_v2(envelope: Dict[str, Any], prep_json: Dict[str, 
             "- If no protocol is set, keep the brief general but respect the therapist's approaches.\n"
         )
 
+    # Include patient_state as fallback clinical context when prep_json is sparse
+    patient_state = envelope.get("patient_state", {})
+    patient_state_block = ""
+    if patient_state:
+        patient_state_block = (
+            "Additional clinical context (longitudinal patient state — use this if "
+            "prep_json fields are empty):\n"
+            f"{json.dumps(patient_state, ensure_ascii=False, indent=2)}\n\n"
+        )
+
     return (
         f"Mode: {mode.value} — {token_guidance}{cbt_block}\n\n"
         "The structured prep data has been extracted. Render it as a ready-to-use "
         "pre-session brief that the therapist can scan in under 60 seconds.\n\n"
         f"Structured prep data:\n{json.dumps(prep_json, ensure_ascii=False, indent=2)}\n\n"
+        f"{patient_state_block}"
         f"{length_guidance}\n"
         f"{protocol_guidance}"
         f"{protocol_block}\n\n"
         "Write the pre-session brief now."
     )
+
+
+# ── No-data guard ────────────────────────────────────────────────────────────
+
+_NO_DATA_PHRASES = [
+    "אין נתונים",
+    "לא ניתן לגבש תמונה קלינית מבוססת נתונים",
+    "מבוסס על פרוטוקול בלבד",
+    "אין מידע קליני",
+    "סיכומי הפגישות שהועברו אינם מכילים",
+    "protocol only",
+    "no data",
+]
+
+
+def _contains_no_data_phrase(text: str) -> bool:
+    """Return True if the rendered text contains a forbidden 'no data' phrase."""
+    lower = text.lower()
+    return any(p.lower() in lower for p in _NO_DATA_PHRASES)
 
 
 # ── JSON parser ───────────────────────────────────────────────────────────────
@@ -706,7 +750,35 @@ class PrepPipeline:
         )
         self._last_render_result = result
         self.agent._last_result = result
-        return result.content
+        text = result.content
+
+        # Code-level guard: if no-data phrases appear despite sessions existing, retry once
+        sessions_analyzed: int = envelope["patient_state"]["metadata"]["sessions_analyzed"]
+        if sessions_analyzed > 0 and _contains_no_data_phrase(text):
+            logger.warning(
+                "[prep_guard] no-data phrase detected with sessions_analyzed=%d; retrying render",
+                sessions_analyzed,
+            )
+            retry_system = system_msg + (
+                "\n\nFINAL WARNING: Your previous response contained a forbidden 'no data' phrase. "
+                "This is incorrect — the patient has real clinical history. "
+                "Rewrite the brief now using ONLY concrete details from the prep data and patient state. "
+                "Do NOT mention missing information."
+            )
+            retry_result = await self.agent.provider.generate(
+                messages=[
+                    {"role": "system", "content": retry_system},
+                    {"role": "user", "content": user_msg},
+                ],
+                model=model_id,
+                flow_type=FlowType.SESSION_PREP,
+                route_reason=route_reason + ",retry:no_data_guard",
+            )
+            self._last_render_result = retry_result
+            self.agent._last_result = retry_result
+            text = retry_result.content
+
+        return text
 
     async def _render_stream_v2(self, envelope: dict, prep_json: dict):
         """Streaming render call from envelope (spec §5.2)."""

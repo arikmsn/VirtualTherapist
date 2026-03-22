@@ -950,8 +950,12 @@ async def stream_prep_v2(
     except Exception as _env_exc:
         logger.warning(f"[stream_prep_envelope] build failed, falling back to legacy: {_env_exc!r}")
 
-    # Determine source tier
-    _has_prep_json = session.prep_json is not None
+    # Determine source tier — require sessions_analyzed > 0 in cached prep_json
+    # to avoid re-rendering a stale empty scaffold from a previous crashed run.
+    _has_prep_json = (
+        session.prep_json is not None
+        and session.prep_json.get("sessions_analyzed", 0) > 0
+    )
     _source = "render_only" if (_has_prep_json and _envelope_ok) else "full_pipeline"
     logger.warning(
         f"[prep_v3] session={session_id} patient={session.patient_id} "
