@@ -1,4 +1,4 @@
-.PHONY: help install setup run test clean migrate docker-up docker-down
+.PHONY: help install setup run test clean migrate migrate-prod check-migration verify-rls docker-up docker-down
 
 help:
 	@echo "TherapyCompanion.AI - Development Commands"
@@ -24,6 +24,30 @@ setup:
 
 migrate:
 	alembic upgrade head
+
+# Run migrations against Supabase production.
+# Requires PROD_DATABASE_URL to be set in your shell (never committed to .env):
+#   export PROD_DATABASE_URL="postgresql://postgres:PASSWORD@db.PROJECTREF.supabase.co:5432/postgres?sslmode=require"
+#   make migrate-prod
+migrate-prod:
+	@if [ -z "$(PROD_DATABASE_URL)" ]; then \
+		echo "ERROR: PROD_DATABASE_URL is not set. Export it in your shell first."; \
+		exit 1; \
+	fi
+	DATABASE_URL=$(PROD_DATABASE_URL) alembic upgrade head
+
+# Show current migration revision on whichever DATABASE_URL is active.
+check-migration:
+	alembic current
+
+# Pretty-print the RLS policy check query so you can paste it into the
+# Supabase SQL Editor.  Actual execution requires a database connection.
+verify-rls:
+	@echo ""
+	@echo "=== RLS Verification Query (paste into Supabase SQL Editor) ==="
+	@echo ""
+	@cat scripts/verify_rls.sql
+	@echo ""
 
 run:
 	python -m app.main
