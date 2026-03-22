@@ -225,7 +225,7 @@ export const strings = {
     message_button: 'הודעה',
     prep_button: 'הכנה',
     action_summary_title: '📝 סיכום פגישות מטופלים באמצעות AI',
-    action_summary_subtitle: 'בחר מטופל/ת ופגישה וכתבו סיכום AI מובנה',
+    action_summary_subtitle: 'בחרו מטופל/ת ופגישה, וצרו סיכום באמצעות AI מובנה',
     action_summary_hint: 'לחצו לבחירת פגישה →',
     action_message_title: '💬 שליחת הודעות',
     action_message_subtitle: 'צרו הודעת מעקב אישית למטופל. המערכת תכתוב בסגנון שלך, אתם מאשרים',
