@@ -18,6 +18,7 @@ import {
   PlusIcon,
 } from '@heroicons/react/24/outline'
 import { messagesAPI, patientsAPI } from '@/lib/api'
+import { strings } from '@/i18n/he'
 
 // --- Types ---
 
@@ -43,23 +44,23 @@ interface Patient {
 // --- Helpers ---
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
-  pending_approval: { label: 'ממתין לאישור', className: 'bg-amber-100 text-amber-800' },
-  approved: { label: 'מאושר', className: 'bg-blue-100 text-blue-800' },
-  scheduled: { label: 'מתוזמן', className: 'bg-indigo-100 text-indigo-800' },
-  sent: { label: 'נשלח', className: 'bg-green-100 text-green-800' },
-  delivered: { label: 'נמסר', className: 'bg-green-100 text-green-800' },
-  cancelled: { label: 'בוטל', className: 'bg-gray-100 text-gray-500' },
-  failed: { label: 'נכשל', className: 'bg-red-100 text-red-700' },
-  rejected: { label: 'נדחה', className: 'bg-gray-100 text-gray-500' },
+  pending_approval: { label: strings.messages.status_pending, className: 'bg-amber-100 text-amber-800' },
+  approved: { label: strings.messages.status_approved, className: 'bg-blue-100 text-blue-800' },
+  scheduled: { label: strings.messages.status_scheduled, className: 'bg-indigo-100 text-indigo-800' },
+  sent: { label: strings.messages.status_sent, className: 'bg-green-100 text-green-800' },
+  delivered: { label: strings.messages.status_delivered, className: 'bg-green-100 text-green-800' },
+  cancelled: { label: strings.messages.status_cancelled, className: 'bg-gray-100 text-gray-500' },
+  failed: { label: strings.messages.status_failed, className: 'bg-red-100 text-red-700' },
+  rejected: { label: strings.messages.status_rejected, className: 'bg-gray-100 text-gray-500' },
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  task_reminder: 'תזכורת משימה',
-  session_reminder: 'תזכורת לפגישה',
-  appointment_reminder: 'תזכורת קביעת פגישה',
-  follow_up: 'מעקב',
-  exercise_reminder: 'תזכורת תרגיל',
-  check_in: "צ'ק-אין",
+  task_reminder: strings.messages.type_task_reminder,
+  session_reminder: strings.messages.type_session_reminder,
+  appointment_reminder: strings.messages.type_appointment_reminder,
+  follow_up: strings.messages.type_follow_up,
+  exercise_reminder: strings.messages.type_exercise_reminder,
+  check_in: strings.messages.type_check_in,
 }
 
 // Parse ISO timestamp as UTC even when the backend omits the 'Z' suffix
@@ -162,9 +163,9 @@ export default function MessagesPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">מרכז הודעות</h1>
+          <h1 className="text-3xl font-bold text-gray-900">{strings.messages.page_title}</h1>
           <p className="text-gray-600 mt-1 text-sm">
-            ניטור וניהול כל ההודעות לכל המטופלים.
+            {strings.messages.page_subtitle}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -173,14 +174,14 @@ export default function MessagesPage() {
             className="btn-primary flex items-center gap-2 text-sm min-h-[40px] touch-manipulation"
           >
             <PlusIcon className="h-4 w-4" />
-            הודעה חדשה
+            {strings.messages.new_message_button}
           </button>
           <button
             onClick={load}
             className="btn-secondary flex items-center gap-2 text-sm"
           >
             <ArrowPathIcon className="h-4 w-4" />
-            רענן
+            {strings.messages.refresh_button}
           </button>
         </div>
       </div>
@@ -189,38 +190,38 @@ export default function MessagesPage() {
       <div className="card">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">מטופל</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{strings.messages.filter_patient_label}</label>
             <select
               className="input-field text-sm"
               value={filterPatient}
               onChange={(e) => setFilterPatient(e.target.value)}
             >
-              <option value="">כולם</option>
+              <option value="">{strings.messages.filter_patient_all}</option>
               {sortedPatients.map((p) => (
                 <option key={p.id} value={p.id}>{p.full_name}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">סטטוס</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{strings.messages.filter_status_label}</label>
             <select
               className="input-field text-sm"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
             >
-              <option value="">הכל</option>
+              <option value="">{strings.messages.filter_status_all}</option>
               {FILTER_STATUSES.map((s) => (
                 <option key={s} value={s}>{STATUS_META[s].label}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">מתאריך</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{strings.messages.filter_date_from}</label>
             <input type="date" className="input-field text-sm" value={filterDateFrom}
               onChange={(e) => setFilterDateFrom(e.target.value)} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">עד תאריך</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{strings.messages.filter_date_to}</label>
             <input type="date" className="input-field text-sm" value={filterDateTo}
               onChange={(e) => setFilterDateTo(e.target.value)} />
           </div>
@@ -230,13 +231,13 @@ export default function MessagesPage() {
             onClick={() => { setFilterPatient(''); setFilterStatus(''); setFilterDateFrom(''); setFilterDateTo('') }}
             className="mt-2 text-xs text-gray-500 hover:text-red-600 underline"
           >
-            נקה סינון
+            {strings.messages.clear_filters_button}
           </button>
         )}
       </div>
 
       <div className="text-sm text-gray-500">
-        {loading ? 'טוען...' : `${messages.filter((m) => m.status !== 'draft').length} הודעות`}
+        {loading ? strings.messages.loading_count : `${messages.filter((m) => m.status !== 'draft').length} ${strings.messages.count_suffix}`}
       </div>
 
       {/* List */}
@@ -246,8 +247,8 @@ export default function MessagesPage() {
         </div>
       ) : messages.filter((m) => m.status !== 'draft').length === 0 ? (
         <div className="card text-center py-12 text-gray-400">
-          <p className="text-lg">אין הודעות תואמות</p>
-          <p className="text-sm mt-1">שנה את הסינון או צור הודעות חדשות דרך פרופיל המטופל</p>
+          <p className="text-lg">{strings.messages.empty_title}</p>
+          <p className="text-sm mt-1">{strings.messages.empty_subtitle}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -268,7 +269,7 @@ export default function MessagesPage() {
                       {patientName(msg.patient_id)}
                     </button>
                     <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
-                      <span>{TYPE_LABELS[msg.message_type || ''] || msg.message_type || 'הודעה'}</span>
+                      <span>{TYPE_LABELS[msg.message_type || ''] || msg.message_type || strings.messages.type_default}</span>
                       {msg.channel && <span className="uppercase">{msg.channel}</span>}
                       {msg.recipient_phone && (
                         <span dir="ltr" className="font-mono">{msg.recipient_phone}</span>
@@ -285,9 +286,9 @@ export default function MessagesPage() {
                           {formatDt(msg.scheduled_send_at)}
                         </div>
                       ) : msg.sent_at ? (
-                        <span>נשלח: {formatDt(msg.sent_at)}</span>
+                        <span>{strings.messages.sent_at_label} {formatDt(msg.sent_at)}</span>
                       ) : (
-                        <span>נוצר: {formatDt(msg.created_at)}</span>
+                        <span>{strings.messages.created_at_label} {formatDt(msg.created_at)}</span>
                       )}
                     </div>
                   </div>
@@ -309,7 +310,7 @@ export default function MessagesPage() {
                         className="btn-primary text-sm flex items-center gap-1 disabled:opacity-50"
                       >
                         <CheckCircleIcon className="h-4 w-4" />
-                        {editSaving ? 'שומר...' : 'שמור'}
+                        {editSaving ? strings.messages.save_loading : strings.messages.save_button}
                       </button>
                       <button onClick={() => setEditingId(null)} className="btn-secondary text-sm">ביטול</button>
                     </div>
@@ -326,14 +327,14 @@ export default function MessagesPage() {
                       className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
                     >
                       <PencilSquareIcon className="h-4 w-4" />
-                      ערוך תוכן
+                      {strings.messages.edit_button}
                     </button>
                     <button
                       onClick={() => handleCancel(msg.id)}
                       className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700"
                     >
                       <XMarkIcon className="h-4 w-4" />
-                      בטל תזמון
+                      {strings.messages.cancel_schedule_button}
                     </button>
                   </div>
                 )}
@@ -341,7 +342,7 @@ export default function MessagesPage() {
                 {msg.status === 'failed' && (
                   <div className="flex items-center gap-1 text-xs text-red-600">
                     <ExclamationTriangleIcon className="h-3 w-3" />
-                    שליחה נכשלה — פנה לתמיכה
+                    {strings.messages.failed_alert}
                   </div>
                 )}
               </div>
@@ -354,11 +355,11 @@ export default function MessagesPage() {
         <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] animate-fade-in">
             <div className="px-5 sm:px-8 py-4 sm:py-6 border-b border-gray-100 flex-shrink-0">
-              <h2 className="text-xl sm:text-2xl font-bold">הודעה חדשה — בחר מטופל</h2>
-              <p className="text-sm text-gray-500 mt-1">בחר מטופל כדי לפתוח את מרכז ההודעות שלו</p>
+              <h2 className="text-xl sm:text-2xl font-bold">{strings.messages.new_modal_title}</h2>
+              <p className="text-sm text-gray-500 mt-1">{strings.messages.new_modal_subtitle}</p>
             </div>
             <div className="overflow-y-auto flex-1 px-5 sm:px-8 py-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">מטופל/ת</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{strings.messages.patient_label}</label>
               <select
                 className="input-field"
                 defaultValue=""
@@ -369,7 +370,7 @@ export default function MessagesPage() {
                   }
                 }}
               >
-                <option value="">-- בחר מטופל --</option>
+                <option value="">{strings.messages.patient_placeholder}</option>
                 {sortedPatients.map((p) => (
                   <option key={p.id} value={p.id}>{p.full_name}</option>
                 ))}

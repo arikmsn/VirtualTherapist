@@ -9,6 +9,7 @@
  * PRD reference: Feature 1 (Patient Profile hub), Feature 3 (Insight Summary)
  */
 
+import { strings } from '@/i18n/he'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import MessagesCenter from '@/components/MessagesCenter'
@@ -40,12 +41,12 @@ import CopyButton from '@/components/CopyButton'
 import { deepSummaryToText, clinicalPlanToText } from '@/lib/docText'
 
 const SESSION_TYPES = [
-  { value: 'individual', label: 'פרטני' },
-  { value: 'couples', label: 'זוגי' },
-  { value: 'family', label: 'משפחתי' },
-  { value: 'group', label: 'קבוצתי' },
-  { value: 'intake', label: 'אינטייק' },
-  { value: 'follow_up', label: 'מעקב' },
+  { value: 'individual', label: strings.patients.session_type_individual },
+  { value: 'couples', label: strings.patients.session_type_couples },
+  { value: 'family', label: strings.patients.session_type_family },
+  { value: 'group', label: strings.patients.session_type_group },
+  { value: 'intake', label: strings.patients.session_type_intake },
+  { value: 'follow_up', label: strings.patients.session_type_followup },
 ]
 
 // --- Types ---
@@ -283,8 +284,8 @@ function DeepSummaryContent({
           <div className="rounded-xl bg-blue-600 text-white px-4 py-2.5 flex items-center gap-2.5">
             <span className="text-lg">🧠</span>
             <div>
-              <p className="text-sm font-bold leading-none">ניתוח CBT — קוגניטיבי-התנהגותי</p>
-              <p className="text-xs text-blue-200 mt-0.5">סיכום ממוקד בדפוסים קוגניטיביים, ניסויים התנהגותיים ושינויים לאורך הזמן</p>
+              <p className="text-sm font-bold leading-none">{strings.patientProfile.cbt_analysis_title}</p>
+              <p className="text-xs text-blue-200 mt-0.5">{strings.patientProfile.cbt_analysis_desc}</p>
             </div>
           </div>
         )}
@@ -294,19 +295,19 @@ function DeepSummaryContent({
           <>
             {j.arc_narrative && String(j.arc_narrative).trim() && (
               <div className="bg-white rounded-lg p-4 border border-gray-100">
-                <h3 className="font-bold text-gray-800 mb-2">סיכום מהלך הטיפול</h3>
+                <h3 className="font-bold text-gray-800 mb-2">{strings.patientProfile.section_arc}</h3>
                 <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.arc_narrative)}</p>
               </div>
             )}
             {j.presenting_problem_evolution && String(j.presenting_problem_evolution).trim() && (
               <div className="bg-white rounded-lg p-4 border border-gray-100">
-                <h3 className="font-bold text-gray-800 mb-2">התפתחות הבעיה המוצגת</h3>
+                <h3 className="font-bold text-gray-800 mb-2">{strings.patientProfile.section_presenting_problem}</h3>
                 <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.presenting_problem_evolution)}</p>
               </div>
             )}
             {Array.isArray(j.treatment_phases) && (j.treatment_phases as unknown[]).length > 0 && (
               <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
-                <h3 className="font-bold text-blue-900 mb-3">שלבי הטיפול</h3>
+                <h3 className="font-bold text-blue-900 mb-3">{strings.patientProfile.section_phases}</h3>
                 <div className="space-y-2">
                   {(j.treatment_phases as Array<Record<string, unknown>>).map((phase, i) => (
                     <div key={i} className="bg-white rounded p-3 border border-blue-100">
@@ -326,7 +327,7 @@ function DeepSummaryContent({
             )}
             {Array.isArray(j.goals_outcome) && (j.goals_outcome as unknown[]).length > 0 && (
               <div className="bg-white rounded-lg p-4 border border-gray-100">
-                <h3 className="font-bold text-gray-800 mb-3">מטרות ותוצאות</h3>
+                <h3 className="font-bold text-gray-800 mb-3">{strings.patientProfile.section_goals}</h3>
                 <div className="space-y-2">
                   {(j.goals_outcome as Array<Record<string, unknown>>).map((g, i) => (
                     <div key={i} className="flex gap-2 text-sm">
@@ -340,7 +341,7 @@ function DeepSummaryContent({
             {Array.isArray(j.clinical_patterns_identified) && (j.clinical_patterns_identified as string[]).length > 0 && (
               <div className={isCbt ? 'bg-blue-50 rounded-lg p-4 border border-blue-100' : 'bg-yellow-50 rounded-lg p-4 border border-yellow-100'}>
                 <h3 className={`font-bold mb-2 ${isCbt ? 'text-blue-800' : 'text-yellow-800'}`}>
-                  {isCbt ? 'דפוסים קוגניטיביים-התנהגותיים' : 'דפוסים קליניים שזוהו'}
+                  {isCbt ? strings.patientProfile.section_cognitive_patterns : strings.patientProfile.section_clinical_patterns}
                 </h3>
                 <ul className={`list-disc list-inside space-y-1 text-sm ${isCbt ? 'text-blue-800' : 'text-yellow-800'}`}>
                   {(j.clinical_patterns_identified as string[]).map((p, i) => <li key={i}>{p}</li>)}
@@ -350,7 +351,7 @@ function DeepSummaryContent({
             {Array.isArray(j.turning_points) && (j.turning_points as string[]).length > 0 && (
               <div className="bg-teal-50 rounded-lg p-4 border border-teal-100">
                 <h3 className="font-bold text-teal-800 mb-2">
-                  {isCbt ? 'שינויים קוגניטיביים מרכזיים' : 'נקודות מפנה'}
+                  {isCbt ? strings.patientProfile.section_turning_points_cbt : strings.patientProfile.section_turning_points}
                 </h3>
                 <ul className="list-disc list-inside space-y-1 text-teal-800 text-sm">
                   {(j.turning_points as string[]).map((t, i) => <li key={i}>{t}</li>)}
@@ -360,7 +361,7 @@ function DeepSummaryContent({
             {Array.isArray(j.what_worked) && (j.what_worked as string[]).length > 0 && (
               <div className="bg-green-50 rounded-lg p-4 border border-green-100">
                 <h3 className="font-bold text-green-800 mb-2">
-                  {isCbt ? 'מה עבד — מבחינה קוגניטיבית-התנהגותית' : 'מה עבד'}
+                  {isCbt ? strings.patientProfile.section_worked_cbt : strings.patientProfile.section_worked}
                 </h3>
                 <ul className="list-disc list-inside space-y-1 text-green-800 text-sm">
                   {(j.what_worked as string[]).map((w, i) => <li key={i}>{w}</li>)}
@@ -369,7 +370,7 @@ function DeepSummaryContent({
             )}
             {Array.isArray(j.what_didnt_work) && (j.what_didnt_work as string[]).length > 0 && (
               <div className="bg-red-50 rounded-lg p-4 border border-red-100">
-                <h3 className="font-bold text-red-800 mb-2">מה לא עבד</h3>
+                <h3 className="font-bold text-red-800 mb-2">{strings.patientProfile.section_didnt_work}</h3>
                 <ul className="list-disc list-inside space-y-1 text-red-800 text-sm">
                   {(j.what_didnt_work as string[]).map((w, i) => <li key={i}>{w}</li>)}
                 </ul>
@@ -377,14 +378,14 @@ function DeepSummaryContent({
             )}
             {j.current_status && String(j.current_status).trim() && (
               <div className="bg-white rounded-lg p-4 border border-gray-100">
-                <h3 className="font-bold text-gray-800 mb-2">מצב נוכחי</h3>
+                <h3 className="font-bold text-gray-800 mb-2">{strings.patientProfile.section_current_status}</h3>
                 <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.current_status)}</p>
               </div>
             )}
             {Array.isArray(j.recommendations_going_forward) && (j.recommendations_going_forward as string[]).length > 0 && (
               <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
                 <h3 className="font-bold text-purple-900 mb-2">
-                  {isCbt ? 'המלצות CBT להמשך' : 'המלצות להמשך'}
+                  {isCbt ? strings.patientProfile.section_recommendations_cbt : strings.patientProfile.section_recommendations}
                 </h3>
                 <ul className="list-disc list-inside space-y-1 text-purple-800 text-sm">
                   {(j.recommendations_going_forward as string[]).map((r, i) => <li key={i}>{r}</li>)}
@@ -399,13 +400,13 @@ function DeepSummaryContent({
           <>
             {j.overall_treatment_picture && (
               <div className="bg-white rounded-lg p-4 border border-gray-100">
-                <h3 className="font-bold text-gray-800 mb-2">תמונת מצב כללית</h3>
+                <h3 className="font-bold text-gray-800 mb-2">{strings.patientProfile.section_overall}</h3>
                 <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.overall_treatment_picture)}</p>
               </div>
             )}
             {Array.isArray(j.timeline_highlights) && (j.timeline_highlights as string[]).length > 0 && (
               <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
-                <h3 className="font-bold text-blue-900 mb-2">אבני דרך</h3>
+                <h3 className="font-bold text-blue-900 mb-2">{strings.patientProfile.section_timeline}</h3>
                 <ul className="list-disc list-inside space-y-1 text-blue-800 text-sm">
                   {(j.timeline_highlights as string[]).map((h, i) => <li key={i}>{h}</li>)}
                 </ul>
@@ -413,19 +414,19 @@ function DeepSummaryContent({
             )}
             {j.goals_and_tasks && (
               <div className="bg-white rounded-lg p-4 border border-gray-100">
-                <h3 className="font-bold text-gray-800 mb-2">מטרות ומשימות</h3>
+                <h3 className="font-bold text-gray-800 mb-2">{strings.patientProfile.section_goals_tasks}</h3>
                 <p className="text-gray-700 text-sm whitespace-pre-line leading-relaxed">{String(j.goals_and_tasks)}</p>
               </div>
             )}
             {j.measurable_progress && (
               <div className="bg-green-50 rounded-lg p-4 border border-green-100">
-                <h3 className="font-bold text-green-800 mb-2">סימני התקדמות</h3>
+                <h3 className="font-bold text-green-800 mb-2">{strings.patientProfile.section_measurable}</h3>
                 <p className="text-green-800 text-sm whitespace-pre-line leading-relaxed">{String(j.measurable_progress)}</p>
               </div>
             )}
             {j.directions_for_next_phase && (
               <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
-                <h3 className="font-bold text-purple-900 mb-2">כיוונים להמשך</h3>
+                <h3 className="font-bold text-purple-900 mb-2">{strings.patientProfile.section_directions}</h3>
                 <p className="text-purple-800 text-sm whitespace-pre-line leading-relaxed">{String(j.directions_for_next_phase)}</p>
               </div>
             )}
@@ -444,7 +445,7 @@ function DeepSummaryContent({
     return <MarkdownSectionRenderer text={rendered_text} />
   }
 
-  return <p className="text-gray-400 text-sm">אין תוכן שמור</p>
+  return <p className="text-gray-400 text-sm">{strings.patientProfile.no_content}</p>
 }
 
 // --- Component ---
@@ -650,7 +651,7 @@ export default function PatientProfilePage() {
           setPatient(p.value)
           setPatientProtocolIds(Array.isArray(p.value.protocol_ids) ? p.value.protocol_ids : [])
         } else {
-          setError((p.reason as any)?.response?.data?.detail || 'שגיאה בטעינת המטופל')
+          setError((p.reason as any)?.response?.data?.detail || strings.patientProfile.error_loading)
         }
         if (profile.status === 'fulfilled') setIsCbtActive(!!profile.value.cbt_active)
       } finally {
@@ -821,7 +822,7 @@ export default function PatientProfilePage() {
       setPatient((prev) => prev ? { ...prev, ...updated } : prev)
       setShowEditPatient(false)
     } catch (err: any) {
-      setEditError(err.response?.data?.detail || 'שגיאה בעדכון פרטים')
+      setEditError(err.response?.data?.detail || strings.patientProfile.error_updating)
     } finally {
       setEditSaving(false)
     }
@@ -914,7 +915,7 @@ export default function PatientProfilePage() {
       // Background refresh to pick up any ordering or metadata changes.
       loadDeepHistory()
     } catch (err: any) {
-      setInsightError(err.response?.data?.detail || 'שגיאה ביצירת סיכום העומק')
+      setInsightError(err.response?.data?.detail || strings.patientProfile.error_creating_deep_summary)
     } finally {
       sessionStorage.removeItem(insightStorageKey)
       setInsightLoading(false)
@@ -999,10 +1000,10 @@ export default function PatientProfilePage() {
             setPlanHistory(history as TreatmentPlanVersion[])
           } catch { /* non-critical */ }
         } catch (err2: any) {
-          setPlanError(err2.response?.data?.detail || 'שגיאה בעדכון התוכנית')
+          setPlanError(err2.response?.data?.detail || strings.patientProfile.error_updating_plan)
         }
       } else {
-        setPlanError(msg || 'שגיאה ביצירת התוכנית הטיפולית')
+        setPlanError(msg || strings.patientProfile.error_creating_plan)
       }
     } finally {
       sessionStorage.removeItem(planStorageKey)
@@ -1015,7 +1016,7 @@ export default function PatientProfilePage() {
     setNewSessionError('')
     const dur = parseInt(newSessionForm.duration_minutes, 10)
     if (!newSessionForm.duration_minutes || isNaN(dur) || dur <= 0) {
-      setNewSessionError('יש להזין משך פגישה תקין (מספר דקות חיובי)')
+      setNewSessionError(strings.patientProfile.error_invalid_duration)
       return
     }
     setNewSessionCreating(true)
@@ -1044,7 +1045,7 @@ export default function PatientProfilePage() {
       setTab('sessions')
       await reloadSessions()
     } catch (err: any) {
-      setNewSessionError(err.response?.data?.detail || 'שגיאה ביצירת הפגישה')
+      setNewSessionError(err.response?.data?.detail || strings.patientProfile.error_creating_session)
     } finally {
       setNewSessionCreating(false)
     }
@@ -1059,10 +1060,10 @@ export default function PatientProfilePage() {
 
   const statusLabel = (s: string) => {
     const map: Record<string, string> = {
-      active: 'פעיל',
-      paused: 'מושהה',
-      completed: 'הושלם',
-      inactive: 'לא פעיל',
+      active: strings.patientProfile.status_active,
+      paused: strings.patientProfile.status_paused,
+      completed: strings.patientProfile.status_completed,
+      inactive: strings.patientProfile.status_inactive,
     }
     return map[s] || s
   }
@@ -1074,7 +1075,7 @@ export default function PatientProfilePage() {
       <div className="flex items-center justify-center h-64" dir="rtl">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-therapy-calm mx-auto mb-4"></div>
-          <p className="text-gray-600">טוען פרטי מטופל...</p>
+          <p className="text-gray-600">{strings.patientProfile.loading}</p>
         </div>
       </div>
     )
@@ -1088,11 +1089,11 @@ export default function PatientProfilePage() {
           className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
         >
           <ArrowRightIcon className="h-5 w-5" />
-          חזרה למטופלים
+          {strings.patientProfile.back_button}
         </button>
         <div className="card text-center py-12">
           <ExclamationTriangleIcon className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <p className="text-red-700">{error || 'מטופל לא נמצא'}</p>
+          <p className="text-red-700">{error || strings.patientProfile.not_found}</p>
         </div>
       </div>
     )
@@ -1113,7 +1114,7 @@ export default function PatientProfilePage() {
         className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
       >
         <ArrowRightIcon className="h-5 w-5" />
-        חזרה למטופלים
+        {strings.patientProfile.back_button}
       </button>
 
       {/* Patient header card */}
@@ -1139,7 +1140,7 @@ export default function PatientProfilePage() {
                   onClick={handleReactivate}
                   className="text-xs text-green-600 hover:text-green-800 border border-green-200 rounded-lg px-2 py-1.5 hover:border-green-400 transition-colors min-h-[32px] touch-manipulation"
                 >
-                  הפעל מחדש
+                  {strings.patientProfile.reactivate_button}
                 </button>
               </div>
             )}
@@ -1160,12 +1161,12 @@ export default function PatientProfilePage() {
               )}
               {patient.start_date && (
                 <div className="flex gap-1">
-                  <span className="text-gray-400">תחילת טיפול:</span>
+                  <span className="text-gray-400">{strings.patientProfile.start_date_label}</span>
                   <span>{formatDateIL(patient.start_date)}</span>
                 </div>
               )}
               <div className="flex gap-1">
-                <span className="text-gray-400">נוצר:</span>
+                <span className="text-gray-400">{strings.patientProfile.created_label}</span>
                 <span>{formatDatetimeIL(patient.created_at)}</span>
               </div>
             </div>
@@ -1173,7 +1174,7 @@ export default function PatientProfilePage() {
 
             {patient.primary_concerns && (
               <div className="mt-3 text-sm text-gray-700 bg-gray-50 rounded-lg p-3">
-                <span className="font-medium text-gray-500 block mb-1">נושאים עיקריים:</span>
+                <span className="font-medium text-gray-500 block mb-1">{strings.patientProfile.primary_concerns_label}</span>
                 {patient.primary_concerns}
               </div>
             )}
@@ -1189,13 +1190,13 @@ export default function PatientProfilePage() {
       <div className="border-b border-gray-200 -mx-4 sm:mx-0 px-4 sm:px-0">
         <nav className="flex gap-0 -mb-px overflow-x-auto scrollbar-none">
           {([
-            { key: 'sessions', label: 'פגישות', icon: CalendarIcon },
-            { key: 'summaries', label: 'סיכומים ותובנות', icon: SparklesIcon },
-            { key: 'plan', label: 'תוכנית טיפולית', icon: ClipboardDocumentListIcon },
-            { key: 'inbetween', label: 'הודעות ותזכורות', icon: ChatBubbleLeftRightIcon },
-            { key: 'notes', label: 'הערות', icon: BookOpenIcon },
-            { key: 'tasks', label: 'משימות', icon: CheckCircleIcon },
-            { key: 'settings', label: 'הגדרות', icon: Cog6ToothIcon },
+            { key: 'sessions', label: strings.patientProfile.tab_sessions, icon: CalendarIcon },
+            { key: 'summaries', label: strings.patientProfile.tab_summaries, icon: SparklesIcon },
+            { key: 'plan', label: strings.patientProfile.tab_treatment_plan, icon: ClipboardDocumentListIcon },
+            { key: 'inbetween', label: strings.patientProfile.tab_messages, icon: ChatBubbleLeftRightIcon },
+            { key: 'notes', label: strings.patientProfile.tab_notes, icon: BookOpenIcon },
+            { key: 'tasks', label: strings.patientProfile.tab_tasks, icon: CheckCircleIcon },
+            { key: 'settings', label: strings.patientProfile.tab_settings, icon: Cog6ToothIcon },
           ] as const).map(({ key, label, icon: Icon }) => (
             <button
               key={key}
@@ -1218,14 +1219,14 @@ export default function PatientProfilePage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm text-gray-600">
-              {sessions.length > 0 ? `${sessions.length} פגישות` : 'אין פגישות עדיין'}
+              {sessions.length > 0 ? `${sessions.length} ${strings.patientProfile.sessions_unit}` : strings.patientProfile.no_sessions}
             </p>
             <button
               onClick={() => setShowNewSession(true)}
               className="btn-primary flex items-center gap-2 text-sm min-h-[44px] touch-manipulation"
             >
               <PlusIcon className="h-4 w-4" />
-              פגישה חדשה
+              {strings.patientProfile.new_session_button}
             </button>
           </div>
 
@@ -1236,8 +1237,8 @@ export default function PatientProfilePage() {
           ) : sessions.length === 0 ? (
             <div className="card text-center py-12">
               <CalendarIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-              <h3 className="font-bold text-gray-700 mb-1">אין פגישות עדיין</h3>
-              <p className="text-sm text-gray-500">צור פגישה חדשה דרך עמוד הפגישות</p>
+              <h3 className="font-bold text-gray-700 mb-1">{strings.patientProfile.no_sessions}</h3>
+              <p className="text-sm text-gray-500">{strings.patientProfile.create_session_message}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1267,22 +1268,22 @@ export default function PatientProfilePage() {
                         {session.summary_status === 'approved' ? (
                           <span className="badge badge-approved text-xs">
                             <CheckCircleIcon className="h-3 w-3 inline ml-1" />
-                            סיכום מאושר
+                            {strings.patientProfile.badge_approved}
                           </span>
                         ) : session.summary_status === 'draft' ? (
                           <span className="badge badge-draft text-xs">
-                            טיוטת סיכום
+                            {strings.patientProfile.badge_draft}
                           </span>
                         ) : session.summary_id ? (
-                          <span className="badge badge-draft text-xs">טיוטת סיכום</span>
+                          <span className="badge badge-draft text-xs">{strings.patientProfile.badge_draft}</span>
                         ) : (
-                          <span className="badge text-xs bg-gray-100 text-gray-500">ללא סיכום</span>
+                          <span className="badge text-xs bg-gray-100 text-gray-500">{strings.patientProfile.badge_no_summary}</span>
                         )}
                       </div>
                       {session.duration_minutes && (
                         <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
                           <ClockIcon className="h-3 w-3" />
-                          {session.duration_minutes} דקות
+                          {session.duration_minutes} {strings.patientProfile.minutes_unit}
                         </div>
                       )}
                     </div>
@@ -1293,7 +1294,7 @@ export default function PatientProfilePage() {
                         className="flex items-center gap-1 text-xs font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-2.5 py-1.5 transition-colors whitespace-nowrap touch-manipulation flex-shrink-0"
                       >
                         <SparklesIcon className="h-3.5 w-3.5" />
-                        הכנה לפגישה
+                        {strings.patientProfile.prep_button}
                       </button>
                     )}
                     <ArrowRightIcon className="h-4 w-4 text-gray-400 flex-shrink-0 rotate-180" />
@@ -1313,9 +1314,9 @@ export default function PatientProfilePage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <SparklesIcon className="h-5 w-5 text-purple-600" />
-                <h2 className="text-lg font-bold text-purple-900">סיכום עומק AI</h2>
+                <h2 className="text-lg font-bold text-purple-900">{strings.patientProfile.deep_summary_title}</h2>
                 {isCbtActive && (
-                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">מבנה סיכום בסגנון CBT</span>
+                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">{strings.patientProfile.badge_cbt_structure}</span>
                 )}
                 {insight && (
                   <>
@@ -1326,7 +1327,7 @@ export default function PatientProfilePage() {
                       title="הדפסה"
                       className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors"
                     >
-                      🖨 הדפסה
+                      {strings.patientProfile.print_button}
                     </button>
                   </>
                 )}
@@ -1339,23 +1340,23 @@ export default function PatientProfilePage() {
                 {insightLoading ? (
                   <>
                     <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white flex-shrink-0"></span>
-                    מייצר סיכום מלא. זה עשוי לקחת דקה
+                    {strings.patientProfile.generating_summary}
                   </>
                 ) : insight ? (
-                  'יצירת סיכום מעודכן'
+                  strings.patientProfile.update_summary_button
                 ) : (
-                  'צור סיכום עומק'
+                  strings.patientProfile.create_deep_summary_button
                 )}
               </button>
             </div>
 
             <p className="text-xs text-purple-600 mt-0.5 mb-2 leading-relaxed">
-              סיכום עומק AI הוא סיכום מרוכז של דפוסים מרכזיים, תהליך הטיפול ושינויים לאורך זמן, על בסיס סיכומי פגישות שאושרו.
+              {strings.patientProfile.deep_summary_description}
             </p>
 
             {approvedCount === 0 && !insight && (
               <p className="text-sm text-purple-700">
-                יש לאשר לפחות סיכום פגישה אחד כדי לייצר סיכום עומק.
+                {strings.patientProfile.deep_summary_requirement}
               </p>
             )}
 
@@ -1374,7 +1375,7 @@ export default function PatientProfilePage() {
                       {deepHistory[0] && (
                         <span className="text-xs text-gray-500">{formatDateIL(deepHistory[0].created_at)}</span>
                       )}
-                      <span className="text-xs bg-purple-600 text-white px-1.5 py-0.5 rounded-full">פעילה</span>
+                      <span className="text-xs bg-purple-600 text-white px-1.5 py-0.5 rounded-full">{strings.patientProfile.badge_active}</span>
                     </div>
                     {deepHistory[0]?.rendered_text && (
                       <p className="text-xs text-gray-500 line-clamp-2">
@@ -1398,7 +1399,7 @@ export default function PatientProfilePage() {
                       }}
                       className="text-xs text-purple-600 hover:text-purple-800"
                     >
-                      הצג
+                      {strings.patientProfile.view_button}
                     </button>
                     {deepHistory[0] && (
                       deletingDeepSummaryId === deepHistory[0].summary_id ? (
@@ -1408,14 +1409,14 @@ export default function PatientProfilePage() {
                             onClick={() => handleDeleteDeepSummary(deepHistory[0].summary_id)}
                             className="text-xs text-red-600 hover:text-red-800 font-medium"
                           >
-                            אשר מחיקה
+                            {strings.patientProfile.confirm_delete}
                           </button>
                           <button
                             type="button"
                             onClick={() => setDeletingDeepSummaryId(null)}
                             className="text-xs text-gray-500 hover:text-gray-700"
                           >
-                            ביטול
+                            {strings.patientProfile.cancel_button}
                           </button>
                         </>
                       ) : (
@@ -1424,7 +1425,7 @@ export default function PatientProfilePage() {
                           onClick={() => setDeletingDeepSummaryId(deepHistory[0].summary_id)}
                           className="text-xs text-gray-400 hover:text-red-500"
                         >
-                          מחק
+                          {strings.patientProfile.delete_version_button}
                         </button>
                       )
                     )}
@@ -1468,7 +1469,7 @@ export default function PatientProfilePage() {
             <div className="card border-purple-100">
               <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
                 <SparklesIcon className="h-4 w-4 text-purple-400" />
-                היסטוריית סיכומי עומק
+                {strings.patientProfile.deep_history_title}
                 <span className="text-xs font-normal text-purple-500">({Math.max(0, deepHistory.length - 1)})</span>
                 {deepHistoryLoading && <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-purple-400 mr-auto" />}
               </h3>
@@ -1478,7 +1479,7 @@ export default function PatientProfilePage() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs text-gray-500">{formatDateIL(item.created_at)}</span>
-                        <span className="text-xs bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full">ארכיון</span>
+                        <span className="text-xs bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full">{strings.patientProfile.badge_archive}</span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <button
@@ -1486,7 +1487,7 @@ export default function PatientProfilePage() {
                           onClick={() => setViewingDeepSummary(item)}
                           className="text-xs text-purple-600 hover:text-purple-800"
                         >
-                          הצג
+                          {strings.patientProfile.view_button}
                         </button>
                         {deletingDeepSummaryId === item.summary_id ? (
                           <>
@@ -1495,14 +1496,14 @@ export default function PatientProfilePage() {
                               onClick={() => handleDeleteDeepSummary(item.summary_id)}
                               className="text-xs text-red-600 hover:text-red-800 font-medium"
                             >
-                              אשר מחיקה
+                              {strings.patientProfile.confirm_delete}
                             </button>
                             <button
                               type="button"
                               onClick={() => setDeletingDeepSummaryId(null)}
                               className="text-xs text-gray-500 hover:text-gray-700"
                             >
-                              ביטול
+                              {strings.patientProfile.cancel_button}
                             </button>
                           </>
                         ) : (
@@ -1511,7 +1512,7 @@ export default function PatientProfilePage() {
                             onClick={() => setDeletingDeepSummaryId(item.summary_id)}
                             className="text-xs text-gray-400 hover:text-red-500"
                           >
-                            מחיקה
+                            {strings.patientProfile.delete_version_button}
                           </button>
                         )}
                       </div>
@@ -1531,8 +1532,8 @@ export default function PatientProfilePage() {
           <div className="flex items-center gap-2">
             <DocumentTextIcon className="h-4 w-4 text-gray-400" />
             <h3 className="font-semibold text-gray-700 text-sm">
-              סיכומי פגישות
-              {approvedCount > 0 && <span className="text-gray-400 font-normal"> ({approvedCount} מאושרים)</span>}
+              {strings.patientProfile.session_summaries_title}
+              {approvedCount > 0 && <span className="text-gray-400 font-normal"> ({approvedCount} {strings.patientProfile.approved_suffix})</span>}
             </h3>
           </div>
           {summariesLoading ? (
@@ -1542,8 +1543,8 @@ export default function PatientProfilePage() {
           ) : summaries.length === 0 ? (
             <div className="card text-center py-12">
               <DocumentTextIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-              <h3 className="font-bold text-gray-700 mb-1">אין סיכומים עדיין</h3>
-              <p className="text-sm text-gray-500">צור פגישה וייצר סיכום AI כדי לראות אותו כאן</p>
+              <h3 className="font-bold text-gray-700 mb-1">{strings.patientProfile.no_summaries}</h3>
+              <p className="text-sm text-gray-500">{strings.patientProfile.create_summary_message}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1568,10 +1569,10 @@ export default function PatientProfilePage() {
                         {item.summary.status === 'approved' || item.summary.approved_by_therapist ? (
                           <span className="badge badge-approved text-xs">
                             <CheckCircleIcon className="h-3 w-3 inline ml-1" />
-                            מאושר
+                            {strings.patientProfile.badge_approved_summary}
                           </span>
                         ) : (
-                          <span className="badge badge-draft text-xs">טיוטה</span>
+                          <span className="badge badge-draft text-xs">{strings.patientProfile.badge_draft_summary}</span>
                         )}
                       </div>
                       {item.summary.full_summary && (
@@ -1607,13 +1608,13 @@ export default function PatientProfilePage() {
             {exercises.length === 0 ? (
               <div className="card text-center py-12">
                 <CheckCircleIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <h3 className="font-bold text-gray-700 mb-1">אין משימות עדיין</h3>
-                <p className="text-sm text-gray-500">משימות נוצרות אוטומטית מסיכומי פגישות שאושרו</p>
+                <h3 className="font-bold text-gray-700 mb-1">{strings.patientProfile.no_tasks}</h3>
+                <p className="text-sm text-gray-500">{strings.patientProfile.tasks_auto_created}</p>
               </div>
             ) : (
               <div className="card border-green-200">
                 <h3 className="font-bold text-gray-800 mb-3">
-                  משימות ({exercises.filter((e) => e.completed).length}/{exercises.length} הושלמו)
+                  {strings.patientProfile.tasks_unit} ({exercises.filter((e) => e.completed).length}/{exercises.length} {strings.patientProfile.tasks_completed_unit})
                 </h3>
                 <ul className="space-y-3">
                   {exercises.map((ex) => {
@@ -1625,7 +1626,7 @@ export default function PatientProfilePage() {
                         <button
                           onClick={() => handleToggleExercise(ex)}
                           className="mt-0.5 flex-shrink-0"
-                          aria-label={ex.completed ? 'בטל השלמה' : 'סמן כהושלם'}
+                          aria-label={ex.completed ? strings.patientProfile.mark_incomplete_label : strings.patientProfile.mark_complete_label}
                         >
                           {ex.completed
                             ? <CheckCircleIcon className="h-5 w-5 text-green-600" />
@@ -1642,7 +1643,7 @@ export default function PatientProfilePage() {
                               onClick={() => navigate(`/sessions/${originSession.id}`)}
                               className="block text-xs text-gray-400 hover:text-therapy-calm mt-0.5 text-right"
                             >
-                              נוצר בפגישה: {formatDateIL(originSession.session_date)}
+                              {strings.patientProfile.created_in_session} {formatDateIL(originSession.session_date)}
                               {originSession.session_number ? ` (#${originSession.session_number})` : ''}
                             </button>
                           )}
@@ -1650,8 +1651,8 @@ export default function PatientProfilePage() {
                         <button
                           onClick={() => handleDeleteExercise(ex)}
                           className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors"
-                          aria-label="הסר משימה"
-                          title="הסר משימה"
+                          aria-label={strings.patientProfile.remove_task_label}
+                          title={strings.patientProfile.remove_task_label}
                         >
                           <XMarkIcon className="h-4 w-4" />
                         </button>
@@ -1672,12 +1673,12 @@ export default function PatientProfilePage() {
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <ClipboardDocumentListIcon className="h-5 w-5 text-indigo-600" />
-                <h2 className="text-lg font-bold text-indigo-900">תוכנית טיפולית</h2>
+                <h2 className="text-lg font-bold text-indigo-900">{strings.patientProfile.treatment_plan_title}</h2>
                 {isCbtActive && (
-                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">במבנה CBT</span>
+                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">{strings.patientProfile.badge_cbt_treatment}</span>
                 )}
                 {savedPlan && planSaveSuccess && (
-                  <span className="text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded-full">✓ נשמר</span>
+                  <span className="text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded-full">{strings.patientProfile.saved_badge}</span>
                 )}
               </div>
               <div className="flex gap-2 flex-wrap items-center self-start">
@@ -1690,7 +1691,7 @@ export default function PatientProfilePage() {
                     onClick={() => window.open(`/patients/${pid}/print?doc=plan`, '_blank')}
                     className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors"
                   >
-                    🖨 הדפסה
+                    {strings.patientProfile.print_button}
                   </button>
                 )}
                 {savedPlan && (
@@ -1700,7 +1701,7 @@ export default function PatientProfilePage() {
                     className="flex items-center gap-1.5 text-sm text-indigo-700 hover:text-indigo-900 border border-indigo-300 hover:border-indigo-500 bg-white rounded-lg px-3 py-2 transition-colors disabled:opacity-50 min-h-[40px] touch-manipulation"
                   >
                     <ArrowPathIcon className={`h-4 w-4 ${planLoading ? 'animate-spin' : ''}`} />
-                    יצירת תכנית מעודכנת
+                    {strings.patientProfile.update_plan_button}
                   </button>
                 )}
               </div>
@@ -1710,7 +1711,7 @@ export default function PatientProfilePage() {
               <div className="text-center py-8">
                 <ClipboardDocumentListIcon className="h-12 w-12 text-indigo-300 mx-auto mb-3" />
                 <p className="text-indigo-700 text-sm mb-4">
-                  עדיין אין תוכנית טיפולית. לחץ על הכפתור ליצירת תוכנית המבוססת על ההיסטוריה הקלינית.
+                  {strings.patientProfile.no_plan_yet}
                 </p>
                 <button
                   onClick={handleGeneratePlan}
@@ -1718,7 +1719,7 @@ export default function PatientProfilePage() {
                   className="btn-primary flex items-center gap-2 mx-auto disabled:opacity-50 min-h-[44px] touch-manipulation"
                 >
                   <SparklesIcon className="h-4 w-4" />
-                  צור תוכנית טיפולית
+                  {strings.patientProfile.create_plan_button}
                 </button>
               </div>
             )}
@@ -1726,7 +1727,7 @@ export default function PatientProfilePage() {
             {planLoading && (
               <div className="flex items-center justify-center py-12 gap-3">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-                <span className="text-indigo-700 text-sm">מייצר ושומר תוכנית טיפולית. זה עשוי לקחת דקה...</span>
+                <span className="text-indigo-700 text-sm">{strings.patientProfile.generating_plan}</span>
               </div>
             )}
 
@@ -1738,7 +1739,7 @@ export default function PatientProfilePage() {
                   onClick={handleGeneratePlan}
                   className="mr-auto text-sm underline hover:no-underline"
                 >
-                  נסה שוב
+                  {strings.patientProfile.retry_button}
                 </button>
               </div>
             )}
@@ -1761,7 +1762,7 @@ export default function PatientProfilePage() {
                   {presenting && (
                     <div>
                       <h3 className="font-semibold text-indigo-900 mb-1.5 flex items-center gap-1.5">
-                        <span className="text-base">📋</span> בעיה מוצגת
+                        <span className="text-base">📋</span> {strings.patientProfile.plan_presenting_problem}
                       </h3>
                       <p className="text-sm text-gray-700 bg-white rounded-lg p-3 border border-indigo-100 whitespace-pre-line">{presenting}</p>
                     </div>
@@ -1770,7 +1771,7 @@ export default function PatientProfilePage() {
                   {focusAreas.length > 0 && (
                     <div>
                       <h3 className="font-semibold text-indigo-900 mb-2 flex items-center gap-1.5">
-                        <span className="text-base">🔍</span> תחומי התמקדות
+                        <span className="text-base">🔍</span> {strings.patientProfile.plan_focus_areas}
                       </h3>
                       <div className="flex flex-wrap gap-2">
                         {focusAreas.map((area, i) => (
@@ -1785,7 +1786,7 @@ export default function PatientProfilePage() {
                   {goals.length > 0 && (
                     <div>
                       <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
-                        <span className="text-base">🎯</span> מטרות טיפוליות
+                        <span className="text-base">🎯</span> {strings.patientProfile.plan_goals}
                       </h3>
                       <div className="space-y-2">
                         {goals.map((g, i) => (
@@ -1814,7 +1815,7 @@ export default function PatientProfilePage() {
                   {interventions.length > 0 && (
                     <div>
                       <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
-                        <span className="text-base">🛠️</span> התערבויות מתוכננות
+                        <span className="text-base">🛠️</span> {strings.patientProfile.plan_interventions}
                       </h3>
                       <ul className="space-y-1.5">
                         {interventions.map((iv, i) => (
@@ -1830,7 +1831,7 @@ export default function PatientProfilePage() {
                   {milestones.length > 0 && (
                     <div>
                       <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
-                        <span className="text-base">🏁</span> אבני דרך
+                        <span className="text-base">🏁</span> {strings.patientProfile.plan_milestones}
                       </h3>
                       <ul className="space-y-1.5">
                         {milestones.map((m, i) => (
@@ -1850,7 +1851,7 @@ export default function PatientProfilePage() {
                   {risks.length > 0 && (
                     <div>
                       <h3 className="font-semibold text-indigo-900 mb-2.5 flex items-center gap-1.5">
-                        <span className="text-base">⚠️</span> שיקולי סיכון
+                        <span className="text-base">⚠️</span> {strings.patientProfile.plan_risks}
                       </h3>
                       <ul className="space-y-1">
                         {risks.map((r, i) => (
@@ -1864,7 +1865,7 @@ export default function PatientProfilePage() {
                   )}
 
                   <p className="text-xs text-indigo-500 pt-2 border-t border-indigo-100">
-                    * מבוסס על סיכומים מאושרים. כל החלטה טיפולית נתונה לשיקול דעת המטפל.
+                    {strings.patientProfile.plan_disclaimer}
                   </p>
                 </div>
               )
@@ -1876,13 +1877,13 @@ export default function PatientProfilePage() {
             <div className="card border-gray-200">
               <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
                 <ClipboardDocumentListIcon className="h-4 w-4 text-gray-400" />
-                היסטוריית גרסאות שמורות
+                {strings.patientProfile.plan_versions_title}
                 {planHistoryLoading && (
                   <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-gray-400 mr-auto" />
                 )}
               </h3>
               {!planHistoryLoading && planHistory.length === 0 && (
-                <p className="text-sm text-gray-400">עדיין אין גרסאות שמורות</p>
+                <p className="text-sm text-gray-400">{strings.patientProfile.no_versions}</p>
               )}
               <div className="space-y-2">
                 {planHistory.map((v) => (
@@ -1893,13 +1894,13 @@ export default function PatientProfilePage() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-gray-800">
-                          גרסה {v.version}
+                          {strings.patientProfile.version_label} {v.version}
                         </span>
                         {v.status === 'active' && (
-                          <span className="text-xs bg-indigo-600 text-white px-1.5 py-0.5 rounded-full">פעילה</span>
+                          <span className="text-xs bg-indigo-600 text-white px-1.5 py-0.5 rounded-full">{strings.patientProfile.version_active}</span>
                         )}
                         {v.status === 'archived' && (
-                          <span className="text-xs bg-gray-300 text-gray-700 px-1.5 py-0.5 rounded-full">ארכיון</span>
+                          <span className="text-xs bg-gray-300 text-gray-700 px-1.5 py-0.5 rounded-full">{strings.patientProfile.version_archive}</span>
                         )}
                         <span className="text-xs text-gray-400">{formatDateIL(v.created_at)}</span>
                       </div>
@@ -1910,7 +1911,7 @@ export default function PatientProfilePage() {
                             onClick={() => setViewingPlanVersion(v)}
                             className="text-xs text-indigo-600 hover:text-indigo-800"
                           >
-                            הצג
+                            {strings.patientProfile.view_button}
                           </button>
                         )}
                         {deletingPlanId === v.plan_id ? (
@@ -1920,14 +1921,14 @@ export default function PatientProfilePage() {
                               onClick={() => handleDeletePlan(v.plan_id)}
                               className="text-xs text-red-600 hover:text-red-800 font-medium"
                             >
-                              אשר מחיקה
+                              {strings.patientProfile.confirm_delete}
                             </button>
                             <button
                               type="button"
                               onClick={() => setDeletingPlanId(null)}
                               className="text-xs text-gray-500 hover:text-gray-700"
                             >
-                              ביטול
+                              {strings.patientProfile.cancel_button}
                             </button>
                           </>
                         ) : (
@@ -1936,7 +1937,7 @@ export default function PatientProfilePage() {
                             onClick={() => setDeletingPlanId(v.plan_id)}
                             className="text-xs text-gray-400 hover:text-red-500"
                           >
-                            מחיקה
+                            {strings.patientProfile.delete_version_button}
                           </button>
                         )}
                       </div>
@@ -1964,8 +1965,8 @@ export default function PatientProfilePage() {
         <div className="card space-y-4">
           <div className="flex items-center gap-2">
             <BookOpenIcon className="h-5 w-5 text-gray-500" />
-            <h2 className="font-bold text-gray-800">הערות</h2>
-            <span className="text-xs text-gray-400 mr-auto">גלוי למטפל בלבד</span>
+            <h2 className="font-bold text-gray-800">{strings.patientProfile.notes_title}</h2>
+            <span className="text-xs text-gray-400 mr-auto">{strings.patientProfile.notes_visibility}</span>
           </div>
 
           <div>
@@ -1975,7 +1976,7 @@ export default function PatientProfilePage() {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm resize-none"
               rows={3}
               maxLength={1000}
-              placeholder="רשום מחשבות, השערות, רעיונות על המטופל..."
+              placeholder={strings.patientProfile.notes_placeholder}
             />
             <p className="text-right text-xs text-gray-400 -mt-1">{notebookText.length}/1000</p>
           </div>
@@ -1986,7 +1987,7 @@ export default function PatientProfilePage() {
               disabled={!notebookText.trim() || notebookSaving}
               className="btn-primary text-sm disabled:opacity-50"
             >
-              {notebookSaving ? 'שומר...' : 'שמור'}
+              {notebookSaving ? strings.patientProfile.saving_note : strings.patientProfile.save_note_button}
             </button>
           </div>
 
@@ -1996,7 +1997,7 @@ export default function PatientProfilePage() {
             </div>
           ) : notes.length > 0 ? (
             <div className="space-y-2 border-t border-gray-100 pt-3">
-              <h3 className="text-xs font-medium text-gray-500">הערות שמורות</h3>
+              <h3 className="text-xs font-medium text-gray-500">{strings.patientProfile.saved_notes_title}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {notes.map((note) => (
                   <div
@@ -2116,7 +2117,7 @@ export default function PatientProfilePage() {
                   </button>
                   <button type="button" onClick={() => setEditingPatientInfo(false)}
                     className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
-                    ביטול
+                    {strings.patientProfile.cancel_button}
                   </button>
                 </div>
               </div>
@@ -2133,9 +2134,9 @@ export default function PatientProfilePage() {
 {/* Protocol selection for this patient */}
           <div className="card space-y-4">
             <div>
-              <h3 className="font-semibold text-gray-800">פרוטוקולים עבור מטופל זה</h3>
+              <h3 className="font-semibold text-gray-800">{strings.patientProfile.settings_protocols_title}</h3>
               <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-                בחרו פרוטוקולים ייעודיים המותאמים למטופל זה
+                {strings.patientProfile.settings_protocols_subtitle}
               </p>
             </div>
 
@@ -2208,7 +2209,7 @@ export default function PatientProfilePage() {
 
                 {availableProtocols.filter((p) => p.is_used || patientProtocolIds.includes(p.id)).length === 0 && (
                   <p className="text-xs text-gray-400 text-center py-3">
-                    לא הוגדרו פרוטוקולים מועדפים, ניתן להגדיר במסך הגדרות מקצועיות
+                    {strings.patientProfile.settings_no_protocols}
                   </p>
                 )}
               </div>
@@ -2305,7 +2306,7 @@ export default function PatientProfilePage() {
                     }}
                     className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors flex-shrink-0"
                   >
-                    🖨 הדפסה
+                    {strings.patientProfile.print_button}
                   </button>
                 </>
               )}
@@ -2337,7 +2338,7 @@ export default function PatientProfilePage() {
                   onClick={() => window.open(`/patients/${pid}/print?doc=summary${viewingDeepSummary.summary_id ? `&sid=${viewingDeepSummary.summary_id}` : ''}`, '_blank')}
                   className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-purple-200 bg-white text-purple-500 hover:text-purple-700 hover:border-purple-300 transition-colors"
                 >
-                  🖨 הדפסה
+                  {strings.patientProfile.print_button}
                 </button>
               </div>
               <button onClick={() => setViewingDeepSummary(null)} className="text-gray-400 hover:text-gray-700 p-1">
@@ -2403,13 +2404,13 @@ export default function PatientProfilePage() {
               <div className="overflow-y-auto flex-1 p-5 space-y-4">
                 {vPresenting && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 mb-1">בעיה מוצגת</p>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">{strings.patientProfile.plan_presenting_problem}</p>
                     <p className="text-sm text-gray-700 whitespace-pre-line">{vPresenting}</p>
                   </div>
                 )}
                 {vFocusAreas.length > 0 && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 mb-1">תחומי התמקדות</p>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">{strings.patientProfile.plan_focus_areas}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {vFocusAreas.map((a, ai) => (
                         <span key={ai} className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-full text-xs">{a}</span>
@@ -2419,7 +2420,7 @@ export default function PatientProfilePage() {
                 )}
                 {vGoals.length > 0 && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 mb-1">מטרות טיפול</p>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">{strings.patientProfile.plan_goals}</p>
                     <ul className="space-y-1">
                       {vGoals.map((g, gi) => (
                         <li key={gi} className="text-sm text-gray-700">
@@ -2437,7 +2438,7 @@ export default function PatientProfilePage() {
                 )}
                 {vIntvs.length > 0 && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 mb-1">התערבויות</p>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">{strings.patientProfile.plan_interventions}</p>
                     <ul className="space-y-0.5">
                       {vIntvs.map((it, ii) => (
                         <li key={ii} className="text-sm text-gray-700">
@@ -2449,7 +2450,7 @@ export default function PatientProfilePage() {
                 )}
                 {vMiles.length > 0 && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 mb-1">אבני דרך</p>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">{strings.patientProfile.plan_milestones}</p>
                     <ul className="space-y-0.5">
                       {vMiles.map((m, mi) => (
                         <li key={mi} className="text-sm text-gray-700">
@@ -2462,14 +2463,14 @@ export default function PatientProfilePage() {
                 )}
                 {vRisks.length > 0 && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 mb-1">שיקולי סיכון</p>
+                    <p className="text-xs font-semibold text-gray-500 mb-1">{strings.patientProfile.plan_risks}</p>
                     <ul className="space-y-0.5">
                       {vRisks.map((r, ri) => <li key={ri} className="text-sm text-gray-700">{r}</li>)}
                     </ul>
                   </div>
                 )}
                 {!(vPresenting || vFocusAreas.length || vGoals.length || vIntvs.length || vMiles.length || vRisks.length) && (
-                  <p className="text-sm text-gray-400">אין תוכן שמור לגרסה זו</p>
+                  <p className="text-sm text-gray-400">{strings.patientProfile.no_content}</p>
                 )}
               </div>
               <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
@@ -2567,7 +2568,7 @@ export default function PatientProfilePage() {
                   {editSaving ? 'שומר...' : 'שמור שינויים'}
                 </button>
                 <button type="button" onClick={() => setShowEditPatient(false)} className="btn-secondary flex-1">
-                  ביטול
+                  {strings.patientProfile.cancel_button}
                 </button>
               </div>
             </form>
@@ -2594,7 +2595,7 @@ export default function PatientProfilePage() {
                     המשך
                   </button>
                   <button onClick={() => setShowInactiveConfirm(false)} className="btn-secondary flex-1">
-                    ביטול
+                    {strings.patientProfile.cancel_button}
                   </button>
                 </div>
               </>
@@ -2614,7 +2615,7 @@ export default function PatientProfilePage() {
                     {inactiveSaving ? 'מעדכן...' : 'אשר — סמן כלא פעיל'}
                   </button>
                   <button onClick={() => { setShowInactiveConfirm(false); setInactiveStep(1) }} className="btn-secondary flex-1">
-                    ביטול
+                    {strings.patientProfile.cancel_button}
                   </button>
                 </div>
               </>
@@ -2751,7 +2752,7 @@ export default function PatientProfilePage() {
                   onClick={() => setShowNewSession(false)}
                   className="btn-secondary flex-1 min-h-[44px] touch-manipulation"
                 >
-                  ביטול
+                  {strings.patientProfile.cancel_button}
                 </button>
               </div>
             </form>

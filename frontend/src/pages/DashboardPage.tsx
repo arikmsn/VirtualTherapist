@@ -18,6 +18,7 @@ import { usePrepStream } from '@/hooks/usePrepStream'
 import { formatDateIL } from '@/lib/dateUtils'
 import { useAuth } from '@/auth/useAuth'
 import MessagesCenter from '@/components/MessagesCenter'
+import { strings } from '@/i18n/he'
 
 interface Patient {
   id: number
@@ -96,9 +97,9 @@ function getGreeting(name: string | null): string {
   const hour = new Date().getHours()
   const firstName = name?.split(' ')[0] || ''
   const suffix = firstName ? `, ${firstName}` : ''
-  if (hour >= 5 && hour < 12) return `בוקר טוב${suffix}`
-  if (hour >= 12 && hour < 18) return `צהריים טובים${suffix}`
-  return `ערב טוב${suffix}`
+  if (hour >= 5 && hour < 12) return `${strings.dashboard.greeting_morning}${suffix}`
+  if (hour >= 12 && hour < 18) return `${strings.dashboard.greeting_afternoon}${suffix}`
+  return `${strings.dashboard.greeting_evening}${suffix}`
 }
 
 export default function DashboardPage() {
@@ -271,7 +272,7 @@ export default function DashboardPage() {
           {getGreeting(user?.fullName || null)} 👋
         </h1>
         <p className="text-indigo-100 text-base sm:text-lg">
-          ניהול מטופלים, סיכומים והודעות במקום אחד
+          {strings.dashboard.subtitle}
         </p>
       </div>
 
@@ -280,7 +281,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <CalendarDaysIcon className="h-6 w-6 text-therapy-calm" />
-            {isToday ? 'המפגשים של היום' : `מפגשים – ${formatDateHebrew(selectedDate)}`}
+            {isToday ? strings.dashboard.today_sessions_label : `מפגשים – ${formatDateHebrew(selectedDate)}`}
           </h2>
           <span className="text-sm text-gray-500">
             {dailySessions.length} מפגשים
@@ -294,13 +295,13 @@ export default function DashboardPage() {
             className="btn-secondary text-sm px-3 py-1.5 flex items-center gap-1"
           >
             <ChevronRightIcon className="h-4 w-4" />
-            יום קודם
+            {strings.dashboard.previous_day}
           </button>
           <button
             onClick={() => setSelectedDate(shiftDate(selectedDate, 1))}
             className="btn-secondary text-sm px-3 py-1.5 flex items-center gap-1"
           >
-            יום הבא
+            {strings.dashboard.next_day}
             <ChevronLeftIcon className="h-4 w-4" />
           </button>
           {!isToday && (
@@ -308,7 +309,7 @@ export default function DashboardPage() {
               onClick={() => setSelectedDate(todayISO())}
               className="text-sm px-3 py-1.5 bg-therapy-calm text-white rounded-lg hover:bg-therapy-calm/90 transition-colors"
             >
-              היום
+              {strings.dashboard.today_button}
             </button>
           )}
           <input
@@ -325,13 +326,13 @@ export default function DashboardPage() {
             {insightsLoading ? (
               <div className="flex items-center gap-2 text-xs text-gray-400 py-1">
                 <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-amber-400" />
-                <span>מכין תזכורות חכמות...</span>
+                <span>{strings.dashboard.smart_reminders_loading}</span>
               </div>
             ) : insightsFetched && todayInsights.length > 0 ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 mb-1">
                   <SparklesIcon className="h-3.5 w-3.5" />
-                  תזכורות חכמות להיום
+                  {strings.dashboard.smart_reminders_title}
                 </div>
                 {todayInsights.map((insight) => {
                   const patient = patients.find((p) => p.id === insight.patient_id)
@@ -351,7 +352,7 @@ export default function DashboardPage() {
               </div>
             ) : insightsFetched && todayInsights.length === 0 ? (
               <p className="text-xs text-gray-400 pb-2">
-                אין תזכורות מיוחדות להיום, אפשר להמשיך כרגיל.
+                {strings.dashboard.no_reminders}
               </p>
             ) : null}
           </div>
@@ -365,7 +366,7 @@ export default function DashboardPage() {
         ) : dailySessions.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <CalendarDaysIcon className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-            <p>אין מפגשים בתאריך זה</p>
+            <p>{strings.dashboard.no_sessions_on_date}</p>
           </div>
         ) : (
           // Fixed-height scrollable list — card height stable when browsing dates
@@ -399,29 +400,29 @@ export default function DashboardPage() {
                       </div>
                       {lastReminder ? (
                         <div className="text-xs text-gray-400 mt-0.5">
-                          הודעה אחרונה:{' '}
+                          {strings.dashboard.last_message_label}{' '}
                           {lastReminder.type === 'session_reminder'
-                            ? 'תזכורת לפגישה'
-                            : 'תזכורת לביצוע משימה'}{' '}
-                          (נשלחה בתאריך {formatDateIL(lastReminder.sent_at)})
+                            ? strings.dashboard.reminder_type_session
+                            : strings.dashboard.reminder_type_task}{' '}
+                          {strings.dashboard.sent_at_prefix}{formatDateIL(lastReminder.sent_at)})
                         </div>
                       ) : (
-                        <div className="text-xs text-gray-300 mt-0.5">לא נשלחה תזכורת עדיין</div>
+                        <div className="text-xs text-gray-300 mt-0.5">{strings.dashboard.no_reminder_sent}</div>
                       )}
                     </div>
 
                     {/* Summary badge — hidden on mobile to save space */}
                     {session.summary_status === 'approved' ? (
                       <span className="hidden sm:inline text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                        סיכום מאושר
+                        {strings.dashboard.badge_approved_summary}
                       </span>
                     ) : session.has_summary ? (
                       <span className="hidden sm:inline text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
-                        טיוטת סיכום
+                        {strings.dashboard.badge_draft_summary}
                       </span>
                     ) : (
                       <span className="hidden sm:inline text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full">
-                        ללא סיכום
+                        {strings.dashboard.badge_no_summary}
                       </span>
                     )}
                   </div>
@@ -432,14 +433,14 @@ export default function DashboardPage() {
                       onClick={() => navigate(`/sessions/${session.id}`)}
                       className="flex-1 sm:flex-none text-sm px-3 py-2 sm:py-1 bg-therapy-calm text-white rounded-lg hover:bg-therapy-calm/90 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
                     >
-                      פתח סשן
+                      {strings.dashboard.open_session_button}
                     </button>
                     <button
                       onClick={() => setMessagingPatient({ id: session.patient_id, name: session.patient_name })}
                       className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-sm px-3 py-2 sm:py-1 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
                     >
                       <PaperAirplaneIcon className="h-4 w-4 flex-shrink-0" />
-                      הודעה
+                      {strings.dashboard.message_button}
                     </button>
                     {session.session_date >= todayISO() && session.summary_status !== 'approved' && (
                       <button
@@ -447,7 +448,7 @@ export default function DashboardPage() {
                         className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-sm px-3 py-2 sm:py-1 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors min-h-[40px] sm:min-h-0 touch-manipulation"
                       >
                         <SparklesIcon className="h-4 w-4 flex-shrink-0" />
-                        הכנה
+                        {strings.dashboard.prep_button}
                       </button>
                     )}
                   </div>
@@ -470,13 +471,13 @@ export default function DashboardPage() {
               <DocumentTextIcon className="h-8 w-8 text-therapy-calm group-hover:text-white" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">📝 סיכום פגישות מטופלים באמצעות AI</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">{strings.dashboard.action_summary_title}</h3>
               <p className="text-gray-600 text-sm">
-                בחר מטופל ופגישה וכתוב סיכום AI מובנה
+                {strings.dashboard.action_summary_subtitle}
               </p>
             </div>
             <div className="mt-auto w-full">
-              <div className="text-sm text-therapy-calm font-medium">לחץ לבחירת פגישה →</div>
+              <div className="text-sm text-therapy-calm font-medium">{strings.dashboard.action_summary_hint}</div>
             </div>
           </div>
         </button>
@@ -491,13 +492,13 @@ export default function DashboardPage() {
               <PaperAirplaneIcon className="h-8 w-8 text-therapy-support group-hover:text-white" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">💬 שליחת הודעות</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">{strings.dashboard.action_message_title}</h3>
               <p className="text-gray-600 text-sm">
-                צור הודעת מעקב אישית למטופל. המערכת תכתוב בסגנון שלך, אתה תאשר
+                {strings.dashboard.action_message_subtitle}
               </p>
             </div>
             <div className="mt-auto w-full">
-              <div className="text-sm text-therapy-support font-medium">לחץ ליצירת הודעה →</div>
+              <div className="text-sm text-therapy-support font-medium">{strings.dashboard.action_message_hint}</div>
             </div>
           </div>
         </button>
@@ -512,13 +513,13 @@ export default function DashboardPage() {
               <CheckCircleIcon className="h-8 w-8 text-therapy-warm group-hover:text-white" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">👥 ניהול מטופלים</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">{strings.dashboard.action_patients_title}</h3>
               <p className="text-gray-600 text-sm">
-                צפה ברשימת המטופלים, נהל פרופילים, ועקוב אחר ההתקדמות הטיפולית
+                {strings.dashboard.action_patients_subtitle}
               </p>
             </div>
             <div className="mt-auto w-full">
-              <div className="text-sm text-therapy-warm font-medium">עבור לניהול מטופלים →</div>
+              <div className="text-sm text-therapy-warm font-medium">{strings.dashboard.action_patients_hint}</div>
             </div>
           </div>
         </button>
@@ -534,7 +535,7 @@ export default function DashboardPage() {
             <ClockIcon className="h-8 w-8 text-blue-600" />
             <div>
               <div className="text-2xl font-bold text-blue-900">{stats.pendingSummary}</div>
-              <div className="text-sm text-blue-700">פגישות ממתינות לסיכום</div>
+              <div className="text-sm text-blue-700">{strings.dashboard.stat_pending_summary}</div>
             </div>
           </div>
         </button>
@@ -544,7 +545,7 @@ export default function DashboardPage() {
             <CheckCircleIcon className="h-8 w-8 text-green-600" />
             <div>
               <div className="text-2xl font-bold text-green-900">{stats.todaySessions}</div>
-              <div className="text-sm text-green-700">פגישות היום</div>
+              <div className="text-sm text-green-700">{strings.dashboard.stat_today_sessions}</div>
             </div>
           </div>
         </div>
@@ -554,7 +555,7 @@ export default function DashboardPage() {
             <DocumentTextIcon className="h-8 w-8 text-purple-600" />
             <div>
               <div className="text-2xl font-bold text-purple-900">{stats.activePatients}</div>
-              <div className="text-sm text-purple-700">מטופלים פעילים</div>
+              <div className="text-sm text-purple-700">{strings.dashboard.stat_active_patients}</div>
             </div>
           </div>
         </div>
@@ -564,7 +565,7 @@ export default function DashboardPage() {
             <BellAlertIcon className="h-8 w-8 text-amber-600" />
             <div>
               <div className="text-2xl font-bold text-amber-900">{stats.completedSummaries}</div>
-              <div className="text-sm text-amber-700">סיכומים</div>
+              <div className="text-sm text-amber-700">{strings.dashboard.stat_completed_summaries}</div>
             </div>
           </div>
         </div>
@@ -572,12 +573,12 @@ export default function DashboardPage() {
 
       {/* Recent Activity */}
       <div className="card">
-        <h2 className="text-xl font-bold mb-4">פעילות אחרונה</h2>
+        <h2 className="text-xl font-bold mb-4">{strings.dashboard.recent_activity_title}</h2>
         {loading ? (
-          <p className="text-gray-500 text-center py-4">טוען...</p>
+          <p className="text-gray-500 text-center py-4">{strings.dashboard.loading}</p>
         ) : patients.length === 0 ? (
           <p className="text-gray-500 text-center py-4">
-            אין פעילות עדיין. התחל על ידי הוספת מטופלים!
+            {strings.dashboard.no_activity}
           </p>
         ) : (
           <div className="space-y-3">
@@ -585,7 +586,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
                 <div>
-                  <div className="font-medium">{stats.activePatients} מטופלים פעילים במערכת</div>
+                  <div className="font-medium">{stats.activePatients} {strings.dashboard.active_patients_activity}</div>
                   <div className="text-sm text-gray-500">סטטיסטיקה כללית</div>
                 </div>
               </div>
@@ -595,15 +596,15 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                   <div>
-                    <div className="font-medium">{stats.pendingSummary} פגישות ממתינות לסיכום</div>
-                    <div className="text-sm text-gray-500">פגישות שהתקיימו ועדיין אין להן סיכום</div>
+                    <div className="font-medium">{stats.pendingSummary} {strings.dashboard.pending_summaries_activity}</div>
+                    <div className="text-sm text-gray-500">{strings.dashboard.pending_summaries_detail}</div>
                   </div>
                 </div>
                 <button
                   onClick={() => navigate('/sessions?filter=no_summary')}
                   className="text-therapy-calm text-sm font-medium hover:underline"
                 >
-                  צור סיכומים →
+                  {strings.dashboard.create_summaries_link}
                 </button>
               </div>
             )}
@@ -620,7 +621,7 @@ export default function DashboardPage() {
               <div>
                 <h2 className="text-lg font-bold text-amber-900 flex items-center gap-2">
                   <LightBulbIcon className="h-5 w-5" />
-                  הכנה לפגישה
+                  {strings.dashboard.prep_modal_title}
                 </h2>
                 <p className="text-xs text-amber-700 mt-0.5">
                   {prepSession.patient_name}
@@ -640,14 +641,14 @@ export default function DashboardPage() {
               {prepStream.phase === 'extracting' ? (
                 <div className="flex flex-col items-center justify-center py-10 gap-3">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
-                  <p className="text-sm text-amber-700">מחלץ נתונים מהסיכומים...</p>
+                  <p className="text-sm text-amber-700">{strings.dashboard.extracting_data}</p>
                 </div>
               ) : prepStream.phase === 'rendering' || prepStream.phase === 'done' ? (
                 <div>
                   {prepStream.phase === 'rendering' && !prepStream.text && (
                     <div className="flex items-center gap-2 text-amber-700 text-sm mb-3">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
-                      <span>מייצר תדריך...</span>
+                      <span>{strings.dashboard.generating_brief}</span>
                     </div>
                   )}
                   <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{prepStream.text}</p>
@@ -659,7 +660,7 @@ export default function DashboardPage() {
                     onClick={() => openPrepModal(prepSession)}
                     className="text-sm px-3 py-1 bg-amber-200 rounded-lg hover:bg-amber-300 transition-colors"
                   >
-                    נסה שוב
+                    {strings.dashboard.retry_button}
                   </button>
                 </div>
               ) : null}
@@ -668,7 +669,7 @@ export default function DashboardPage() {
             {/* Footer */}
             <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
               <button onClick={closePrepModal} className="btn-secondary w-full min-h-[44px] touch-manipulation">
-                סגור
+                {strings.dashboard.close_button}
               </button>
             </div>
           </div>
@@ -757,20 +758,20 @@ function SummaryPickerModal({
 
         {/* Sticky header */}
         <div className="px-4 sm:px-8 py-4 sm:py-6 border-b border-gray-100 flex-shrink-0">
-          <h2 className="text-xl sm:text-2xl font-bold">בחר פגישה לסיכום</h2>
+          <h2 className="text-xl sm:text-2xl font-bold">{strings.dashboard.summary_picker_title}</h2>
         </div>
 
         {/* Scrollable content */}
         <div className="overflow-y-auto flex-1 px-4 sm:px-8 py-4 sm:py-5 space-y-4">
           {/* Patient select */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">מטופל/ת</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{strings.dashboard.patient_select_label}</label>
             <select
               className="input-field"
               value={selectedPatientId}
               onChange={(e) => setSelectedPatientId(e.target.value)}
             >
-              <option value="">-- בחר מטופל --</option>
+              <option value="">{strings.dashboard.patient_select_placeholder}</option>
               {[...patients]
                 .sort((a, b) => a.full_name.localeCompare(b.full_name, 'he'))
                 .map((p) => (
@@ -782,10 +783,10 @@ function SummaryPickerModal({
           {/* Session list for selected patient */}
           {selectedPatientId && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">פגישה</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{strings.dashboard.session_select_label}</label>
               {patientSessions.length === 0 ? (
                 <p className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
-                  אין פגישות למטופל זה. צור פגישה חדשה דרך עמוד הפגישות.
+                  {strings.dashboard.no_sessions_for_patient}
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -803,11 +804,11 @@ function SummaryPickerModal({
                       </div>
                       {s.summary_id != null ? (
                         <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex-shrink-0">
-                          יש סיכום
+                          {strings.dashboard.badge_has_summary}
                         </span>
                       ) : (
                         <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full flex-shrink-0">
-                          ללא סיכום
+                          {strings.dashboard.badge_no_summary_picker}
                         </span>
                       )}
                     </button>
@@ -847,21 +848,21 @@ function MessagePatientPickerModal({
 
         {/* Sticky header */}
         <div className="px-4 sm:px-8 py-4 sm:py-6 border-b border-gray-100 flex-shrink-0">
-          <h2 className="text-xl sm:text-2xl font-bold">שליחת הודעה למטופל</h2>
+          <h2 className="text-xl sm:text-2xl font-bold">{strings.dashboard.message_picker_title}</h2>
           <p className="text-sm text-gray-500 mt-1">
-            בחר מטופל כדי לפתוח את מרכז ההודעות שלו ולשלוח תזכורת
+            {strings.dashboard.message_picker_subtitle}
           </p>
         </div>
 
         {/* Scrollable content */}
         <div className="overflow-y-auto flex-1 px-4 sm:px-8 py-4 sm:py-5">
-          <label className="block text-sm font-medium text-gray-700 mb-2">מטופל/ת</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">{strings.dashboard.patient_select_label}</label>
           <select
             className="input-field"
             value={selectedId}
             onChange={(e) => setSelectedId(e.target.value)}
           >
-            <option value="">-- בחר מטופל --</option>
+            <option value="">{strings.dashboard.patient_select_placeholder}</option>
             {[...patients]
               .sort((a, b) => a.full_name.localeCompare(b.full_name, 'he'))
               .map((p) => (
@@ -877,7 +878,7 @@ function MessagePatientPickerModal({
             disabled={!selectedId}
             className="btn-primary flex-1 disabled:opacity-50 min-h-[44px] touch-manipulation"
           >
-            עבור למרכז הודעות →
+            {strings.dashboard.go_to_messages_button}
           </button>
           <button onClick={onClose} className="btn-secondary min-h-[44px] touch-manipulation">ביטול</button>
         </div>
@@ -885,4 +886,3 @@ function MessagePatientPickerModal({
     </div>
   )
 }
-

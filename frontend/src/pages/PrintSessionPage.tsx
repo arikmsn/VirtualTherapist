@@ -16,6 +16,7 @@ import { sessionsAPI, patientsAPI, therapistAPI } from '@/lib/api'
 import { formatDateIL } from '@/lib/dateUtils'
 import { sessionSummaryToText } from '@/lib/docText'
 import AppLogo from '@/components/common/AppLogo'
+import { strings } from '@/i18n/he'
 
 interface Session {
   id: number
@@ -45,12 +46,12 @@ interface Patient {
 }
 
 const SESSION_TYPE_LABELS: Record<string, string> = {
-  individual: 'פרטני',
-  couples: 'זוגי',
-  family: 'משפחתי',
-  group: 'קבוצתי',
-  intake: 'אינטייק',
-  follow_up: 'מעקב',
+  individual: strings.printSession.type_individual,
+  couples: strings.printSession.type_couples,
+  family: strings.printSession.type_family,
+  group: strings.printSession.type_group,
+  intake: strings.printSession.type_intake,
+  follow_up: strings.printSession.type_followup,
 }
 
 function stripAiArtifacts(text: string | null): string {
@@ -107,7 +108,7 @@ export default function PrintSessionPage() {
           setSummary(summaryData)
         }
       } catch (err: any) {
-        setError(err.response?.data?.detail || 'שגיאה בטעינת הנתונים')
+        setError(err.response?.data?.detail || strings.printSession.error_loading)
       } finally {
         setLoading(false)
       }
@@ -126,8 +127,8 @@ export default function PrintSessionPage() {
   if (error || !session) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4" dir="rtl">
-        <p className="text-red-600">{error || 'לא נמצא סיכום'}</p>
-        <Link to={`/sessions/${id}`} className="text-indigo-600 underline text-sm">חזרה לפגישה</Link>
+        <p className="text-red-600">{error || strings.printSession.not_found}</p>
+        <Link to={`/sessions/${id}`} className="text-indigo-600 underline text-sm">{strings.printSession.back_button}</Link>
       </div>
     )
   }
@@ -139,13 +140,13 @@ export default function PrintSessionPage() {
       {/* ── Print controls (hidden in print) ── */}
       <div className="no-print sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-6 py-3 flex items-center justify-between">
         <Link to={`/sessions/${id}`} className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1">
-          ← חזרה לפגישה
+          ← {strings.printSession.back_button}
         </Link>
         <button
           onClick={() => window.print()}
           className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
         >
-          🖨 הדפסה / שמור PDF
+          {strings.printSession.print_button}
         </button>
       </div>
 
@@ -163,17 +164,17 @@ export default function PrintSessionPage() {
 
         {/* Document meta */}
         <div className="mb-6 space-y-1">
-          <h1 className="text-2xl font-bold text-gray-900">{isPrepMode ? 'הכנה לפגישה' : 'סיכום פגישה'}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{isPrepMode ? strings.printSession.mode_prep_title : strings.printSession.mode_summary_title}</h1>
           <div className="text-sm text-gray-600 space-y-0.5">
-            {patient && <p><span className="font-medium">מטופל/ת:</span> {patient.full_name}</p>}
-            {therapistName && <p><span className="font-medium">מטפל/ת:</span> {therapistName}</p>}
+            {patient && <p><span className="font-medium">{strings.printSession.patient_label}</span> {patient.full_name}</p>}
+            {therapistName && <p><span className="font-medium">{strings.printSession.therapist_label}</span> {therapistName}</p>}
             <p>
-              <span className="font-medium">תאריך:</span> {formatDateIL(session.session_date)}
-              {session.session_number && <span className="mr-3">פגישה #{session.session_number}</span>}
+              <span className="font-medium">{strings.printSession.date_label}</span> {formatDateIL(session.session_date)}
+              {session.session_number && <span className="mr-3">{strings.printSession.session_label} #{session.session_number}</span>}
               {session.session_type && (
-                <span className="mr-3">סוג: {SESSION_TYPE_LABELS[session.session_type] || session.session_type}</span>
+                <span className="mr-3">{strings.printSession.type_label} {SESSION_TYPE_LABELS[session.session_type] || session.session_type}</span>
               )}
-              {session.duration_minutes && <span className="mr-3">{session.duration_minutes} דקות</span>}
+              {session.duration_minutes && <span className="mr-3">{session.duration_minutes} {strings.printSession.duration_label}</span>}
             </p>
             {summary && (
               <p>
@@ -182,7 +183,7 @@ export default function PrintSessionPage() {
                     ? 'bg-green-100 text-green-700'
                     : 'bg-amber-100 text-amber-700'
                 }`}>
-                  {summary.approved_by_therapist ? '✓ מאושר' : 'טיוטה'}
+                  {summary.approved_by_therapist ? strings.printSession.status_approved : strings.printSession.status_draft}
                 </span>
               </p>
             )}
@@ -196,27 +197,27 @@ export default function PrintSessionPage() {
               {stripAiArtifacts(prepText)}
             </div>
           ) : (
-            <p className="text-gray-400 text-sm">אין הכנה שמורה לפגישה זו.</p>
+            <p className="text-gray-400 text-sm">{strings.printSession.no_prep}</p>
           )
         )}
 
         {/* Summary content */}
         {!isPrepMode && !summary && (
-          <p className="text-gray-400 text-sm">אין סיכום לפגישה זו.</p>
+          <p className="text-gray-400 text-sm">{strings.printSession.no_summary_saved}</p>
         )}
 
         {!isPrepMode && summary && (
           <div className="space-y-6 text-sm leading-relaxed">
             {summary.full_summary && (
               <section>
-                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">סיכום כללי</h2>
+                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">{strings.printSession.section_general}</h2>
                 <p className="text-gray-800 whitespace-pre-line">{stripAiArtifacts(summary.full_summary)}</p>
               </section>
             )}
 
             {(summary.topics_discussed ?? []).length > 0 && (
               <section>
-                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">נושאים שעלו</h2>
+                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">{strings.printSession.section_topics}</h2>
                 <ul className="list-disc list-inside space-y-1 text-gray-800">
                   {(summary.topics_discussed ?? []).map((t, i) => <li key={i}>{t}</li>)}
                 </ul>
@@ -225,7 +226,7 @@ export default function PrintSessionPage() {
 
             {(summary.interventions_used ?? []).length > 0 && (
               <section>
-                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">התערבויות</h2>
+                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">{strings.printSession.section_interventions}</h2>
                 <ul className="list-disc list-inside space-y-1 text-gray-800">
                   {(summary.interventions_used ?? []).map((i, idx) => <li key={idx}>{i}</li>)}
                 </ul>
@@ -234,14 +235,14 @@ export default function PrintSessionPage() {
 
             {summary.patient_progress && (
               <section>
-                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">התקדמות</h2>
+                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">{strings.printSession.section_progress}</h2>
                 <p className="text-gray-800 whitespace-pre-line">{summary.patient_progress}</p>
               </section>
             )}
 
             {(summary.homework_assigned ?? []).length > 0 && (
               <section>
-                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">משימות לבית</h2>
+                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">{strings.printSession.section_homework}</h2>
                 <ul className="list-disc list-inside space-y-1 text-gray-800">
                   {(summary.homework_assigned ?? []).map((h, i) => <li key={i}>{h}</li>)}
                 </ul>
@@ -250,21 +251,21 @@ export default function PrintSessionPage() {
 
             {summary.next_session_plan && (
               <section>
-                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">תוכנית לפגישה הבאה</h2>
+                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">{strings.printSession.section_next_session}</h2>
                 <p className="text-gray-800 whitespace-pre-line">{summary.next_session_plan}</p>
               </section>
             )}
 
             {summary.mood_observed && (
               <section>
-                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">מצב רוח שנצפה</h2>
+                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">{strings.printSession.section_mood}</h2>
                 <p className="text-gray-800">{summary.mood_observed}</p>
               </section>
             )}
 
             {summary.risk_assessment && (
               <section>
-                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">הערכת סיכון</h2>
+                <h2 className="font-bold text-gray-900 mb-2 text-base border-b border-gray-100 pb-1">{strings.printSession.section_risk}</h2>
                 <p className="text-gray-800">{summary.risk_assessment}</p>
               </section>
             )}
@@ -273,7 +274,7 @@ export default function PrintSessionPage() {
 
         {/* Footer */}
         <div className="mt-12 pt-4 border-t border-gray-200 text-xs text-gray-400 text-center">
-          <p>מסמך זה הופק על ידי TherapyCompanion.AI · סודי</p>
+          <p>{strings.printSession.footer}</p>
           {!summaryText && null}
         </div>
       </div>

@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from 'react'
+import { strings } from '@/i18n/he'
 
 interface CountryCode {
   code: string  // e.g. '+972'
@@ -14,33 +15,33 @@ interface CountryCode {
 
 // Israel first, USA second, then alphabetical by Hebrew name
 const COUNTRY_CODES: CountryCode[] = [
-  { code: '+972', flag: '🇮🇱', name: 'ישראל' },
-  { code: '+1',   flag: '🇺🇸', name: 'ארה״ב' },
-  { code: '+39',  flag: '🇮🇹', name: 'איטליה' },
-  { code: '+43',  flag: '🇦🇹', name: 'אוסטריה' },
-  { code: '+61',  flag: '🇦🇺', name: 'אוסטרליה' },
-  { code: '+380', flag: '🇺🇦', name: 'אוקראינה' },
-  { code: '+54',  flag: '🇦🇷', name: 'ארגנטינה' },
-  { code: '+44',  flag: '🇬🇧', name: 'בריטניה' },
-  { code: '+55',  flag: '🇧🇷', name: 'ברזיל' },
-  { code: '+49',  flag: '🇩🇪', name: 'גרמניה' },
-  { code: '+27',  flag: '🇿🇦', name: 'דרום אפריקה' },
-  { code: '+31',  flag: '🇳🇱', name: 'הולנד' },
-  { code: '+91',  flag: '🇮🇳', name: 'הודו' },
-  { code: '+90',  flag: '🇹🇷', name: 'טורקיה' },
-  { code: '+81',  flag: '🇯🇵', name: 'יפן' },
-  { code: '+82',  flag: '🇰🇷', name: 'קוריאה' },
-  { code: '+52',  flag: '🇲🇽', name: 'מקסיקו' },
-  { code: '+20',  flag: '🇪🇬', name: 'מצרים' },
-  { code: '+47',  flag: '🇳🇴', name: 'נורווגיה' },
-  { code: '+86',  flag: '🇨🇳', name: 'סין' },
-  { code: '+34',  flag: '🇪🇸', name: 'ספרד' },
-  { code: '+33',  flag: '🇫🇷', name: 'צרפת' },
-  { code: '+48',  flag: '🇵🇱', name: 'פולין' },
-  { code: '+7',   flag: '🇷🇺', name: 'רוסיה' },
-  { code: '+46',  flag: '🇸🇪', name: 'שוודיה' },
-  { code: '+41',  flag: '🇨🇭', name: 'שווייץ' },
-  { code: '+66',  flag: '🇹🇭', name: 'תאילנד' },
+  { code: '+972', flag: '🇮🇱', name: strings.phoneInput.countries.IL },
+  { code: '+1',   flag: '🇺🇸', name: strings.phoneInput.countries.US },
+  { code: '+39',  flag: '🇮🇹', name: strings.phoneInput.countries.IT },
+  { code: '+43',  flag: '🇦🇹', name: strings.phoneInput.countries.AT },
+  { code: '+61',  flag: '🇦🇺', name: strings.phoneInput.countries.AU },
+  { code: '+380', flag: '🇺🇦', name: strings.phoneInput.countries.UA },
+  { code: '+54',  flag: '🇦🇷', name: strings.phoneInput.countries.AR },
+  { code: '+44',  flag: '🇬🇧', name: strings.phoneInput.countries.GB },
+  { code: '+55',  flag: '🇧🇷', name: strings.phoneInput.countries.BR },
+  { code: '+49',  flag: '🇩🇪', name: strings.phoneInput.countries.DE },
+  { code: '+27',  flag: '🇿🇦', name: strings.phoneInput.countries.ZA },
+  { code: '+31',  flag: '🇳🇱', name: strings.phoneInput.countries.NL },
+  { code: '+91',  flag: '🇮🇳', name: strings.phoneInput.countries.IN },
+  { code: '+90',  flag: '🇹🇷', name: strings.phoneInput.countries.TR },
+  { code: '+81',  flag: '🇯🇵', name: strings.phoneInput.countries.JP },
+  { code: '+82',  flag: '🇰🇷', name: strings.phoneInput.countries.KR },
+  { code: '+52',  flag: '🇲🇽', name: strings.phoneInput.countries.MX },
+  { code: '+20',  flag: '🇪🇬', name: strings.phoneInput.countries.EG },
+  { code: '+47',  flag: '🇳🇴', name: strings.phoneInput.countries.NO },
+  { code: '+86',  flag: '🇨🇳', name: strings.phoneInput.countries.CN },
+  { code: '+34',  flag: '🇪🇸', name: strings.phoneInput.countries.ES },
+  { code: '+33',  flag: '🇫🇷', name: strings.phoneInput.countries.FR },
+  { code: '+48',  flag: '🇵🇱', name: strings.phoneInput.countries.PL },
+  { code: '+7',   flag: '🇷🇺', name: strings.phoneInput.countries.RU },
+  { code: '+46',  flag: '🇸🇪', name: strings.phoneInput.countries.SE },
+  { code: '+41',  flag: '🇨🇭', name: strings.phoneInput.countries.CH },
+  { code: '+66',  flag: '🇹🇭', name: strings.phoneInput.countries.TH },
 ]
 
 // Sorted longest-first so +380 matches before +38 etc.

@@ -14,6 +14,7 @@ import { useState, useEffect } from 'react'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
 import { patientsAPI, patientNotesAPI, sessionsAPI, therapistAPI } from '@/lib/api'
+import { strings } from '@/i18n/he'
 
 interface Props {
   onComplete: () => void
@@ -42,10 +43,10 @@ const emptyPatient = (): PatientForm => ({
 })
 
 const DURATIONS = [
-  { value: '45', label: '45 דקות' },
-  { value: '50', label: '50 דקות' },
-  { value: '60', label: '60 דקות' },
-  { value: '90', label: '90 דקות' },
+  { value: '45', label: strings.onboardingWizard.duration_45 },
+  { value: '50', label: strings.onboardingWizard.duration_50 },
+  { value: '60', label: strings.onboardingWizard.duration_60 },
+  { value: '90', label: strings.onboardingWizard.duration_90 },
 ]
 
 // 15-minute time slots 07:00 → 22:00
@@ -116,23 +117,23 @@ function PatientFields({
   return (
     <div className="space-y-4">
       <div>
-        <label className={labelCls}>שם מלא *</label>
+        <label className={labelCls}>{strings.onboardingWizard.patient_name_label}</label>
         <input
           type="text"
           className={inputCls}
-          placeholder="ישראל ישראלי"
+          placeholder={strings.onboardingWizard.patient_name_placeholder}
           value={data.full_name}
           onChange={(e) => onChange({ ...data, full_name: e.target.value })}
         />
       </div>
       <div>
         <label className={labelCls}>
-          גיל <span className="text-gray-500 font-normal">(אופציונלי)</span>
+          {strings.onboardingWizard.patient_age_label} <span className="text-gray-500 font-normal">{strings.onboardingWizard.patient_age_optional}</span>
         </label>
         <input
           type="number"
           className={inputCls}
-          placeholder="35"
+          placeholder={strings.onboardingWizard.patient_age_placeholder}
           min={1}
           max={120}
           value={data.age}
@@ -140,23 +141,23 @@ function PatientFields({
         />
       </div>
       <div>
-        <label className={labelCls}>סיבת הפנייה / הבעיה העיקרית *</label>
+        <label className={labelCls}>{strings.onboardingWizard.patient_concerns_label}</label>
         <textarea
           className={inputCls + ' resize-none'}
           rows={3}
-          placeholder="לדוגמה: חרדה, קשיי שינה, משבר זוגי..."
+          placeholder={strings.onboardingWizard.patient_concerns_placeholder}
           value={data.primary_concerns}
           onChange={(e) => onChange({ ...data, primary_concerns: e.target.value })}
         />
       </div>
       <div>
-        <label className={labelCls}>שיטת טיפול מועדפת</label>
+        <label className={labelCls}>{strings.onboardingWizard.patient_approach_label}</label>
         {singleMethod ? (
           <>
             <div className={inputCls + ' cursor-default text-gray-300'}>
               {APPROACH_LABELS[singleMethod] ?? singleMethod}
             </div>
-            <p className="text-xs text-gray-600 mt-1">ניתן לשינוי בתוך המערכת בהגדרות</p>
+            <p className="text-xs text-gray-600 mt-1">{strings.onboardingWizard.patient_approach_can_change}</p>
           </>
         ) : (
           <select
@@ -164,7 +165,7 @@ function PatientFields({
             value={data.therapy_approach}
             onChange={(e) => onChange({ ...data, therapy_approach: e.target.value })}
           >
-            <option value="">בחרו שיטה...</option>
+            <option value="">{strings.onboardingWizard.patient_approach_placeholder}</option>
             {therapistMethods.map((m) => (
               <option key={m} value={m}>
                 {APPROACH_LABELS[m] ?? m}
@@ -181,23 +182,23 @@ function PatientFields({
 const PREVIEW_CARDS = [
   {
     icon: '📋',
-    title: 'רקע המטופל',
-    text: 'סיכום מצטבר של כל הפגישות הקודמות, כתוב בצורה ברורה ומובנית, כדי שתיכנסו לכל פגישה עם תמונה מלאה על מצב המטופל.',
+    title: strings.onboardingWizard.preview_patient_background,
+    text: strings.onboardingWizard.preview_patient_background_text,
   },
   {
     icon: '🎯',
-    title: 'מיקוד לפגישה הקרובה',
-    text: 'נושאים מרכזיים לדיון על בסיס מה שעלה בפגישות קודמות, משימות פתוחות ודברים כלליים שביקשתם לבדוק, הכל מוכן ומסוכם מראש.',
+    title: strings.onboardingWizard.preview_session_focus,
+    text: strings.onboardingWizard.preview_session_focus_text,
   },
   {
     icon: '✅',
-    title: 'תזכורות ומשימות פתוחות',
-    text: 'רשימת משימות שהוגדרו בפגישות קודמות, כדי שלא תפספסו דבר ותוכלו להמשיך בדיוק מהנקודה שעצרתם.',
+    title: strings.onboardingWizard.preview_reminders_tasks,
+    text: strings.onboardingWizard.preview_reminders_tasks_text,
   },
   {
     icon: '📝',
-    title: 'סיכום פגישה בלחיצה אחת',
-    text: 'בסיום כל פגישה, המערכת תייצר עבורכם סיכום מפורט שתוכלו לערוך ולאשר, חוסך זמן יקר של אדמיניסטרציה ותיעוד.',
+    title: strings.onboardingWizard.preview_session_summary,
+    text: strings.onboardingWizard.preview_session_summary_text,
   },
 ]
 
@@ -214,8 +215,7 @@ function PlatformPreview() {
         </div>
       ))}
       <div className="bg-indigo-950/60 border border-indigo-700/50 rounded-xl px-4 py-3.5 text-sm text-indigo-200 leading-relaxed">
-        <span className="font-semibold">💡 </span>
-        ככל שתשתמשו במערכת יותר, כך הסיכומים והתכניות יהיו מדויקים ומותאמים יותר עבורך לטובת המטופל והעבודה השוטפת.
+        {strings.onboardingWizard.preview_tip}
       </div>
     </div>
   )
@@ -285,9 +285,9 @@ export default function OnboardingWizard({ onComplete }: Props) {
   }
 
   const validatePatient = (p: PatientForm): string => {
-    if (!p.full_name.trim()) return 'יש להזין שם מלא'
+    if (!p.full_name.trim()) return strings.onboardingWizard.error_patient_name
     // Age is optional — skip age validation
-    if (!p.primary_concerns.trim()) return 'יש להזין סיבת פנייה'
+    if (!p.primary_concerns.trim()) return strings.onboardingWizard.error_patient_concerns
     return ''
   }
 
@@ -320,7 +320,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
       setSession((s) => ({ ...s, patient_id: String(created.id) }))
       setStep(2)
     } catch {
-      setError('שגיאה בשמירת המטופל, נסה שוב')
+      setError(strings.onboardingWizard.error_patient_save)
     } finally {
       setLoading(false)
     }
@@ -336,15 +336,15 @@ export default function OnboardingWizard({ onComplete }: Props) {
       setCreatedIds((prev) => [...prev, { id: created.id, name: created.full_name }])
       setStep(3)
     } catch {
-      setError('שגיאה בשמירת המטופל, נסה שוב')
+      setError(strings.onboardingWizard.error_patient_save)
     } finally {
       setLoading(false)
     }
   }
 
   const submitStep3 = async () => {
-    if (!session.patient_id) { setError('יש לבחור מטופל/ת'); return }
-    if (!session.session_date) { setError('יש לבחור תאריך'); return }
+    if (!session.patient_id) { setError(strings.onboardingWizard.error_select_patient); return }
+    if (!session.session_date) { setError(strings.onboardingWizard.error_select_date); return }
     setError('')
     setLoading(true)
     try {
@@ -361,7 +361,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
       })
       setStep(4)
     } catch {
-      setError('שגיאה ביצירת הפגישה, נסה שוב')
+      setError(strings.onboardingWizard.error_session_save)
     } finally {
       setLoading(false)
     }
@@ -390,8 +390,8 @@ export default function OnboardingWizard({ onComplete }: Props) {
           )}
           {step === 4 && (
             <div className="text-center">
-              <p className="text-lg font-bold text-white">✨ זה מה שמטפל אונליין יכין לך לפני כל פגישה</p>
-              <p className="text-xs text-gray-400 mt-1">לאחר כמה פגישות, המערכת תייצר את כל זה אוטומטית עבורך</p>
+              <p className="text-lg font-bold text-white">{strings.onboardingWizard.platform_title}</p>
+              <p className="text-xs text-gray-400 mt-1">{strings.onboardingWizard.platform_subtitle}</p>
             </div>
           )}
         </div>
@@ -403,45 +403,45 @@ export default function OnboardingWizard({ onComplete }: Props) {
           {step === 0 && (
             <div className="space-y-5 py-2">
               <p className="text-2xl font-bold text-white leading-snug text-center">
-                ברוכים הבאים למטפל אונליין 👋
+                {strings.onboardingWizard.welcome_title}
               </p>
               <p className="text-sm text-gray-300 leading-relaxed">
-                כדי שהמערכת תוכל לעבוד עבורכם מהיום הראשון, נבקש מכם להכניס פרטים של מטופל אחד-שניים ופגישה קרובה איתם.
+                {strings.onboardingWizard.welcome_text_part1}
                 <br /><br />
-                זה לוקח כ-2 דקות, ובסיומם תראו בדיוק איך המערכת עוזרת לכם להתכונן לכל פגישה.
+                {strings.onboardingWizard.welcome_text_part2}
               </p>
             </div>
           )}
 
           {step === 1 && (
             <>
-              <h2 className="text-lg font-bold text-white mb-1">בואו נתחיל — הוסיפו את המטופל הראשון שלכם</h2>
-              <p className="text-sm text-gray-400 mb-5">המערכת עובדת הכי טוב עם מידע אמיתי.</p>
+              <h2 className="text-lg font-bold text-white mb-1">{strings.onboardingWizard.patient1_title}</h2>
+              <p className="text-sm text-gray-400 mb-5">{strings.onboardingWizard.patient1_hint}</p>
               <PatientFields data={patient1} onChange={setPatient1} therapistMethods={therapistMethods} />
             </>
           )}
 
           {step === 2 && (
             <>
-              <h2 className="text-lg font-bold text-white mb-1">הוסיפו בבקשה פרטי מטופל שני</h2>
-              <p className="text-sm text-gray-400 mb-5">כשמוסיפים 2+ מטופלים המערכת מתחילה לעבוד בשבילך.</p>
+              <h2 className="text-lg font-bold text-white mb-1">{strings.onboardingWizard.patient2_title}</h2>
+              <p className="text-sm text-gray-400 mb-5">{strings.onboardingWizard.patient2_hint}</p>
               <PatientFields data={patient2} onChange={setPatient2} therapistMethods={therapistMethods} />
             </>
           )}
 
           {step === 3 && (
             <>
-              <h2 className="text-lg font-bold text-white mb-1">קביעת פגישה ראשונה</h2>
-              <p className="text-sm text-gray-400 mb-5">בחרו מטופל/ת וקבעו פגישה במערכת.</p>
+              <h2 className="text-lg font-bold text-white mb-1">{strings.onboardingWizard.session_title}</h2>
+              <p className="text-sm text-gray-400 mb-5">{strings.onboardingWizard.session_hint}</p>
               <div className="space-y-4">
                 <div>
-                  <label className={labelCls}>שם המטופל/ת *</label>
+                  <label className={labelCls}>{strings.onboardingWizard.patient_select_label}</label>
                   <select
                     className={inputCls}
                     value={session.patient_id}
                     onChange={(e) => setSession({ ...session, patient_id: e.target.value })}
                   >
-                    <option value="">בחרו מטופל/ת...</option>
+                    <option value="">{strings.onboardingWizard.patient_select_placeholder}</option>
                     {createdIds.map((p) => (
                       <option key={p.id} value={String(p.id)}>{p.name}</option>
                     ))}
@@ -451,7 +451,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 {/* Date + time — two separate fields */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={labelCls}>תאריך *</label>
+                    <label className={labelCls}>{strings.onboardingWizard.date_label}</label>
                     <DatePicker
                       selected={session.session_date}
                       onChange={(date: Date | null) => setSession({ ...session, session_date: date })}
@@ -464,7 +464,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
                     />
                   </div>
                   <div>
-                    <label className={labelCls}>שעה *</label>
+                    <label className={labelCls}>{strings.onboardingWizard.time_label}</label>
                     <select
                       className={inputCls}
                       value={session.session_time}
@@ -478,7 +478,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 </div>
 
                 <div>
-                  <label className={labelCls}>משך הפגישה</label>
+                  <label className={labelCls}>{strings.onboardingWizard.session_duration_label}</label>
                   <select
                     className={inputCls}
                     value={session.duration_minutes}
@@ -490,11 +490,11 @@ export default function OnboardingWizard({ onComplete }: Props) {
                   </select>
                 </div>
                 <div>
-                  <label className={labelCls}>הערות לפגישה (אופציונלי)</label>
+                  <label className={labelCls}>{strings.onboardingWizard.session_notes_label}</label>
                   <textarea
                     className={inputCls + ' resize-none'}
                     rows={3}
-                    placeholder="נושאים לדיון, רקע רלוונטי..."
+                    placeholder={strings.onboardingWizard.session_notes_placeholder}
                     value={session.notes}
                     onChange={(e) => setSession({ ...session, notes: e.target.value })}
                   />
@@ -520,11 +520,11 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 onClick={() => setStep(1)}
                 className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
-                בואו נתחיל ←
+                {strings.onboardingWizard.start_button}
               </button>
               <div className="text-center">
                 <button onClick={skip} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
-                  אין צורך, אכניס בעצמי בתוך המערכת
+                  {strings.onboardingWizard.skip_wizard}
                 </button>
               </div>
             </div>
@@ -537,11 +537,11 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 disabled={loading}
                 className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
-                {loading ? <Spinner /> : 'המשך'}
+                {loading ? <Spinner /> : strings.onboardingWizard.continue_button}
               </button>
               <div className="text-left">
                 <button onClick={skip} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
-                  דילוג על ההדרכה
+                  {strings.onboardingWizard.skip_wizard_full}
                 </button>
               </div>
             </div>
@@ -554,17 +554,17 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 disabled={loading}
                 className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
-                {loading ? <Spinner /> : 'מסך אחרון ודי..'}
+                {loading ? <Spinner /> : strings.onboardingWizard.last_step_button}
               </button>
               <div className="flex justify-between items-center">
                 <button
                   onClick={() => { setError(''); setStep(3) }}
                   className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
                 >
-                  דילוג על שלב זה
+                  {strings.onboardingWizard.skip_step}
                 </button>
                 <button onClick={skip} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
-                  דילוג על ההדרכה
+                  {strings.onboardingWizard.skip_wizard_full}
                 </button>
               </div>
             </div>
@@ -577,11 +577,11 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 disabled={loading}
                 className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
               >
-                {loading ? <Spinner /> : 'כניסה למערכת'}
+                {loading ? <Spinner /> : strings.onboardingWizard.enter_system_button}
               </button>
               <div className="text-left">
                 <button onClick={skip} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
-                  דילוג על ההדרכה
+                  {strings.onboardingWizard.skip_wizard_full}
                 </button>
               </div>
             </div>
@@ -592,7 +592,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
               onClick={finishWizard}
               className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition-colors text-sm"
             >
-              כניסה למערכת
+              {strings.onboardingWizard.enter_system_button}
             </button>
           )}
         </div>
@@ -605,7 +605,7 @@ function Spinner() {
   return (
     <span className="flex items-center justify-center gap-2">
       <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-      רגע...
+      {strings.onboardingWizard.loading_spinner}
     </span>
   )
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { authAPI } from '@/lib/api'
 import { useAuth } from '@/auth/useAuth'
+import { strings } from '@/i18n/he'
 
 interface Props {
   onSuccess: () => void
@@ -15,9 +16,9 @@ export default function ChangePasswordModal({ onSuccess }: Props) {
   const [loading, setLoading] = useState(false)
 
   const validate = (): string => {
-    if (!current || !next || !confirm) return 'יש למלא את כל השדות'
-    if (next.length < 8) return 'הסיסמה החדשה חייבת להכיל לפחות 8 תווים'
-    if (next !== confirm) return 'הסיסמאות אינן תואמות'
+    if (!current || !next || !confirm) return strings.changePassword.error_empty
+    if (next.length < 8) return strings.changePassword.error_too_short
+    if (next !== confirm) return strings.changePassword.error_mismatch
     return ''
   }
 
@@ -37,9 +38,9 @@ export default function ChangePasswordModal({ onSuccess }: Props) {
     } catch (err: any) {
       const detail = err.response?.data?.detail
       if (detail === 'הסיסמה הזמנית שגויה') {
-        setError('הסיסמה הזמנית שגויה')
+        setError(strings.changePassword.error_wrong_temp)
       } else {
-        setError('שגיאה בעדכון הסיסמה, נסה שוב')
+        setError(strings.changePassword.error_update_failed)
       }
     } finally {
       setLoading(false)
@@ -56,10 +57,10 @@ export default function ChangePasswordModal({ onSuccess }: Props) {
         <div className="px-6 pt-6 pb-4 border-b border-gray-800">
           <div className="flex items-center gap-3 mb-1">
             <span className="text-2xl">🔐</span>
-            <h2 className="text-lg font-bold text-white">נדרש לעדכן סיסמה</h2>
+            <h2 className="text-lg font-bold text-white">{strings.changePassword.title}</h2>
           </div>
           <p className="text-sm text-gray-400 mr-9">
-            קיבלת סיסמה זמנית. יש להגדיר סיסמה אישית לפני שתמשיך.
+            {strings.changePassword.subtitle}
           </p>
         </div>
 
@@ -73,14 +74,14 @@ export default function ChangePasswordModal({ onSuccess }: Props) {
 
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1.5">
-              סיסמה זמנית (נוכחית)
+              {strings.changePassword.current_label}
             </label>
             <input
               type="password"
               value={current}
               onChange={(e) => setCurrent(e.target.value)}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              placeholder="••••••••"
+              placeholder={strings.changePassword.current_placeholder}
               autoComplete="current-password"
               required
             />
@@ -88,14 +89,14 @@ export default function ChangePasswordModal({ onSuccess }: Props) {
 
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1.5">
-              סיסמה חדשה
+              {strings.changePassword.new_label}
             </label>
             <input
               type="password"
               value={next}
               onChange={(e) => setNext(e.target.value)}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              placeholder="לפחות 8 תווים"
+              placeholder={strings.changePassword.new_placeholder}
               autoComplete="new-password"
               required
             />
@@ -103,14 +104,14 @@ export default function ChangePasswordModal({ onSuccess }: Props) {
 
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1.5">
-              אימות סיסמה חדשה
+              {strings.changePassword.confirm_label}
             </label>
             <input
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              placeholder="••••••••"
+              placeholder={strings.changePassword.confirm_placeholder}
               autoComplete="new-password"
               required
             />
@@ -124,10 +125,10 @@ export default function ChangePasswordModal({ onSuccess }: Props) {
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                מעדכן...
+                {strings.changePassword.submit_loading}
               </span>
             ) : (
-              'עדכן סיסמה'
+              strings.changePassword.submit_button
             )}
           </button>
         </form>

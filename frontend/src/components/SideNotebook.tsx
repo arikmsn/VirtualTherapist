@@ -18,6 +18,7 @@ import {
   TagIcon,
 } from '@heroicons/react/24/outline'
 import { therapistNotesAPI } from '@/lib/api'
+import { strings } from '@/i18n/he'
 
 interface SideNote {
   id: number
@@ -138,15 +139,15 @@ export default function SideNotebook({ open, onClose }: Props) {
         {/* Header */}
         <div className="flex items-start justify-between px-4 py-4 border-b border-gray-100 flex-shrink-0">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">הערות</h2>
+            <h2 className="text-lg font-bold text-gray-900">{strings.sideNotebook.title}</h2>
             <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-              מקום לשמור רעיונות, תובנות ולינקים שאינם קשורים למטופל ספציפי.
+              {strings.sideNotebook.subtitle}
             </p>
           </div>
           <button
             onClick={onClose}
             className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 touch-manipulation flex-shrink-0"
-            aria-label="סגור"
+            aria-label={strings.sideNotebook.close_aria}
           >
             <XMarkIcon className="h-5 w-5" />
           </button>
@@ -161,13 +162,13 @@ export default function SideNotebook({ open, onClose }: Props) {
               type="text"
               value={editorTitle}
               onChange={(e) => setEditorTitle(e.target.value)}
-              placeholder="כותרת (אופציונלי)"
+              placeholder={strings.sideNotebook.title_placeholder}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
             />
             <textarea
               value={editorContent}
               onChange={(e) => setEditorContent(e.target.value)}
-              placeholder="רשום רעיון, תובנה, לינק..."
+              placeholder={strings.sideNotebook.content_placeholder}
               rows={4}
               maxLength={1000}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm resize-none"
@@ -181,7 +182,7 @@ export default function SideNotebook({ open, onClose }: Props) {
                 type="text"
                 value={editorTags}
                 onChange={(e) => setEditorTags(e.target.value)}
-                placeholder="תגיות: CBT, חרדה, מאמר (מופרדות בפסיק)"
+                placeholder={strings.sideNotebook.tags_placeholder}
                 className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
               />
             </div>
@@ -193,7 +194,7 @@ export default function SideNotebook({ open, onClose }: Props) {
                   onClick={resetEditor}
                   className="btn-secondary text-sm"
                 >
-                  חדש
+                  {strings.sideNotebook.new_button}
                 </button>
               )}
               <button
@@ -201,7 +202,7 @@ export default function SideNotebook({ open, onClose }: Props) {
                 disabled={!editorContent.trim() || saving}
                 className="btn-primary text-sm disabled:opacity-50"
               >
-                {saving ? 'שומר...' : editingId !== null ? 'עדכן' : 'שמור'}
+                {saving ? strings.sideNotebook.saving_button : editingId !== null ? strings.sideNotebook.update_button : strings.sideNotebook.save_button}
               </button>
             </div>
           </div>
@@ -214,11 +215,11 @@ export default function SideNotebook({ open, onClose }: Props) {
               </div>
             ) : notes.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-6">
-                אין פתקים עדיין. רשום את הרעיון הראשון שלך!
+                {strings.sideNotebook.empty_state}
               </p>
             ) : (
               <div className="space-y-2">
-                <h3 className="text-xs font-medium text-gray-400 mb-2">פתקים שמורים ({notes.length})</h3>
+                <h3 className="text-xs font-medium text-gray-400 mb-2">{strings.sideNotebook.saved_label} ({notes.length})</h3>
                 {notes.map((note) => (
                   <div
                     key={note.id}
@@ -250,7 +251,7 @@ export default function SideNotebook({ open, onClose }: Props) {
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDelete(note.id) }}
                         className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors p-1 touch-manipulation"
-                        title="מחק פתק"
+                        title={strings.sideNotebook.delete_title}
                       >
                         <TrashIcon className="h-4 w-4" />
                       </button>

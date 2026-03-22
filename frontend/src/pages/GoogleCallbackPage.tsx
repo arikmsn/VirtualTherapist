@@ -25,6 +25,7 @@ import { authAPI } from '@/lib/api'
 import { useAuth } from '@/auth/useAuth'
 import { GOOGLE_STATE_KEY } from '@/components/auth/GoogleSignInButton'
 import AppLogo from '@/components/common/AppLogo'
+import { strings } from '@/i18n/he'
 
 export default function GoogleCallbackPage() {
   const navigate = useNavigate()
@@ -47,12 +48,12 @@ export default function GoogleCallbackPage() {
 
     // Google can return an error (e.g. user clicked "Cancel")
     if (errorParam) {
-      setError('ההתחברות בוטלה. אנא נסה שוב.')
+      setError(strings.googleCallback.error_cancelled)
       return
     }
 
     if (!code || !returnedState) {
-      setError('פרמטרים חסרים בחזרה מגוגל. אנא נסה שוב.')
+      setError(strings.googleCallback.error_missing_params)
       return
     }
 
@@ -61,7 +62,7 @@ export default function GoogleCallbackPage() {
     sessionStorage.removeItem(GOOGLE_STATE_KEY)
 
     if (!expectedState || returnedState !== expectedState) {
-      setError('שגיאת אבטחה (state לא תואם). אנא נסה שוב.')
+      setError(strings.googleCallback.error_csrf)
       return
     }
 
@@ -88,7 +89,7 @@ export default function GoogleCallbackPage() {
       })
       .catch((err: any) => {
         const detail = err?.response?.data?.detail
-        setError(detail || 'שגיאה בהתחברות עם גוגל. אנא נסה שוב.')
+        setError(detail || strings.googleCallback.error_google_auth)
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -119,13 +120,13 @@ export default function GoogleCallbackPage() {
       <div className="min-h-screen bg-gradient-to-br from-therapy-calm to-therapy-gentle flex items-center justify-center p-4" dir="rtl">
         <div className="bg-white rounded-2xl shadow-2xl px-8 py-10 w-full max-w-sm text-center">
           <div className="text-4xl mb-4">⚠️</div>
-          <h1 className="text-lg font-semibold text-gray-900 mb-2">שגיאה בהתחברות</h1>
+          <h1 className="text-lg font-semibold text-gray-900 mb-2">{strings.googleCallback.error_title}</h1>
           <p className="text-sm text-gray-600 mb-6">{error}</p>
           <a
             href="/login"
             className="inline-block btn-primary text-sm px-6 py-2"
           >
-            חזרה להתחברות
+            {strings.googleCallback.error_retry_button}
           </a>
         </div>
       </div>
@@ -140,20 +141,20 @@ export default function GoogleCallbackPage() {
             <a href="https://metapel.online" target="_blank" rel="noopener noreferrer" className="mx-auto mb-3 w-[200px] sm:w-[240px] block">
               <AppLogo variant="full" fluid />
             </a>
-            <h1 className="text-xl font-bold text-gray-900">השלמת הרשמה</h1>
-            <p className="text-sm text-gray-500 mt-1">צעד אחרון לפני שמתחילים</p>
+            <h1 className="text-xl font-bold text-gray-900">{strings.googleCallback.signup_title}</h1>
+            <p className="text-sm text-gray-500 mt-1">{strings.googleCallback.signup_subtitle}</p>
           </div>
 
           <div className="space-y-4">
             {consentName && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">שם</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.googleCallback.name_label}</label>
                 <div className="input-field bg-gray-50 text-gray-500 cursor-not-allowed">{consentName}</div>
               </div>
             )}
             {consentEmail && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">אימייל</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.googleCallback.email_label}</label>
                 <div className="input-field bg-gray-50 text-gray-500 cursor-not-allowed">{consentEmail}</div>
               </div>
             )}
@@ -173,10 +174,10 @@ export default function GoogleCallbackPage() {
               {completing ? (
                 <div className="flex items-center justify-center gap-2">
                   <div className="spinner w-5 h-5 border-2"></div>
-                  יוצר חשבון...
+                  {strings.googleCallback.complete_loading}
                 </div>
               ) : (
-                'השלם הרשמה'
+                strings.googleCallback.complete_button
               )}
             </button>
           </div>
@@ -189,7 +190,7 @@ export default function GoogleCallbackPage() {
     <div className="min-h-screen bg-gradient-to-br from-therapy-calm to-therapy-gentle flex items-center justify-center" dir="rtl">
       <div className="flex flex-col items-center gap-4 text-white">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white" />
-        <p className="text-sm opacity-80">מתחבר עם גוגל...</p>
+        <p className="text-sm opacity-80">{strings.googleCallback.loading}</p>
       </div>
     </div>
   )

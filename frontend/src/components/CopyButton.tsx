@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline'
+import { strings } from '@/i18n/he'
 
 interface Props {
   text: string
@@ -34,7 +35,7 @@ export default function CopyButton({ text, className = '' }: Props) {
     <button
       type="button"
       onClick={handleCopy}
-      title={copied ? 'הועתק!' : 'העתק טקסט ללוח'}
+      title={copied ? strings.copyButton.tooltip_copied : strings.copyButton.tooltip_copy}
       className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border transition-colors ${
         copied
           ? 'bg-green-50 border-green-300 text-green-700'
@@ -44,12 +45,12 @@ export default function CopyButton({ text, className = '' }: Props) {
       {copied ? (
         <>
           <CheckIcon className="h-3.5 w-3.5 flex-shrink-0" />
-          הועתק
+          {strings.copyButton.label_copied}
         </>
       ) : (
         <>
           <ClipboardDocumentIcon className="h-3.5 w-3.5 flex-shrink-0" />
-          העתקה
+          {strings.copyButton.label_copy}
         </>
       )}
     </button>

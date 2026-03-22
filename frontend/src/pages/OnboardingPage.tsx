@@ -4,6 +4,7 @@ import { agentAPI, therapistAPI } from '@/lib/api'
 import { useAuth } from '@/auth/useAuth'
 import { CheckIcon } from '@heroicons/react/24/solid'
 import AppLogo from '@/components/common/AppLogo'
+import { strings } from '@/i18n/he'
 import {
   PROFESSION_OPTIONS,
   THERAPY_MODES,
@@ -17,19 +18,19 @@ const DRAFT_KEY = 'metapel_setup_draft'
 // Both are button-grid selectors. On desktop they would fit comfortably; on mobile (~360px)
 // the combined grid (~18 options) would require scrolling. Leave separate for now.
 const STEPS = [
-  { title: 'מקצוע', description: 'מהו תפקידך המקצועי? (בחירה יחידה)' },
-  { title: 'שיטות טיפול', description: 'בחר את הגישות הטיפוליות שבהן אתה עובד (בחירה מרובה)' },
-  { title: 'סגנון כתיבה', description: 'תיאור של הסיכומים הקיימים שלך' },
-  { title: 'רקע מקצועי', description: 'פרטים שיעזרו לבינה המלאכותית להבין את הרקע שלך' },
-  { title: 'דוגמאות ללמידה', description: 'דוגמאות כדי שהמערכת תלמד את הסגנון האישי שלך (לא חובה)' },
+  { title: strings.onboarding.step_profession_title, description: strings.onboarding.step_profession_description },
+  { title: strings.onboarding.step_modes_title, description: strings.onboarding.step_modes_description },
+  { title: strings.onboarding.step_style_title, description: strings.onboarding.step_style_description },
+  { title: strings.onboarding.step_background_title, description: strings.onboarding.step_background_description },
+  { title: strings.onboarding.step_examples_title, description: strings.onboarding.step_examples_description },
 ]
 
 const TONE_OPTIONS = [
-  'פורמלי',
-  'מקצועי אך נגיש',
-  'חברי',
-  'ישיר ותכליתי',
-  'אמפתי ורך',
+  strings.onboarding.tone_formal,
+  strings.onboarding.tone_professional_accessible,
+  strings.onboarding.tone_friendly,
+  strings.onboarding.tone_direct,
+  strings.onboarding.tone_empathetic,
 ]
 
 export default function OnboardingPage() {
@@ -160,7 +161,7 @@ export default function OnboardingPage() {
       }
       setStep((s) => s + 1)
     } catch {
-      setError('אירעה שגיאה בשמירה. אנא נסה שוב.')
+      setError(strings.onboarding.error_save)
     } finally {
       setSaving(false)
     }
@@ -184,7 +185,7 @@ export default function OnboardingPage() {
             onClick={handleExit}
             className="text-sm text-gray-400 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 transition-colors"
           >
-            יציאה
+            {strings.onboarding.exit_button}
           </button>
         </div>
       </header>
@@ -231,7 +232,7 @@ export default function OnboardingPage() {
             {step === 0 && (
               <div className="space-y-3">
                 <p className="text-xs text-gray-400 bg-indigo-50 rounded-lg px-3 py-2 leading-relaxed">
-                  המקצוע שלך עוזר ל‑AI להתאים את השפה הקלינית, מבנה הסיכומים והניתוחים לרקע המקצועי שלך. נא לבחור תפקיד אחד.
+                  {strings.onboarding.profession_hint}
                 </p>
                 <div className="grid grid-cols-2 gap-2.5">
                   {PROFESSION_OPTIONS.map((p) => (
@@ -258,7 +259,7 @@ export default function OnboardingPage() {
                     type="text"
                     value={professionOtherText}
                     onChange={(e) => setProfessionOtherText(e.target.value)}
-                    placeholder="פרט את תפקידך המקצועי..."
+                    placeholder={strings.onboarding.profession_placeholder}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 mt-1"
                     autoFocus
                   />
@@ -270,7 +271,7 @@ export default function OnboardingPage() {
             {step === 1 && (
               <div className="space-y-3">
                 <p className="text-xs text-gray-400 bg-indigo-50 rounded-lg px-3 py-2 leading-relaxed">
-                  ניתן לבחור מספר שיטות. הבחירה קובעת כיצד ה‑AI יבנה סיכומים ויעבד פגישות. לדוגמה, CBT מפעיל ניתוח מחשבות אוטומטיות ומטלות בין‑מפגשים.
+                  {strings.onboarding.modes_hint}
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   {THERAPY_MODES.map((m) => {
@@ -299,20 +300,20 @@ export default function OnboardingPage() {
                     type="text"
                     value={modesOtherText}
                     onChange={(e) => setModesOtherText(e.target.value)}
-                    placeholder="פרט גישה טיפולית נוספת..."
+                    placeholder={strings.onboarding.modes_placeholder}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
                     autoFocus
                   />
                 )}
                 {selectedModes.length === 0 ? (
                   <div className="flex items-center justify-between">
-                    <p className="text-xs text-amber-600">בחרו לפחות שיטה אחת</p>
+                    <p className="text-xs text-amber-600">{strings.onboarding.modes_min_error}</p>
                     <button
                       type="button"
                       onClick={() => setSelectedModes(['integrative'])}
                       className="text-xs text-gray-400 underline hover:text-gray-600"
                     >
-                      דלג — הגדר כמטפל כללי
+                      {strings.onboarding.modes_skip}
                     </button>
                   </div>
                 ) : (
@@ -326,7 +327,7 @@ export default function OnboardingPage() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    טון כתיבה <span className="text-red-500">*</span>
+                    {strings.onboarding.tone_label} <span className="text-red-500">*</span>
                   </label>
                   {/* Tone chips */}
                   <div className="flex flex-wrap gap-2 mb-2">
@@ -351,18 +352,18 @@ export default function OnboardingPage() {
                     value={form.toneExtra}
                     onChange={(e) => set('toneExtra', e.target.value)}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    placeholder="הוספות חופשיות, למשל: חם אך גבולות ברורים..."
+                    placeholder={strings.onboarding.tone_placeholder}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    אורך סיכום מועדף
+                    {strings.onboarding.length_label}
                   </label>
                   <div className="flex gap-3">
                     {[
-                      { value: 'short', label: 'קצר' },
-                      { value: 'medium', label: 'בינוני' },
-                      { value: 'detailed', label: 'מפורט' },
+                      { value: 'short', label: strings.onboarding.length_short },
+                      { value: 'medium', label: strings.onboarding.length_medium },
+                      { value: 'detailed', label: strings.onboarding.length_detailed },
                     ].map((opt) => (
                       <button
                         key={opt.value}
@@ -381,14 +382,14 @@ export default function OnboardingPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    האם יש מינוחים מועדפים להשתמש בהם (לא חובה)
+                    {strings.onboarding.terminology_label}
                   </label>
                   <input
                     type="text"
                     value={form.terminology}
                     onChange={(e) => set('terminology', e.target.value)}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    placeholder="מילות מפתח שמשתמשים בהן בסיכומים, יש להפריד בפסיקים..."
+                    placeholder={strings.onboarding.terminology_placeholder}
                   />
                 </div>
               </div>
@@ -399,51 +400,51 @@ export default function OnboardingPage() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    השכלה אקדמית
+                    {strings.onboarding.education_label}
                   </label>
                   <input
                     type="text"
                     value={form.education}
                     onChange={(e) => set('education', e.target.value)}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    placeholder="למשל: M.A. פסיכולוגיה קלינית, אוניברסיטת ת״א"
+                    placeholder={strings.onboarding.education_placeholder}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    תארים ורישיונות מקצועיים
+                    {strings.onboarding.certifications_label}
                   </label>
                   <input
                     type="text"
                     value={form.certifications}
                     onChange={(e) => set('certifications', e.target.value)}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    placeholder="למשל: פסיכולוג קליני מורשה, מטפל EMDR מוסמך"
+                    placeholder={strings.onboarding.certifications_placeholder}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      שנות ניסיון
+                      {strings.onboarding.experience_label}
                     </label>
                     <input
                       type="text"
                       value={form.yearsOfExperience}
                       onChange={(e) => set('yearsOfExperience', e.target.value)}
                       className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                      placeholder="למשל: 8"
+                      placeholder={strings.onboarding.experience_placeholder}
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      תחומי התמחות
+                      {strings.onboarding.specialties_label}
                     </label>
                     <input
                       type="text"
                       value={form.areasOfExpertise}
                       onChange={(e) => set('areasOfExpertise', e.target.value)}
                       className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                      placeholder="חרדה, טראומה, זוגיות..."
+                      placeholder={strings.onboarding.specialties_placeholder}
                     />
                   </div>
                 </div>
@@ -454,33 +455,33 @@ export default function OnboardingPage() {
             {step === 4 && (
               <div className="space-y-4">
                 <p className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">
-                  דוגמאות עוזרות לבינה המלאכותית ללמוד את הסגנון הייחודי שלך. ניתן לדלג על שלב זה ולהוסיף מאוחר יותר.
+                  {strings.onboarding.examples_hint}
                 </p>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    דוגמא לסיכום פגישה שכתבת
+                    {strings.onboarding.example_summary_label}
                   </label>
                   <textarea
                     value={form.exampleSummary}
                     onChange={(e) => set('exampleSummary', e.target.value)}
                     rows={5}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-                    placeholder="הכניסו כאן סיכום פגישה לדוגמא, נדרש למחוק פרטים מזהים..."
+                    placeholder={strings.onboarding.example_summary_placeholder}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    דוגמא להודעה ששלחת למטופל
+                    {strings.onboarding.example_message_label}
                   </label>
                   <textarea
                     value={form.exampleMessage}
                     onChange={(e) => set('exampleMessage', e.target.value)}
                     rows={3}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
-                    placeholder="הכנס כאן הודעה לדוגמא..."
+                    placeholder={strings.onboarding.example_message_placeholder}
                   />
                   <p className="mt-1.5 text-xs text-gray-400 leading-relaxed">
-                    אפשר להדביק כאן הודעה טיפוסית ששלחת למטופל — למשל תזכורת לפגישה, משימה בין מפגשים, הודעת תמיכה קצרה או עדכון חשוב. השדה אופציונלי ומסייע למערכת ללמוד את סגנון התקשורת שלך עם מטופלים.
+                    {strings.onboarding.example_message_hint}
                   </p>
                 </div>
               </div>
@@ -499,7 +500,7 @@ export default function OnboardingPage() {
               disabled={step === 0 || saving}
               className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              חזרה
+              {strings.onboarding.back_button}
             </button>
             <div className="flex items-center gap-3">
               <button
@@ -508,7 +509,7 @@ export default function OnboardingPage() {
                 disabled={saving || !canAdvance()}
                 className="px-6 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {saving ? 'שומר...' : step === STEPS.length - 1 ? 'סיום' : 'המשך'}
+                {saving ? strings.onboarding.saving_button : step === STEPS.length - 1 ? strings.onboarding.complete_button : strings.onboarding.continue_button}
               </button>
             </div>
           </div>

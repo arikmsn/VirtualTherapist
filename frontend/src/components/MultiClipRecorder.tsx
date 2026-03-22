@@ -16,6 +16,7 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline'
 import { sessionsAPI } from '@/lib/api'
+import { strings } from '@/i18n/he'
 
 interface Clip {
   id: number
@@ -25,12 +26,7 @@ interface Clip {
   status: string // pending | transcribed | error
 }
 
-const HEBREW_ORDINALS: Record<number, string> = {
-  1: 'ראשון', 2: 'שני', 3: 'שלישי', 4: 'רביעי', 5: 'חמישי',
-  6: 'שישי', 7: 'שביעי', 8: 'שמיני', 9: 'תשיעי', 10: 'עשירי',
-}
-
-const clipOrdinal = (n: number) => HEBREW_ORDINALS[n] || `#${n}`
+const clipOrdinal = (n: number) => strings.multiClipRecorder.ordinals[n - 1] || `#${n}`
 
 interface MultiClipRecorderProps {
   sessionId: number
@@ -103,7 +99,7 @@ export default function MultiClipRecorder({
           setClips((prev) => [...prev, newClip])
         } catch (err: unknown) {
           const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-          setUploadError(detail || 'שגיאה בהעלאת הקטע')
+          setUploadError(detail || strings.multiClipRecorder.error_upload)
         } finally {
           setUploading(false)
         }
@@ -121,9 +117,9 @@ export default function MultiClipRecorder({
     } catch (err: unknown) {
       const name = (err as { name?: string })?.name || ''
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        setPermissionError('גישה למיקרופון נחסמה. יש לאפשר גישה בהגדרות הדפדפן ולרענן.')
+        setPermissionError(strings.multiClipRecorder.error_mic_blocked)
       } else {
-        setPermissionError('לא הצלחנו להתחיל הקלטה. בדוק את המיקרופון ונסה שוב.')
+        setPermissionError(strings.multiClipRecorder.error_mic_generic)
       }
     }
   }, [sessionId])
@@ -220,10 +216,10 @@ export default function MultiClipRecorder({
                   </p>
                 )}
                 {clip.status === 'error' && (
-                  <p className="mt-1 text-red-500 text-xs">שגיאה בתמלול</p>
+                  <p className="mt-1 text-red-500 text-xs">{strings.multiClipRecorder.transcription_error}</p>
                 )}
                 {clip.status === 'pending' && (
-                  <p className="mt-1 text-gray-400 text-xs">מתמלל...</p>
+                  <p className="mt-1 text-gray-400 text-xs">{strings.multiClipRecorder.transcription_pending}</p>
                 )}
               </div>
 
@@ -232,7 +228,7 @@ export default function MultiClipRecorder({
                 <button
                   onClick={() => handleDeleteClip(clip.id)}
                   className="flex-shrink-0 text-gray-300 hover:text-red-500 transition-colors"
-                  title="מחק קטע"
+                  title={strings.multiClipRecorder.delete_clip_title}
                 >
                   <TrashIcon className="h-4 w-4" />
                 </button>
@@ -259,7 +255,7 @@ export default function MultiClipRecorder({
             className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
           >
             <StopIcon className="h-4 w-4" />
-            עצור קטע
+            {strings.multiClipRecorder.stop_clip_button}
           </button>
         </div>
       )}
@@ -268,7 +264,7 @@ export default function MultiClipRecorder({
       {uploading && (
         <div className="flex items-center gap-3 text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3">
           <ArrowPathIcon className="h-4 w-4 animate-spin text-therapy-calm" />
-          מעלה ומתמלל קטע...
+          {strings.multiClipRecorder.uploading}
         </div>
       )}
 
@@ -282,7 +278,7 @@ export default function MultiClipRecorder({
             className="inline-flex items-center gap-2 px-4 py-2 bg-therapy-calm text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
           >
             <MicrophoneIcon className="h-4 w-4" />
-            {clips.length === 0 ? 'הקלט קטע ראשון' : 'הקלט קטע נוסף'}
+            {clips.length === 0 ? strings.multiClipRecorder.record_first_button : strings.multiClipRecorder.record_more_button}
           </button>
         )}
 
@@ -296,12 +292,12 @@ export default function MultiClipRecorder({
             {processing ? (
               <>
                 <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                יוצר סיכום...
+                {strings.multiClipRecorder.finalize_processing}
               </>
             ) : (
               <>
                 <CheckCircleIcon className="h-4 w-4" />
-                צפייה ואישור ({transcribedCount} קטעים)
+                {strings.multiClipRecorder.finalize_button} ({transcribedCount} קטעים)
               </>
             )}
           </button>
@@ -311,7 +307,7 @@ export default function MultiClipRecorder({
       {/* Empty state hint */}
       {clips.length === 0 && !recording && !uploading && (
         <p className="text-xs text-gray-400 text-center">
-          הקלט כמה קטעים קצרים עם תיאור הפגישה, ולאחר מכן לחץ "סיים ושלח לתמלול" לייצור הסיכום.
+          {strings.multiClipRecorder.idle_hint}
         </p>
       )}
     </div>

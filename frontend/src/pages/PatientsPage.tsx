@@ -14,14 +14,15 @@ import {
 import { patientsAPI, sessionsAPI, exercisesAPI } from '@/lib/api'
 import { formatDateIL } from '@/lib/dateUtils'
 import PhoneInput from '@/components/PhoneInput'
+import { strings } from '@/i18n/he'
 
 const SESSION_TYPES = [
-  { value: 'individual', label: 'פרטני' },
-  { value: 'couples', label: 'זוגי' },
-  { value: 'family', label: 'משפחתי' },
-  { value: 'group', label: 'קבוצתי' },
-  { value: 'intake', label: 'אינטייק' },
-  { value: 'follow_up', label: 'מעקב' },
+  { value: 'individual', label: strings.patients.session_type_individual },
+  { value: 'couples', label: strings.patients.session_type_couples },
+  { value: 'family', label: strings.patients.session_type_family },
+  { value: 'group', label: strings.patients.session_type_group },
+  { value: 'intake', label: strings.patients.session_type_intake },
+  { value: 'follow_up', label: strings.patients.session_type_followup },
 ]
 
 interface Patient {
@@ -164,7 +165,7 @@ export default function PatientsPage() {
       setCreateSessionFor(null)
       await loadSessions()
     } catch (err: any) {
-      setCreateSessionError(err.response?.data?.detail || 'שגיאה ביצירת הפגישה')
+      setCreateSessionError(err.response?.data?.detail || strings.patients.error_create_session)
     } finally {
       setCreatingSession(false)
     }
@@ -217,7 +218,7 @@ export default function PatientsPage() {
       <div className="flex items-center justify-center h-64" dir="rtl">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-therapy-calm mx-auto mb-4"></div>
-          <p className="text-gray-600">טוען מטופלים...</p>
+          <p className="text-gray-600">{strings.patients.loading}</p>
         </div>
       </div>
     )
@@ -228,15 +229,15 @@ export default function PatientsPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">מטופלים</h1>
-          <p className="hidden sm:block text-gray-600 mt-2">נהל את כל המטופלים שלך במקום אחד</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{strings.patients.page_title}</h1>
+          <p className="hidden sm:block text-gray-600 mt-2">{strings.patients.page_subtitle}</p>
         </div>
         <button
           onClick={() => setShowCreateForm(true)}
           className="btn-primary flex items-center gap-2 flex-shrink-0 min-h-[44px] touch-manipulation"
         >
           <PlusIcon className="h-5 w-5" />
-          מטופל חדש
+          {strings.patients.new_patient_button}
         </button>
       </div>
 
@@ -250,7 +251,7 @@ export default function PatientsPage() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="input-field pr-10"
-              placeholder="חפש מטופל..."
+              placeholder={strings.patients.search_placeholder}
             />
           </div>
           {inactiveCount > 0 && (
@@ -267,7 +268,7 @@ export default function PatientsPage() {
               ) : (
                 <EyeIcon className="h-4 w-4" />
               )}
-              {showInactive ? 'הסתר לא פעילים' : `הצג לא פעילים (${inactiveCount})`}
+              {showInactive ? strings.patients.hide_inactive : `${strings.patients.show_inactive} (${inactiveCount})`}
             </button>
           )}
         </div>
@@ -278,21 +279,21 @@ export default function PatientsPage() {
         <div className="bg-blue-50 border border-blue-200 rounded-xl flex flex-col items-center md:items-start py-2 px-2 md:py-5 md:px-6">
           <div className="text-2xl md:text-3xl font-bold text-blue-900 leading-none">{activeCount}</div>
           <div className="text-[11px] md:text-sm text-blue-700 mt-1 text-center md:text-start leading-tight">
-            <span>פעילים</span>
+            <span>{strings.patients.stat_active}</span>
           </div>
         </div>
         <div className="bg-green-50 border border-green-200 rounded-xl flex flex-col items-center md:items-start py-2 px-2 md:py-5 md:px-6">
           <div className="text-2xl md:text-3xl font-bold text-green-900 leading-none">{sessionsThisWeek}</div>
           <div className="text-[11px] md:text-sm text-green-700 mt-1 text-center md:text-start leading-tight">
             <span className="md:hidden">פגישות<br/>השבוע</span>
-            <span className="hidden md:inline">פגישות השבוע</span>
+            <span className="hidden md:inline">{strings.patients.stat_sessions_week}</span>
           </div>
         </div>
         <div className="bg-purple-50 border border-purple-200 rounded-xl flex flex-col items-center md:items-start py-2 px-2 md:py-5 md:px-6">
           <div className="text-2xl md:text-3xl font-bold text-purple-900 leading-none">{pendingTasksCount}</div>
           <div className="text-[11px] md:text-sm text-purple-700 mt-1 text-center md:text-start leading-tight">
             <span className="md:hidden">משימות</span>
-            <span className="hidden md:inline">משימות פתוחות</span>
+            <span className="hidden md:inline">{strings.patients.stat_open_tasks}</span>
           </div>
         </div>
       </div>
@@ -303,17 +304,17 @@ export default function PatientsPage() {
           <div className="text-6xl mb-4">👥</div>
           <h3 className="text-xl font-bold text-gray-900 mb-2">
             {patients.length === 0
-              ? 'אין מטופלים עדיין'
+              ? strings.patients.empty_no_patients_title
               : !showInactive && inactiveCount > 0 && activeCount === 0
-              ? 'כל המטופלים לא פעילים'
-              : 'לא נמצאו תוצאות'}
+              ? strings.patients.empty_all_inactive_title
+              : strings.patients.empty_no_results_title}
           </h3>
           <p className="text-gray-600">
             {patients.length === 0
-              ? 'לחץ על "מטופל חדש" כדי להוסיף את המטופל הראשון'
+              ? strings.patients.empty_no_patients_subtitle
               : !showInactive && inactiveCount > 0 && activeCount === 0
-              ? 'לחץ על "הצג לא פעילים" כדי לראות את כל המטופלים'
-              : 'נסה לחפש עם מונח אחר'}
+              ? strings.patients.empty_all_inactive_subtitle
+              : strings.patients.empty_no_results_subtitle}
           </p>
         </div>
       ) : (
@@ -334,9 +335,9 @@ export default function PatientsPage() {
                   <div className={`badge text-xs mt-0.5 ${
                     patient.status === 'active' ? 'badge-approved' : 'badge-draft'
                   }`}>
-                    {patient.status === 'active' ? 'פעיל' :
-                     patient.status === 'paused' ? 'מושהה' :
-                     patient.status === 'completed' ? 'הושלם' : 'לא פעיל'}
+                    {patient.status === 'active' ? strings.patients.status_active :
+                     patient.status === 'paused' ? strings.patients.status_paused :
+                     patient.status === 'completed' ? strings.patients.status_completed : strings.patients.status_inactive}
                   </div>
                 </div>
 
@@ -344,7 +345,7 @@ export default function PatientsPage() {
                 <div className="md:hidden flex items-center gap-0.5 flex-shrink-0">
                   <button
                     className="p-2 text-gray-400 hover:text-therapy-calm hover:bg-blue-50 rounded-lg touch-manipulation"
-                    title="סיכומים"
+                    title={strings.patients.summaries_button}
                     onClick={(e) => {
                       e.stopPropagation()
                       navigate(`/patients/${patient.id}`, { state: { initialTab: 'summaries' } })
@@ -354,7 +355,7 @@ export default function PatientsPage() {
                   </button>
                   <button
                     className="p-2 text-gray-400 hover:text-therapy-calm hover:bg-blue-50 rounded-lg touch-manipulation"
-                    title="הודעות"
+                    title={strings.patients.messages_button}
                     onClick={(e) => {
                       e.stopPropagation()
                       navigate(`/patients/${patient.id}`, { state: { initialTab: 'inbetween' } })
@@ -370,7 +371,7 @@ export default function PatientsPage() {
               <div className="hidden md:block mt-4 space-y-2 text-sm">
                 {patient.phone && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">טלפון:</span>
+                    <span className="text-gray-600">{strings.patients.phone_label}</span>
                     <a
                       href={`tel:${patient.phone}`}
                       onClick={(e) => e.stopPropagation()}
@@ -388,7 +389,7 @@ export default function PatientsPage() {
                     navigate(`/patients/${patient.id}`, { state: { initialTab: 'sessions' } })
                   }}
                 >
-                  <span className="text-gray-600 group-hover:text-therapy-calm">משימות פתוחות:</span>
+                  <span className="text-gray-600 group-hover:text-therapy-calm">{strings.patients.open_tasks_label}</span>
                   <span className="font-medium group-hover:text-therapy-calm">
                     {patientOpenTasks[patient.id] ?? 0}
                   </span>
@@ -396,7 +397,7 @@ export default function PatientsPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600 flex items-center gap-1">
                     <CalendarIcon className="h-3.5 w-3.5" />
-                    פגישה הבאה:
+                    {strings.patients.next_session_label}
                   </span>
                   {nextSessionByPatient[patient.id] ? (
                     <span className="font-medium">
@@ -404,12 +405,12 @@ export default function PatientsPage() {
                     </span>
                   ) : (
                     <span className="flex items-center gap-1.5">
-                      <span className="text-gray-400">לא נקבע</span>
+                      <span className="text-gray-400">{strings.patients.no_session_set}</span>
                       <button
                         onClick={(e) => { e.stopPropagation(); openCreateSession(patient) }}
                         className="text-xs font-medium text-therapy-calm hover:underline"
                       >
-                        · קביעת פגישה
+                        · {strings.patients.schedule_session_button}
                       </button>
                     </span>
                   )}
@@ -425,7 +426,7 @@ export default function PatientsPage() {
                     navigate(`/patients/${patient.id}`, { state: { initialTab: 'summaries' } })
                   }}
                 >
-                  סיכומים
+                  {strings.patients.summaries_button}
                 </button>
                 <button
                   className="text-sm btn-secondary py-2"
@@ -434,7 +435,7 @@ export default function PatientsPage() {
                     navigate(`/patients/${patient.id}`, { state: { initialTab: 'inbetween' } })
                   }}
                 >
-                  הודעות
+                  {strings.patients.messages_button}
                 </button>
               </div>
             </div>
@@ -448,7 +449,7 @@ export default function PatientsPage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] overflow-x-hidden">
             <div className="flex items-center justify-between px-3 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">פגישה חדשה</h2>
+                <h2 className="text-xl font-bold text-gray-900">{strings.patients.session_modal_title}</h2>
                 <p className="text-sm text-gray-500 mt-0.5">{createSessionFor.full_name}</p>
               </div>
               <button onClick={() => setCreateSessionFor(null)} className="text-gray-400 hover:text-gray-600 p-1 touch-manipulation">
@@ -458,7 +459,7 @@ export default function PatientsPage() {
 
             <div className="overflow-y-auto flex-1 px-3 sm:px-6 py-4 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">תאריך *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.patients.date_label}</label>
                 <input
                   type="date"
                   value={newSessionDate}
@@ -468,13 +469,13 @@ export default function PatientsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">שעת התחלה</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.patients.start_time_label}</label>
                 <select
                   value={newSessionTime}
                   onChange={(e) => setNewSessionTime(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
                 >
-                  <option value="">בחר שעה...</option>
+                  <option value="">{strings.patients.time_placeholder}</option>
                   {Array.from({ length: 14 }, (_, i) => i + 7).map((hour) =>
                     [0, 30].map((min) => {
                       const val = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
@@ -484,7 +485,7 @@ export default function PatientsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">משך (דקות)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.patients.duration_label}</label>
                 <input
                   type="number"
                   value={newSessionDuration}
@@ -494,7 +495,7 @@ export default function PatientsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">סוג פגישה</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.patients.session_type_label}</label>
                 <select
                   value={newSessionType}
                   onChange={(e) => setNewSessionType(e.target.value)}
@@ -516,13 +517,13 @@ export default function PatientsPage() {
                 disabled={creatingSession}
                 className="btn-primary flex-1 disabled:opacity-50 min-h-[44px] touch-manipulation"
               >
-                {creatingSession ? 'יוצר...' : 'צור פגישה'}
+                {creatingSession ? strings.patients.create_session_loading : strings.patients.create_session_button}
               </button>
               <button
                 onClick={() => setCreateSessionFor(null)}
                 className="btn-secondary flex-1 min-h-[44px] touch-manipulation"
               >
-                ביטול
+                {strings.patients.cancel_button}
               </button>
             </div>
           </div>
@@ -536,7 +537,7 @@ export default function PatientsPage() {
 
             {/* Sticky header */}
             <div className="flex items-center justify-between px-3 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
-              <h2 className="text-xl font-bold">מטופל חדש</h2>
+              <h2 className="text-xl font-bold">{strings.patients.new_patient_modal_title}</h2>
               <button onClick={() => setShowCreateForm(false)} className="touch-manipulation p-1">
                 <XMarkIcon className="h-6 w-6 text-gray-500 hover:text-gray-700" />
               </button>
@@ -545,17 +546,17 @@ export default function PatientsPage() {
             {/* Scrollable body */}
             <div className="overflow-y-auto flex-1 px-3 sm:px-6 py-4 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">שם מלא *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.patients.full_name_label}</label>
                 <input
                   type="text"
                   value={newPatient.full_name}
                   onChange={(e) => setNewPatient({ ...newPatient, full_name: e.target.value })}
                   className="input-field"
-                  placeholder="שם מלא של המטופל"
+                  placeholder={strings.patients.full_name_placeholder}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">טלפון</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.patients.phone_modal_label}</label>
                 <PhoneInput
                   value={newPatient.phone}
                   onChange={(e164) => setNewPatient({ ...newPatient, phone: e164 })}
@@ -563,7 +564,7 @@ export default function PatientsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">אימייל</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.patients.email_label}</label>
                 <input
                   type="email"
                   value={newPatient.email}
@@ -573,12 +574,12 @@ export default function PatientsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">נושאים עיקריים</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.patients.primary_concerns_label}</label>
                 <textarea
                   value={newPatient.primary_concerns}
                   onChange={(e) => setNewPatient({ ...newPatient, primary_concerns: e.target.value })}
                   className="input-field h-20 resize-none"
-                  placeholder="תיאור קצר של הנושאים העיקריים..."
+                  placeholder={strings.patients.primary_concerns_placeholder}
                 />
               </div>
             </div>
@@ -590,13 +591,13 @@ export default function PatientsPage() {
                 disabled={!newPatient.full_name.trim() || creating}
                 className="btn-primary flex-1 disabled:opacity-50 min-h-[44px] touch-manipulation"
               >
-                {creating ? 'יוצר...' : 'צור מטופל'}
+                {creating ? strings.patients.create_patient_loading : strings.patients.create_patient_button}
               </button>
               <button
                 onClick={() => setShowCreateForm(false)}
                 className="btn-secondary flex-1 min-h-[44px] touch-manipulation"
               >
-                ביטול
+                {strings.patients.cancel_button}
               </button>
             </div>
           </div>

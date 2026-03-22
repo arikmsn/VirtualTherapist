@@ -12,6 +12,7 @@ import {
 import { sessionsAPI, patientsAPI } from '@/lib/api'
 import { usePrepStream } from '@/hooks/usePrepStream'
 import { formatDateIL } from '@/lib/dateUtils'
+import { strings } from '@/i18n/he'
 
 interface Session {
   id: number
@@ -139,12 +140,12 @@ export default function SessionsPage() {
     setCreateError('')
 
     if (!formData.patient_id) {
-      setCreateError('יש לבחור מטופל')
+      setCreateError(strings.sessions.error_patient_required)
       return
     }
     const dur = parseInt(formData.duration_minutes, 10)
     if (!formData.duration_minutes || isNaN(dur) || dur <= 0) {
-      setCreateError('יש להזין משך פגישה תקין (מספר דקות חיובי)')
+      setCreateError(strings.sessions.error_duration_required)
       return
     }
 
@@ -175,7 +176,7 @@ export default function SessionsPage() {
       })
       await loadSessions()
     } catch (error: any) {
-      setCreateError(error.response?.data?.detail || 'שגיאה ביצירת הפגישה')
+      setCreateError(error.response?.data?.detail || strings.sessions.error_create_generic)
     } finally {
       setCreating(false)
     }
@@ -213,7 +214,7 @@ export default function SessionsPage() {
       <div className="flex items-center justify-center h-64" dir="rtl">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-therapy-calm mx-auto mb-4"></div>
-          <p className="text-gray-600">טוען פגישות...</p>
+          <p className="text-gray-600">{strings.sessions.loading}</p>
         </div>
       </div>
     )
@@ -224,15 +225,15 @@ export default function SessionsPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">פגישות וסיכומים</h1>
-          <p className="text-gray-600 mt-1 sm:mt-2 text-sm sm:text-base">כל הפגישות והסיכומים במקום אחד</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{strings.sessions.page_title}</h1>
+          <p className="text-gray-600 mt-1 sm:mt-2 text-sm sm:text-base">{strings.sessions.page_subtitle}</p>
         </div>
         <button
           onClick={() => setShowCreateModal(true)}
           className="btn-primary flex items-center gap-2 flex-shrink-0 min-h-[44px] touch-manipulation"
         >
           <PlusIcon className="h-5 w-5" />
-          פגישה חדשה
+          {strings.sessions.new_session_button}
         </button>
       </div>
 
@@ -247,7 +248,7 @@ export default function SessionsPage() {
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            הכל ({sessions.length})
+            {strings.sessions.filter_all} ({sessions.length})
           </button>
           <button
             onClick={() => setFilter('with_summary')}
@@ -257,7 +258,7 @@ export default function SessionsPage() {
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            עם סיכום ({approvedCount} מאושר{approvedCount !== 1 ? 'ים' : ''} · {draftCount} טיוטה)
+            {strings.sessions.filter_with_summary} ({approvedCount} מאושר{approvedCount !== 1 ? 'ים' : ''} · {draftCount} טיוטה)
           </button>
           <button
             onClick={() => setFilter('no_summary')}
@@ -267,7 +268,7 @@ export default function SessionsPage() {
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            ללא סיכום ({noSummaryCount})
+            {strings.sessions.filter_no_summary} ({noSummaryCount})
           </button>
         </div>
       </div>
@@ -291,7 +292,7 @@ export default function SessionsPage() {
               {warnPast && (
                 <div className="mb-3">
                   <span className="text-xs font-medium text-amber-700 bg-amber-100 border border-amber-200 rounded-md px-2 py-0.5">
-                    ⚠ פגישה שהסתיימה – ללא סיכום
+                    {strings.sessions.badge_past_no_summary}
                   </span>
                 </div>
               )}
@@ -318,15 +319,15 @@ export default function SessionsPage() {
                       {session.summary_status === 'approved' ? (
                         <span className="badge badge-approved text-xs">
                           <CheckCircleIcon className="h-3 w-3 inline ml-1" />
-                          סיכום מאושר
+                          {strings.sessions.badge_approved}
                         </span>
                       ) : session.summary_id != null ? (
                         <span className="badge badge-draft text-xs">
-                          טיוטת סיכום
+                          {strings.sessions.badge_draft}
                         </span>
                       ) : (
                         <span className="badge text-xs bg-gray-100 text-gray-500">
-                          ללא סיכום
+                          {strings.sessions.badge_none}
                         </span>
                       )}
                     </div>
@@ -334,10 +335,10 @@ export default function SessionsPage() {
                     <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
                       <span>{formatDateIL(session.session_date)}</span>
                       {session.duration_minutes && (
-                        <span>{session.duration_minutes} דקות</span>
+                        <span>{session.duration_minutes} {strings.sessions.minutes_label}</span>
                       )}
                       {session.session_number && (
-                        <span>פגישה #{session.session_number}</span>
+                        <span>{strings.sessions.session_number_prefix}{session.session_number}</span>
                       )}
                       {session.session_type && (
                         <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">
@@ -358,7 +359,7 @@ export default function SessionsPage() {
                       className="flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-2 min-h-[44px] sm:min-h-0 transition-colors touch-manipulation flex-shrink-0"
                     >
                       <SparklesIcon className="h-4 w-4" />
-                      הכנה לפגישה
+                      {strings.sessions.prep_button}
                     </button>
                   )}
                   {session.summary_id == null && (
@@ -366,7 +367,7 @@ export default function SessionsPage() {
                       onClick={() => navigate(`/sessions/${session.id}`)}
                       className="btn-primary flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
                     >
-                      צור סיכום
+                      {strings.sessions.create_summary_button}
                     </button>
                   )}
                   {session.summary_status === 'approved' && (
@@ -374,7 +375,7 @@ export default function SessionsPage() {
                       onClick={() => navigate(`/sessions/${session.id}`)}
                       className="btn-success flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
                     >
-                      צפה בסיכום
+                      {strings.sessions.view_summary_button}
                     </button>
                   )}
                   {session.summary_id != null && session.summary_status !== 'approved' && (
@@ -382,7 +383,7 @@ export default function SessionsPage() {
                       onClick={() => navigate(`/sessions/${session.id}`)}
                       className="btn-primary flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
                     >
-                      ערוך טיוטה
+                      {strings.sessions.edit_draft_button}
                     </button>
                   )}
                   <button
@@ -403,12 +404,12 @@ export default function SessionsPage() {
         <div className="card text-center py-12">
           <div className="text-6xl mb-4">📋</div>
           <h3 className="text-xl font-bold text-gray-900 mb-2">
-            {sessions.length === 0 ? 'אין פגישות עדיין' : 'אין פגישות תואמות'}
+            {sessions.length === 0 ? strings.sessions.empty_no_sessions_title : strings.sessions.empty_no_match_title}
           </h3>
           <p className="text-gray-600">
             {sessions.length === 0
-              ? 'לחץ על "פגישה חדשה" כדי ליצור את הפגישה הראשונה'
-              : 'נסה לשנות את הסינון'}
+              ? strings.sessions.empty_no_sessions_subtitle
+              : strings.sessions.empty_no_match_subtitle}
           </p>
         </div>
       )}
@@ -419,16 +420,16 @@ export default function SessionsPage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6" dir="rtl">
             {deleteStep === 1 ? (
               <>
-                <h2 className="text-xl font-bold text-amber-800 mb-3">מחיקת פגישה</h2>
+                <h2 className="text-xl font-bold text-amber-800 mb-3">{strings.sessions.delete_title}</h2>
                 <p className="text-gray-700 mb-2">
-                  האם אתה בטוח שברצונך למחוק את הפגישה של{' '}
+                  {strings.sessions.delete_confirm_prefix}{' '}
                   <strong>{patientMap[deleteTarget.patient_id] || `מטופל #${deleteTarget.patient_id}`}</strong>{' '}
-                  מתאריך{' '}
+                  {strings.sessions.delete_date_label}{' '}
                   <strong>{formatDateIL(deleteTarget.session_date)}</strong>?
                 </p>
                 {deleteTarget.summary_id != null && (
                   <p className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3 mb-4">
-                    שים לב: לפגישה זו יש סיכום. מחיקת הפגישה תמחק גם את הסיכום לצמיתות.
+                    {strings.sessions.delete_summary_warning}
                   </p>
                 )}
                 <div className="flex gap-3 mt-4">
@@ -436,7 +437,7 @@ export default function SessionsPage() {
                     onClick={() => setDeleteStep(2)}
                     className="flex-1 py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg transition-colors"
                   >
-                    המשך
+                    {strings.sessions.continue_button}
                   </button>
                   <button onClick={closeDeleteModal} className="btn-secondary flex-1">
                     ביטול
@@ -445,9 +446,9 @@ export default function SessionsPage() {
               </>
             ) : (
               <>
-                <h2 className="text-xl font-bold text-red-800 mb-3">אישור סופי — מחיקה לצמיתות</h2>
+                <h2 className="text-xl font-bold text-red-800 mb-3">{strings.sessions.delete_title_final}</h2>
                 <p className="text-gray-700 mb-4">
-                  פעולה זו בלתי הפיכה. הפגישה וכל הנתונים הקשורים אליה יימחקו לצמיתות.
+                  {strings.sessions.delete_irreversible_warning}
                 </p>
 
                 <label className="flex items-center gap-3 mb-6 cursor-pointer select-none">
@@ -458,7 +459,7 @@ export default function SessionsPage() {
                     className="h-4 w-4 rounded border-gray-300 text-therapy-calm"
                   />
                   <span className="text-sm text-gray-700">
-                    רשום בלוג שהמטופל צריך להיות מיודע על הביטול
+                    {strings.sessions.delete_notify_checkbox}
                   </span>
                 </label>
 
@@ -468,7 +469,7 @@ export default function SessionsPage() {
                     disabled={deleting}
                     className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
                   >
-                    {deleting ? 'מוחק...' : 'מחק לצמיתות'}
+                    {deleting ? strings.sessions.deleting_loading : strings.sessions.delete_permanently_button}
                   </button>
                   <button onClick={closeDeleteModal} className="btn-secondary flex-1">
                     ביטול
@@ -489,10 +490,10 @@ export default function SessionsPage() {
               <div>
                 <h2 className="text-lg font-bold text-amber-900 flex items-center gap-2">
                   <LightBulbIcon className="h-5 w-5" />
-                  הכנה לפגישה
+                  {strings.sessions.prep_modal_title}
                 </h2>
                 <p className="text-xs text-amber-700 mt-0.5">
-                  {prepSession.session_number ? `פגישה #${prepSession.session_number} · ` : ''}
+                  {prepSession.session_number ? `${strings.sessions.session_number_prefix}${prepSession.session_number} · ` : ''}
                   {formatDateIL(prepSession.session_date)}
                   {prepSession.session_type && ` · ${SESSION_TYPES.find((t) => t.value === prepSession.session_type)?.label || prepSession.session_type}`}
                 </p>
@@ -507,14 +508,14 @@ export default function SessionsPage() {
               {prepStream.phase === 'extracting' ? (
                 <div className="flex flex-col items-center justify-center py-10 gap-3">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
-                  <p className="text-sm text-amber-700">מחלץ נתונים מהסיכומים...</p>
+                  <p className="text-sm text-amber-700">{strings.sessions.extracting_summaries}</p>
                 </div>
               ) : prepStream.phase === 'rendering' || prepStream.phase === 'done' ? (
                 <div>
                   {prepStream.phase === 'rendering' && !prepStream.text && (
                     <div className="flex items-center gap-2 text-amber-700 text-sm mb-3">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
-                      <span>מייצר תדריך...</span>
+                      <span>{strings.sessions.generating_brief}</span>
                     </div>
                   )}
                   <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{prepStream.text}</p>
@@ -526,7 +527,7 @@ export default function SessionsPage() {
                     onClick={() => openPrepModal(prepSession!)}
                     className="text-sm px-3 py-1 bg-amber-200 rounded-lg hover:bg-amber-300 transition-colors"
                   >
-                    נסה שוב
+                    {strings.sessions.retry_button}
                   </button>
                 </div>
               ) : null}
@@ -538,7 +539,7 @@ export default function SessionsPage() {
                 onClick={() => navigate(`/sessions/${prepSession.id}`)}
                 className="btn-secondary w-full min-h-[44px] touch-manipulation"
               >
-                צור סיכום לפגישה הנוכחית
+                {strings.sessions.create_summary_button}
               </button>
             </div>
           </div>
@@ -554,7 +555,7 @@ export default function SessionsPage() {
 
             {/* Sticky header */}
             <div className="flex items-center justify-between px-3 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
-              <h2 className="text-xl font-bold text-gray-900">פגישה חדשה</h2>
+              <h2 className="text-xl font-bold text-gray-900">{strings.sessions.create_modal_title}</h2>
               <button
                 onClick={() => setShowCreateModal(false)}
                 className="text-gray-400 hover:text-gray-600 p-1 touch-manipulation"
@@ -570,11 +571,11 @@ export default function SessionsPage() {
                 {/* Patient Select */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    מטופל/ת *
+                    {strings.sessions.patient_label}
                   </label>
                   {patients.length === 0 ? (
                     <div className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3">
-                      לא נמצאו מטופלים.{' '}
+                      {strings.sessions.no_patients_message}{' '}
                       <button
                         type="button"
                         onClick={() => {
@@ -583,7 +584,7 @@ export default function SessionsPage() {
                         }}
                         className="underline font-medium"
                       >
-                        צור מטופל חדש
+                        {strings.sessions.create_patient_link}
                       </button>{' '}
                       לפני יצירת פגישה.
                     </div>
@@ -596,7 +597,7 @@ export default function SessionsPage() {
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
                       required
                     >
-                      <option value="">בחר מטופל/ת...</option>
+                      <option value="">{strings.sessions.patient_placeholder}</option>
                       {[...patients]
                         .sort((a, b) => a.full_name.localeCompare(b.full_name, 'he'))
                         .map((p) => (
@@ -611,7 +612,7 @@ export default function SessionsPage() {
                 {/* Date */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    תאריך *
+                    {strings.sessions.date_label}
                   </label>
                   <input
                     type="date"
@@ -627,7 +628,7 @@ export default function SessionsPage() {
                 {/* Start Time */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    שעת התחלה
+                    {strings.sessions.start_time_label}
                   </label>
                   <select
                     value={formData.start_time}
@@ -636,7 +637,7 @@ export default function SessionsPage() {
                     }
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
                   >
-                    <option value="">בחר שעה...</option>
+                    <option value="">{strings.sessions.time_placeholder}</option>
                     {Array.from({ length: 14 }, (_, i) => i + 7).map((hour) =>
                       [0, 30].map((min) => {
                         const val = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
@@ -649,7 +650,7 @@ export default function SessionsPage() {
                 {/* Duration */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    משך (דקות)
+                    {strings.sessions.duration_label}
                   </label>
                   <input
                     type="number"
@@ -659,7 +660,7 @@ export default function SessionsPage() {
                     }
                     min={1}
                     max={360}
-                    placeholder="50"
+                    placeholder={strings.sessions.duration_placeholder}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
                   />
                 </div>
@@ -667,7 +668,7 @@ export default function SessionsPage() {
                 {/* Session Type */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    סוג פגישה
+                    {strings.sessions.session_type_label}
                   </label>
                   <select
                     value={formData.session_type}
@@ -687,8 +688,8 @@ export default function SessionsPage() {
                 {/* Notify patient toggle */}
                 <div className="flex items-center justify-between py-1">
                   <div>
-                    <div className="text-sm font-medium text-gray-700">שליחת הודעה על הפגישה למטופל</div>
-                    <div className="text-xs text-gray-400 mt-0.5">שליחת תזכורת WhatsApp עם פרטי הפגישה</div>
+                    <div className="text-sm font-medium text-gray-700">{strings.sessions.notify_patient_label}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{strings.sessions.notify_patient_sublabel}</div>
                   </div>
                   <button
                     type="button"
@@ -719,7 +720,7 @@ export default function SessionsPage() {
                   disabled={creating || patients.length === 0}
                   className="btn-primary flex-1 disabled:opacity-50 min-h-[44px] touch-manipulation"
                 >
-                  {creating ? 'יוצר...' : 'צור פגישה'}
+                  {creating ? strings.sessions.create_loading : strings.sessions.create_button}
                 </button>
                 <button
                   type="button"
@@ -736,4 +737,3 @@ export default function SessionsPage() {
     </div>
   )
 }
-

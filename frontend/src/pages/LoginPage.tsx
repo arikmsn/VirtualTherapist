@@ -4,6 +4,7 @@ import { useAuth } from '@/auth/useAuth'
 import { authAPI } from '@/lib/api'
 import AppLogo from '@/components/common/AppLogo'
 import GoogleSignInButton from '@/components/auth/GoogleSignInButton'
+import { strings } from '@/i18n/he'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -26,7 +27,7 @@ export default function LoginPage() {
       sessionStorage.removeItem('redirect_after_login')
       navigate(redirectTo)
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'שגיאה בהתחברות')
+      setError(err.response?.data?.detail || strings.login.error_login_failed)
     } finally {
       setLoading(false)
     }
@@ -40,8 +41,8 @@ export default function LoginPage() {
           <a href="https://metapel.online" target="_blank" rel="noopener noreferrer" className="mx-auto mb-3 w-[200px] sm:w-[240px] md:w-[260px] block">
             <AppLogo variant="full" fluid />
           </a>
-          <h1 className="text-xl font-bold text-gray-900">התחברות</h1>
-          <p className="text-sm text-gray-500 mt-0.5">מטפל אונליין</p>
+          <h1 className="text-xl font-bold text-gray-900">{strings.login.page_title}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{strings.login.page_subtitle}</p>
         </div>
 
         {/* Login Form */}
@@ -54,7 +55,7 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              אימייל
+              {strings.login.email_label}
             </label>
             <input
               type="email"
@@ -69,7 +70,7 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              סיסמה
+              {strings.login.password_label}
             </label>
             <input
               type="password"
@@ -90,10 +91,10 @@ export default function LoginPage() {
             {loading ? (
               <div className="flex items-center justify-center gap-2">
                 <div className="spinner w-5 h-5 border-2"></div>
-                מתחבר...
+                {strings.login.login_loading}
               </div>
             ) : (
-              'התחברות'
+              strings.login.login_button
             )}
           </button>
         </form>
@@ -102,7 +103,7 @@ export default function LoginPage() {
         <div className="mt-4">
           <div className="relative flex items-center gap-3 my-4">
             <div className="flex-1 border-t border-gray-200" />
-            <span className="text-xs text-gray-400 whitespace-nowrap">או</span>
+            <span className="text-xs text-gray-400 whitespace-nowrap">{strings.login.or_divider}</span>
             <div className="flex-1 border-t border-gray-200" />
           </div>
           <GoogleSignInButton disabled={loading} />
@@ -111,9 +112,8 @@ export default function LoginPage() {
         {/* Register Link */}
         <div className="mt-6 text-center">
           <p className="text-gray-600">
-            עדיין אין לך חשבון?{' '}
             <Link to="/register" className="text-therapy-calm font-medium hover:underline">
-              הירשם עכשיו
+              {strings.login.register_link}
             </Link>
           </p>
         </div>
@@ -122,9 +122,7 @@ export default function LoginPage() {
         <div className="mt-8 pt-6 border-t border-gray-200">
           <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
             <span>🔒</span>
-            <span>מוצפן מקצה לקצה</span>
-            <span>•</span>
-            <span>תואם GDPR</span>
+            <span>{strings.login.security_notice}</span>
           </div>
         </div>
       </div>

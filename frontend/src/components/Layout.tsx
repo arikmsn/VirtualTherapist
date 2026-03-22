@@ -27,6 +27,7 @@ import {
 } from '@heroicons/react/24/outline'
 import SideNotebook from '@/components/SideNotebook'
 import AppLogo from '@/components/common/AppLogo'
+import { strings } from '@/i18n/he'
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -42,14 +43,14 @@ export default function Layout() {
     eggClicksRef.current = [...eggClicksRef.current.filter((t) => now - t < 3000), now]
     if (eggClicksRef.current.length >= 5) {
       eggClicksRef.current = []
-      const password = prompt('🔧 Admin access — enter password:')
+      const password = prompt(strings.layout.admin_password_prompt)
       if (!password) return
       try {
         const token = await adminAPI.getToken(user?.email || '', password)
         sessionStorage.setItem('admin_token', token)
         navigate('/admin')
       } catch {
-        alert('גישה נדחתה')
+        alert(strings.layout.admin_access_denied)
       }
     }
   }
@@ -78,18 +79,18 @@ export default function Layout() {
 
   const getGreeting = () => {
     const h = new Date().getHours()
-    if (h < 12) return 'בוקר טוב'
-    if (h < 17) return 'צהריים טובים'
-    return 'ערב טוב'
+    if (h < 12) return strings.layout.greeting_morning
+    if (h < 17) return strings.layout.greeting_afternoon
+    return strings.layout.greeting_evening
   }
   const firstName = user?.fullName?.trim().split(' ')[0] || null
 
   const navigation = [
-    { name: 'ראשי', href: '/dashboard', icon: HomeIcon },
-    { name: 'הודעות', href: '/messages', icon: ChatBubbleLeftRightIcon },
-    { name: 'מטופלים', href: '/patients', icon: UserGroupIcon },
-    { name: 'פגישות', href: '/sessions', icon: DocumentTextIcon },
-    { name: 'הגדרות מקצועיות', href: '/twin', icon: SparklesIcon },
+    { name: strings.layout.nav_home, href: '/dashboard', icon: HomeIcon },
+    { name: strings.layout.nav_messages, href: '/messages', icon: ChatBubbleLeftRightIcon },
+    { name: strings.layout.nav_patients, href: '/patients', icon: UserGroupIcon },
+    { name: strings.layout.nav_sessions, href: '/sessions', icon: DocumentTextIcon },
+    { name: strings.layout.nav_professional_settings, href: '/twin', icon: SparklesIcon },
   ]
 
   return (
@@ -104,7 +105,7 @@ export default function Layout() {
               <button
                 onClick={() => setMobileMenuOpen((v) => !v)}
                 className="sm:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 touch-manipulation min-w-[40px] min-h-[40px] flex items-center justify-center"
-                aria-label={mobileMenuOpen ? 'סגור תפריט' : 'פתח תפריט'}
+                aria-label={mobileMenuOpen ? strings.layout.menu_close_aria : strings.layout.menu_open_aria}
               >
                 <Bars3Icon className="h-6 w-6" />
               </button>
@@ -112,7 +113,7 @@ export default function Layout() {
               <div className="flex items-center gap-2">
                 <AppLogo variant="icon" size="sm" />
                 <span className="text-base sm:text-2xl font-bold text-therapy-calm">
-                  מטפל.אונליין
+                  {strings.layout.app_name}
                 </span>
               </div>
             </div>
@@ -162,8 +163,8 @@ export default function Layout() {
                     ? 'bg-amber-100 text-amber-600'
                     : 'text-gray-500 hover:bg-gray-100'
                 }`}
-                aria-label="הערות"
-                title="הערות"
+                aria-label={strings.layout.notes_button}
+                title={strings.layout.notes_button}
               >
                 <LightBulbIcon className="h-5 w-5" />
               </button>
@@ -174,7 +175,7 @@ export default function Layout() {
                 className="inline-flex items-center justify-center px-2 py-2 sm:px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 min-w-[40px] min-h-[40px] touch-manipulation"
               >
                 <ArrowRightOnRectangleIcon className="h-5 w-5 sm:ml-2" />
-                <span className="hidden sm:inline">התנתק</span>
+                <span className="hidden sm:inline">{strings.layout.logout_button}</span>
               </button>
             </div>
           </div>
@@ -202,7 +203,7 @@ export default function Layout() {
                 <div className="flex items-center gap-2">
                   <AppLogo variant="icon" size="md" />
                   <div>
-                    <div className="text-xs font-bold text-therapy-calm">מטפל.אונליין</div>
+                    <div className="text-xs font-bold text-therapy-calm">{strings.layout.app_name}</div>
                     <div className="text-sm font-medium text-gray-700">
                       {firstName ? `${getGreeting()}, ${firstName}` : getGreeting()}
                     </div>
@@ -211,7 +212,7 @@ export default function Layout() {
                 <button
                   onClick={() => setMobileMenuOpen(false)}
                   className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 touch-manipulation min-w-[40px] min-h-[40px] flex items-center justify-center"
-                  aria-label="סגור תפריט"
+                  aria-label={strings.layout.menu_close_aria}
                 >
                   <XMarkIcon className="h-6 w-6" />
                 </button>
@@ -250,7 +251,7 @@ export default function Layout() {
                   className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-red-600 hover:bg-red-50 w-full min-h-[44px] touch-manipulation"
                 >
                   <ArrowRightOnRectangleIcon className="h-6 w-6" />
-                  התנתק
+                  {strings.layout.logout_button}
                 </button>
               </div>
             </div>
@@ -274,8 +275,8 @@ export default function Layout() {
             <AppLogo variant="full" size="sm" className="hidden sm:block" />
             <AppLogo variant="icon" size="sm" className="sm:hidden" />
             <div className="text-center sm:text-right">
-              <p className="font-medium text-gray-600">עוזר טיפולי חכם למטפלים</p>
-              <p className="mt-0.5 text-xs">מוצפן מקצה לקצה | תואם GDPR | נתונים בישראל/אירופה בלבד</p>
+              <p className="font-medium text-gray-600">{strings.layout.footer_subtitle}</p>
+              <p className="mt-0.5 text-xs">{strings.layout.footer_security}</p>
             </div>
           </div>
         </div>

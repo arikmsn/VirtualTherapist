@@ -30,6 +30,7 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline'
 import { therapistAPI } from '@/lib/api'
+import { strings } from '@/i18n/he'
 import {
   PROFESSION_OPTIONS,
   THERAPY_MODES,
@@ -91,12 +92,12 @@ interface ProtocolItem {
 // Constants
 // ---------------------------------------------------------------------------
 
-const WARMTH_LABELS: Record<number, string> = {
-  1: 'פורמלי מאוד', 2: 'פורמלי', 3: 'מאוזן', 4: 'חמים', 5: 'חמים מאוד',
-}
-const DIRECTIVE_LABELS: Record<number, string> = {
-  1: 'חקרני מאוד', 2: 'חקרני', 3: 'מאוזן', 4: 'מכוון', 5: 'מכוון מאוד',
-}
+const WARMTH_LABELS: Record<number, string> = Object.fromEntries(
+  strings.twinProfile.warmth_scale.map((label, i) => [i + 1, label])
+)
+const DIRECTIVE_LABELS: Record<number, string> = Object.fromEntries(
+  strings.twinProfile.directiveness_scale.map((label, i) => [i + 1, label])
+)
 
 // ---------------------------------------------------------------------------
 // Shared sub-components
@@ -198,7 +199,7 @@ function CustomProtocolModal({
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="text-base font-bold text-gray-800">
-            {initial?.id ? 'עריכת פרוטוקול מותאם' : 'פרוטוקול חדש'}
+            {initial?.id ? strings.twinProfile.protocol_dialog_edit : strings.twinProfile.protocol_dialog_new}
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <XMarkIcon className="h-5 w-5" />
@@ -206,17 +207,17 @@ function CustomProtocolModal({
         </div>
         <div className="px-5 py-4 space-y-4">
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">שם הפרוטוקול *</label>
+            <label className="text-sm font-medium text-gray-700">{strings.twinProfile.protocol_name_label}</label>
             <input
               className="input-field"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="לדוגמה: CBT לחרדת ביצוע"
+              placeholder={strings.twinProfile.protocol_name_placeholder}
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">גישה טיפולית</label>
+            <label className="text-sm font-medium text-gray-700">{strings.twinProfile.protocol_approach_label}</label>
             <select
               className="input-field"
               value={form.approach_id}
@@ -225,32 +226,32 @@ function CustomProtocolModal({
               {THERAPY_MODES.filter((m) => m.value !== 'other').map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
               ))}
-              <option value="other">אחר</option>
+              <option value="other">{strings.twinProfile.protocol_approach_other}</option>
             </select>
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">בעיה / אינדיקציה *</label>
+            <label className="text-sm font-medium text-gray-700">{strings.twinProfile.protocol_indication_label}</label>
             <input
               className="input-field"
               value={form.target_problem}
               onChange={(e) => setForm((f) => ({ ...f, target_problem: e.target.value }))}
-              placeholder="לדוגמה: חרדת ביצוע, פרפקציוניזם"
+              placeholder={strings.twinProfile.protocol_indication_placeholder}
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">תיאור קצר *</label>
+            <label className="text-sm font-medium text-gray-700">{strings.twinProfile.protocol_description_label}</label>
             <textarea
               className="input-field h-20 resize-none text-sm"
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              placeholder="תיאור הגישה, מטרות, ומהלך הטיפול..."
+              placeholder={strings.twinProfile.protocol_description_placeholder}
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">מספר פגישות אופייני</label>
+            <label className="text-sm font-medium text-gray-700">{strings.twinProfile.protocol_sessions_label}</label>
             <input
               type="number" min={1} max={100}
               className="input-field"
@@ -258,19 +259,19 @@ function CustomProtocolModal({
               onChange={(e) => setForm((f) => ({
                 ...f, typical_sessions: e.target.value ? Number(e.target.value) : null,
               }))}
-              placeholder="לדוגמה: 12"
+              placeholder={strings.twinProfile.protocol_sessions_placeholder}
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">טכניקות ליבה</label>
+            <label className="text-sm font-medium text-gray-700">{strings.twinProfile.protocol_techniques_label}</label>
             <div className="flex gap-2">
               <input
                 className="input-field flex-1"
                 value={techniqueInput}
                 onChange={(e) => setTechniqueInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTechnique() } }}
-                placeholder="הוסף טכניקה ולחץ Enter"
+                placeholder={strings.twinProfile.protocol_technique_placeholder}
               />
               <button
                 onClick={addTechnique}
@@ -296,13 +297,13 @@ function CustomProtocolModal({
         </div>
 
         <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100">
-          <button onClick={onClose} className="btn-secondary">ביטול</button>
+          <button onClick={onClose} className="btn-secondary">{strings.twinProfile.protocol_cancel_button}</button>
           <button
             onClick={handleSave}
             disabled={saving || !form.name.trim() || !form.target_problem.trim() || !form.description.trim()}
             className="btn-primary disabled:opacity-50"
           >
-            {saving ? 'שומר...' : 'שמור פרוטוקול'}
+            {saving ? strings.twinProfile.protocol_saving_button : strings.twinProfile.protocol_save_button}
           </button>
         </div>
       </div>
@@ -339,7 +340,7 @@ function ProtocolCard({
               {protocol.name}
             </span>
             {!protocol.is_system && (
-              <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">מותאם אישית</span>
+              <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">{strings.twinProfile.protocol_badge_custom}</span>
             )}
             {protocol.typical_sessions && (
               <span className="text-xs text-gray-400">{protocol.typical_sessions} פגישות</span>
@@ -364,7 +365,7 @@ function ProtocolCard({
             onClick={() => setExpanded((v) => !v)}
             className="text-xs text-therapy-calm hover:underline mt-1"
           >
-            {expanded ? 'פחות' : 'פרטים'}
+            {expanded ? strings.twinProfile.protocol_expand_less : strings.twinProfile.protocol_expand_more}
           </button>
         </div>
 
@@ -454,7 +455,7 @@ function ProfessionalTab({
   }
 
   const handleDeleteCustom = async (id: string) => {
-    if (!confirm('למחוק פרוטוקול זה?')) return
+    if (!confirm(strings.twinProfile.protocol_delete_confirm)) return
     await therapistAPI.deleteCustomProtocol(id)
     setProtocols((prev) => prev.filter((p) => p.id !== id))
   }
@@ -469,15 +470,15 @@ function ProfessionalTab({
       {/* ── א. פרטים מקצועיים ── */}
       <div className="card space-y-6">
         <div>
-          <h2 className="text-lg font-bold text-gray-800">פרטים מקצועיים</h2>
+          <h2 className="text-lg font-bold text-gray-800">{strings.twinProfile.professional_title}</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            המקצוע והגישות הטיפוליות משפיעים על מבנה הסיכומים, השפה הקלינית ותוכניות הטיפול
+            {strings.twinProfile.professional_hint}
           </p>
         </div>
 
         {/* Profession grid */}
         <div className="space-y-2">
-          <div className="text-sm font-medium text-gray-700">מקצוע</div>
+          <div className="text-sm font-medium text-gray-700">{strings.twinProfile.profession_label}</div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {PROFESSION_OPTIONS.map((opt) => (
               <button
@@ -499,7 +500,7 @@ function ProfessionalTab({
             <input
               type="text" value={professionOtherText}
               onChange={(e) => setProfessionOtherText(e.target.value)}
-              placeholder="פרט את תפקידך המקצועי..."
+              placeholder={strings.twinProfile.profession_placeholder}
               className="input-field mt-2" autoFocus
             />
           )}
@@ -510,12 +511,12 @@ function ProfessionalTab({
         {/* Therapy modes multi-select */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-700">גישות טיפוליות</span>
+            <span className="text-sm font-medium text-gray-700">{strings.twinProfile.approaches_label}</span>
             {profile.cbt_active && (
-              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">CBT פעיל</span>
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{strings.twinProfile.badge_cbt_active}</span>
             )}
           </div>
-          <p className="text-xs text-gray-400">בחר את כל השיטות הטיפוליות בהן אתה עובד (בחירה מרובה)</p>
+          <p className="text-xs text-gray-400">{strings.twinProfile.approaches_hint}</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {THERAPY_MODES.map((m) => {
               const checked = selectedModalities.includes(m.value)
@@ -542,7 +543,7 @@ function ProfessionalTab({
             <input
               type="text" value={modesOtherText}
               onChange={(e) => setModesOtherText(e.target.value)}
-              placeholder="פרט גישה טיפולית נוספת..." className="input-field mt-2"
+              placeholder={strings.twinProfile.approach_placeholder} className="input-field mt-2"
             />
           )}
           {selectedModalities.length > 0 && (
@@ -562,31 +563,31 @@ function ProfessionalTab({
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">השכלה</label>
+              <label className="block text-sm font-medium text-gray-700">{strings.twinProfile.education_label}</label>
               <input type="text" value={education} onChange={(e) => setEducation(e.target.value)}
-                className="input-field" placeholder="לדוגמה: M.A. פסיכולוגיה קלינית" />
+                className="input-field" placeholder={strings.twinProfile.education_placeholder} />
             </div>
             <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">שנות ניסיון</label>
+              <label className="block text-sm font-medium text-gray-700">{strings.twinProfile.experience_label}</label>
               <input type="text" value={yearsOfExperience} onChange={(e) => setYearsOfExperience(e.target.value)}
-                className="input-field" placeholder="לדוגמה: 8" />
+                className="input-field" placeholder={strings.twinProfile.experience_placeholder} />
             </div>
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">הסמכות ותעודות</label>
+            <label className="block text-sm font-medium text-gray-700">{strings.twinProfile.certifications_label}</label>
             <input type="text" value={certifications} onChange={(e) => setCertifications(e.target.value)}
-              className="input-field" placeholder="לדוגמה: מטפל מוסמך CBT, הסמכת EMDR" />
+              className="input-field" placeholder={strings.twinProfile.certifications_placeholder} />
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">תחומי התמחות</label>
+            <label className="block text-sm font-medium text-gray-700">{strings.twinProfile.specialties_label}</label>
             <textarea value={areasOfExpertise} onChange={(e) => setAreasOfExpertise(e.target.value)}
               className="input-field h-20 resize-none text-sm"
-              placeholder="לדוגמה: חרדה, טראומה, יחסים זוגיים" />
+              placeholder={strings.twinProfile.specialties_placeholder} />
           </div>
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">סגנון</label>
+            <label className="block text-sm font-medium text-gray-700">{strings.twinProfile.style_label}</label>
             <input type="text" value={tone} onChange={(e) => setTone(e.target.value)}
-              className="input-field" placeholder="לדוגמה: חמה ותומכת" />
+              className="input-field" placeholder={strings.twinProfile.style_placeholder} />
           </div>
         </div>
       </div>
@@ -595,14 +596,14 @@ function ProfessionalTab({
       {(profile.example_summaries?.length || profile.example_messages?.length) ? (
         <div className="card space-y-4">
           <div>
-            <h2 className="text-lg font-bold text-gray-800">דגימות עבודה</h2>
+            <h2 className="text-lg font-bold text-gray-800">{strings.twinProfile.work_samples_title}</h2>
             <p className="text-sm text-gray-500 mt-0.5">
-              דגימות אלו (שהוזנו בהגדרה הראשונית) עוזרות ל-AI ללמוד את הסגנון שלך
+              {strings.twinProfile.work_samples_hint}
             </p>
           </div>
           {profile.example_summaries?.[0] && (
             <div className="space-y-1.5">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">דוגמת סיכום פגישה</div>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{strings.twinProfile.sample_summary_label}</div>
               <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 whitespace-pre-line">
                 {profile.example_summaries[0].slice(0, 400)}{profile.example_summaries[0].length > 400 ? '…' : ''}
               </p>
@@ -610,7 +611,7 @@ function ProfessionalTab({
           )}
           {profile.example_messages?.[0] && (
             <div className="space-y-1.5">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">דוגמת הודעה למטופל</div>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{strings.twinProfile.sample_message_label}</div>
               <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 whitespace-pre-line">
                 {profile.example_messages[0].slice(0, 300)}{profile.example_messages[0].length > 300 ? '…' : ''}
               </p>
@@ -624,13 +625,13 @@ function ProfessionalTab({
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-gray-800">פרוטוקולים טיפוליים מועדפים</h2>
+              <h2 className="text-lg font-bold text-gray-800">{strings.twinProfile.protocols_title}</h2>
               {protocolSaveStatus === 'saved' && (
-                <span className="text-xs text-green-600 font-medium">נשמר ✓</span>
+                <span className="text-xs text-green-600 font-medium">{strings.twinProfile.protocols_saved}</span>
               )}
             </div>
             <p className="text-sm text-gray-500 mt-0.5">
-              סמנו את הפרוטוקולים שאתם עובדים איתם, המערכת תתאים את הסיכומים ותוכניות הטיפול בהתאם
+              {strings.twinProfile.protocols_hint}
             </p>
           </div>
           <button
@@ -638,7 +639,7 @@ function ProfessionalTab({
             className="btn-secondary flex items-center gap-1.5 flex-shrink-0 text-sm"
           >
             <PlusIcon className="h-4 w-4" />
-            פרוטוקול מותאם
+            {strings.twinProfile.protocols_custom_label}
           </button>
         </div>
 
@@ -652,16 +653,16 @@ function ProfessionalTab({
                 protocolFilter === f ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {f === 'all' ? 'כל הפרוטוקולים' : `בשימוש (${protocols.filter((p) => p.is_used).length})`}
+              {f === 'all' ? strings.twinProfile.protocols_tab_all : `${strings.twinProfile.protocols_tab_in_use} (${protocols.filter((p) => p.is_used).length})`}
             </button>
           ))}
         </div>
 
         {protocolsLoading ? (
-          <div className="text-sm text-gray-400 text-center py-6">טוען פרוטוקולים...</div>
+          <div className="text-sm text-gray-400 text-center py-6">{strings.twinProfile.protocols_loading}</div>
         ) : visibleProtocols.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-6">
-            {protocolFilter === 'used' ? 'לא נבחרו פרוטוקולים עדיין' : 'אין פרוטוקולים'}
+            {protocolFilter === 'used' ? strings.twinProfile.protocols_none_used : strings.twinProfile.protocols_none_all}
           </p>
         ) : (
           <div className="space-y-2">
@@ -676,7 +677,7 @@ function ProfessionalTab({
                   <Fragment key={p.id}>
                     {showSlpHeader && (
                       <div className="flex items-center gap-3 pt-1 pb-0.5">
-                        <span className="text-xs font-semibold text-teal-600 tracking-wide">🗣️ קלינאות תקשורת / SLP</span>
+                        <span className="text-xs font-semibold text-teal-600 tracking-wide">{strings.twinProfile.slp_label}</span>
                         <div className="flex-1 border-t border-gray-100" />
                       </div>
                     )}
@@ -755,9 +756,9 @@ function AISettingsTab({
         <div className="card border-indigo-100 bg-indigo-50">
           <div className="flex items-center gap-2 mb-3">
             <SparklesIcon className="h-5 w-5 text-indigo-500" />
-            <h2 className="text-base font-bold text-indigo-900">מה למדנו עליך</h2>
+            <h2 className="text-base font-bold text-indigo-900">{strings.twinProfile.profile_learned_title}</h2>
             {sigProfile.is_active ? (
-              <span className="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full mr-auto">מנגנון פעיל</span>
+              <span className="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full mr-auto">{strings.twinProfile.profile_mechanism_active}</span>
             ) : (
               <span className="text-xs bg-gray-300 text-gray-600 px-2 py-0.5 rounded-full mr-auto">
                 {sigProfile.samples_until_active > 0
@@ -768,14 +769,13 @@ function AISettingsTab({
           </div>
 
           <p className="text-xs text-indigo-700 mb-3 leading-relaxed">
-            ה-AI לומד את הסגנון שלך מתוך המקצוע, הגישות הטיפוליות, הפרוטוקולים ודגימות העבודה שהגדרת — בשילוב עם
-            הסיכומים שאישרת.
+            {strings.twinProfile.profile_hint}
           </p>
 
           <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="bg-white rounded-lg p-3 text-center">
               <div className="text-2xl font-bold text-indigo-700">{sigProfile.approved_sample_count}</div>
-              <div className="text-xs text-gray-500 mt-0.5">סיכומים מאושרים</div>
+              <div className="text-xs text-gray-500 mt-0.5">{strings.twinProfile.approved_summaries_label}</div>
             </div>
             <div className="bg-white rounded-lg p-3 text-center">
               <div className={`text-2xl font-bold ${sigProfile.samples_until_active === 0 ? 'text-green-600' : 'text-amber-600'}`}>
@@ -791,13 +791,13 @@ function AISettingsTab({
                   ? Math.floor((Date.now() - new Date(profile.therapist_created_at).getTime()) / 86400000)
                   : '—'}
               </div>
-              <div className="text-xs text-gray-500 mt-0.5">ימי פעילות</div>
+              <div className="text-xs text-gray-500 mt-0.5">{strings.twinProfile.active_days_label}</div>
             </div>
           </div>
 
           {sigProfile.style_summary ? (
             <div>
-              <div className="text-xs font-medium text-indigo-700 mb-1.5">סיכום הסגנון הנלמד:</div>
+              <div className="text-xs font-medium text-indigo-700 mb-1.5">{strings.twinProfile.learned_style_label}</div>
               <p className="text-sm text-indigo-900 leading-relaxed whitespace-pre-line bg-white rounded-lg p-3 border border-indigo-100">
                 {sigProfile.style_summary}
               </p>
@@ -809,13 +809,13 @@ function AISettingsTab({
           ) : null}
 
           <div className="mt-4 pt-3 border-t border-indigo-200">
-            <div className="text-xs font-medium text-indigo-700 mb-2">איך זה משפיע על ה-AI:</div>
+            <div className="text-xs font-medium text-indigo-700 mb-2">{strings.twinProfile.ai_impact_label}</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {[
-                { label: 'סיכומי פגישות', desc: 'AI כותב בסגנון ובמבנה שלך' },
-                { label: 'הודעות למטופלים', desc: 'טון וניסוח מותאמים אישית' },
-                { label: 'תדריך הכנה לפגישה', desc: 'מוצג במינוח שמוכר לך' },
-                { label: 'תוכנית טיפולית', desc: 'גישה ומטרות מותאמות לפרוטוקול' },
+                { label: strings.twinProfile.impact_summaries, desc: strings.twinProfile.impact_summaries_desc },
+                { label: strings.twinProfile.impact_messages, desc: strings.twinProfile.impact_messages_desc },
+                { label: strings.twinProfile.impact_prep, desc: strings.twinProfile.impact_prep_desc },
+                { label: strings.twinProfile.impact_plan, desc: strings.twinProfile.impact_plan_desc },
               ].map((item) => (
                 <div key={item.label} className="flex items-start gap-2 bg-white rounded-lg p-2.5 border border-indigo-100">
                   <CheckCircleIcon className="h-4 w-4 text-indigo-400 shrink-0 mt-0.5" />
@@ -832,22 +832,22 @@ function AISettingsTab({
 
       {profile.cbt_active && (
         <div className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 leading-relaxed">
-          ✓ CBT פעיל — חבילת ניתוח CBT מופעלת על כל הסיכומים, סיכומי העומק ותוכניות הטיפול.
+          {strings.twinProfile.cbt_active_note}
         </div>
       )}
 
       {/* ── ב. כוונונים חיים ── */}
       <div className="card space-y-6">
         <div>
-          <h2 className="text-lg font-bold text-gray-800">כוונונים חיים</h2>
-          <p className="text-sm text-gray-500 mt-0.5">שינויים ישפיעו מיד על כל הסיכומים וההודעות הבאות</p>
+          <h2 className="text-lg font-bold text-gray-800">{strings.twinProfile.tuning_title}</h2>
+          <p className="text-sm text-gray-500 mt-0.5">{strings.twinProfile.tuning_hint}</p>
         </div>
         <SliderControl
-          label="חמימות תקשורת" leftLabel="פורמלי" rightLabel="חמים"
+          label={strings.twinProfile.warmth_label} leftLabel={strings.twinProfile.warmth_left} rightLabel={strings.twinProfile.warmth_right}
           value={toneWarmth} onChange={setToneWarmth} valueLabels={WARMTH_LABELS}
         />
         <SliderControl
-          label="רמת הכוונה" leftLabel="חקרני" rightLabel="מכוון"
+          label={strings.twinProfile.directiveness_label} leftLabel={strings.twinProfile.directiveness_left} rightLabel={strings.twinProfile.directiveness_right}
           value={directiveness} onChange={setDirectiveness} valueLabels={DIRECTIVE_LABELS}
         />
       </div>
@@ -855,8 +855,8 @@ function AISettingsTab({
       {/* ── ג. מגבלות ── */}
       <div className="card space-y-4">
         <div>
-          <h2 className="text-lg font-bold text-gray-800">מגבלות — מה אסור ל-AI להגיד</h2>
-          <p className="text-sm text-gray-500 mt-0.5">הוסף כללים ברורים שה-AI צריך להימנע מהם בכל מקרה</p>
+          <h2 className="text-lg font-bold text-gray-800">{strings.twinProfile.prohibitions_title}</h2>
+          <p className="text-sm text-gray-500 mt-0.5">{strings.twinProfile.prohibitions_hint}</p>
         </div>
         <div className="flex gap-2">
           <input
@@ -864,17 +864,17 @@ function AISettingsTab({
             onChange={(e) => setNewProhibition(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addProhibition() } }}
             className="input-field flex-1"
-            placeholder='לדוגמה: "אל תמליץ על תרופות"'
+            placeholder={strings.twinProfile.prohibitions_placeholder}
           />
           <button
             onClick={addProhibition} disabled={!newProhibition.trim()}
             className="btn-secondary flex items-center gap-1 disabled:opacity-50"
           >
-            <PlusIcon className="h-4 w-4" /> הוסף
+            <PlusIcon className="h-4 w-4" /> {strings.twinProfile.add_prohibition_button}
           </button>
         </div>
         {prohibitions.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-4">אין מגבלות מוגדרות</p>
+          <p className="text-sm text-gray-400 text-center py-4">{strings.twinProfile.no_prohibitions}</p>
         ) : (
           <ul className="space-y-2">
             {prohibitions.map((p, i) => (
@@ -893,15 +893,15 @@ function AISettingsTab({
       {/* ── ד. כללים מותאמים אישית ── */}
       <div className="card space-y-3">
         <div>
-          <h2 className="text-lg font-bold text-gray-800">כללים מותאמים אישית</h2>
+          <h2 className="text-lg font-bold text-gray-800">{strings.twinProfile.custom_rules_title}</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            הוראות בשפה חופשית לבינה מלאכותית — סגנון, גישה, ודרך טיפול מועדפת בנושאים ספציפיים
+            {strings.twinProfile.custom_rules_hint}
           </p>
         </div>
         <textarea
           value={customRules} onChange={(e) => setCustomRules(e.target.value)}
           className="input-field h-32 resize-none text-sm"
-          placeholder='לדוגמה: "תמיד כלול שאלה פתוחה בסוף כל הודעה. בנושאי פחד ממוות — הפנה לפסיכיאטר."'
+          placeholder={strings.twinProfile.custom_rules_placeholder}
         />
       </div>
     </div>
@@ -990,7 +990,7 @@ export default function TwinProfilePage() {
         setSelectedModalities(modes)
         setModesOtherText(mOther)
       } catch (err: any) {
-        setError(err.response?.data?.detail || 'שגיאה בטעינת הפרופיל')
+        setError(err.response?.data?.detail || strings.twinProfile.error_loading)
       } finally {
         setLoading(false)
       }
@@ -1027,7 +1027,7 @@ export default function TwinProfilePage() {
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
     } catch (err: any) {
-      setSaveError(err.response?.data?.detail || 'שגיאה בשמירה')
+      setSaveError(err.response?.data?.detail || strings.twinProfile.error_saving)
     } finally {
       setSaving(false)
     }
@@ -1045,7 +1045,7 @@ export default function TwinProfilePage() {
       <div className="flex items-center justify-center h-64" dir="rtl">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-therapy-calm mx-auto mb-4" />
-          <p className="text-gray-600">טוען הגדרות...</p>
+          <p className="text-gray-600">{strings.twinProfile.loading}</p>
         </div>
       </div>
     )
@@ -1056,7 +1056,7 @@ export default function TwinProfilePage() {
       <div className="max-w-3xl mx-auto py-8" dir="rtl">
         <div className="card text-center py-12">
           <ExclamationTriangleIcon className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <p className="text-red-700">{error || 'פרופיל לא נמצא'}</p>
+          <p className="text-red-700">{error || strings.twinProfile.error_not_found}</p>
         </div>
       </div>
     )
@@ -1080,7 +1080,7 @@ export default function TwinProfilePage() {
           }`}
         >
           <BriefcaseIcon className="h-4 w-4" />
-          הגדרות מקצועיות טיפוליות
+          {strings.twinProfile.tab_professional}
         </button>
         <button
           onClick={() => setActiveTab('ai')}
@@ -1089,7 +1089,7 @@ export default function TwinProfilePage() {
           }`}
         >
           <CpuChipIcon className="h-4 w-4" />
-          הגדרות בינה מלאכותית
+          {strings.twinProfile.tab_ai}
         </button>
       </div>
 
@@ -1126,7 +1126,7 @@ export default function TwinProfilePage() {
               {saveSuccess && (
                 <div className="flex items-center gap-2 text-green-700">
                   <CheckCircleIcon className="h-5 w-5" />
-                  <span>נשמר! שינויים ישפיעו על כל קריאות ה-AI הבאות.</span>
+                  <span>{strings.twinProfile.saved_notification}</span>
                 </div>
               )}
               {saveError && (
@@ -1136,10 +1136,10 @@ export default function TwinProfilePage() {
                 </div>
               )}
               {!saveSuccess && !saveError && isDirty && (
-                <span className="text-amber-600 font-medium">יש שינויים שלא נשמרו</span>
+                <span className="text-amber-600 font-medium">{strings.twinProfile.unsaved_changes}</span>
               )}
               {!saveSuccess && !saveError && !isDirty && (
-                <span className="text-gray-400 text-xs">כל השינויים נשמרו</span>
+                <span className="text-gray-400 text-xs">{strings.twinProfile.all_saved}</span>
               )}
             </div>
             <button
@@ -1148,8 +1148,8 @@ export default function TwinProfilePage() {
               className="btn-primary flex items-center gap-2 disabled:opacity-50 flex-shrink-0"
             >
               {saving ? (
-                <><span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />שומר...</>
-              ) : 'שמור שינויים'}
+                <><span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />{strings.twinProfile.saving_button}</>
+              ) : strings.twinProfile.save_button}
             </button>
           </div>
         </div>

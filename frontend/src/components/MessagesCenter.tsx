@@ -28,6 +28,7 @@ import {
 import { messagesAPI, sessionsAPI, patientsAPI } from '@/lib/api'
 import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
 import PhoneInput from '@/components/PhoneInput'
+import { strings } from '@/i18n/he'
 
 // --- Types ---
 
@@ -63,23 +64,23 @@ type SendWhen = 'now' | 'today' | 'custom'
 // --- Helpers ---
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  scheduled: { label: 'מתוזמן', className: 'bg-blue-100 text-blue-800' },
-  sent: { label: 'נשלח', className: 'badge-approved' },
-  delivered: { label: 'נמסר', className: 'badge-approved' },
-  cancelled: { label: 'בוטל', className: 'bg-gray-100 text-gray-600' },
-  failed: { label: 'נכשל', className: 'bg-red-100 text-red-700' },
-  rejected: { label: 'נדחה', className: 'bg-gray-100 text-gray-600' },
-  approved: { label: 'מאושר', className: 'badge-approved' },
+  scheduled: { label: strings.messagesCenter.status_scheduled, className: 'bg-blue-100 text-blue-800' },
+  sent: { label: strings.messagesCenter.status_sent, className: 'badge-approved' },
+  delivered: { label: strings.messagesCenter.status_delivered, className: 'badge-approved' },
+  cancelled: { label: strings.messagesCenter.status_cancelled, className: 'bg-gray-100 text-gray-600' },
+  failed: { label: strings.messagesCenter.status_failed, className: 'bg-red-100 text-red-700' },
+  rejected: { label: strings.messagesCenter.status_rejected, className: 'bg-gray-100 text-gray-600' },
+  approved: { label: strings.messagesCenter.status_approved, className: 'badge-approved' },
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  task_reminder: 'תזכורת משימה',
-  session_reminder: 'תזכורת לפגישה',
-  appointment_reminder: 'תזכורת קביעת פגישה',
-  follow_up: 'מעקב',
-  exercise_reminder: 'תזכורת תרגיל',
-  check_in: "צ'ק-אין",
-  session: 'תזכורת',
+  task_reminder: strings.messagesCenter.type_task_reminder,
+  session_reminder: strings.messagesCenter.type_session_reminder,
+  appointment_reminder: strings.messagesCenter.type_appointment_reminder,
+  follow_up: strings.messagesCenter.type_follow_up,
+  exercise_reminder: strings.messagesCenter.type_exercise_reminder,
+  check_in: strings.messagesCenter.type_check_in,
+  session: strings.messagesCenter.type_session,
 }
 
 // formatDatetimeIL is imported from @/lib/dateUtils (DD.MM.YY HH:mm, UTC-aware)
@@ -210,7 +211,7 @@ export default function MessagesCenter({
       setContent(result.content)
       setGenerated(true)
     } catch (err: any) {
-      setGeneratorError(err.response?.data?.detail || 'שגיאה בייצור ההודעה')
+      setGeneratorError(err.response?.data?.detail || strings.messagesCenter.error_generate)
     } finally {
       setGenerating(false)
     }
@@ -268,7 +269,7 @@ export default function MessagesCenter({
         setPendingSendAt(sendAt)
         setShowMissingPhone(true)
       } else {
-        setConfirmError(detail || 'שגיאה בשליחה')
+        setConfirmError(detail || strings.messagesCenter.error_confirm)
       }
     } finally {
       setConfirming(false)
@@ -333,7 +334,7 @@ export default function MessagesCenter({
             className="btn-primary flex items-center gap-2 text-sm min-h-[44px] touch-manipulation"
           >
             <PlusIcon className="h-5 w-5" />
-            הודעה חדשה
+            {strings.messagesCenter.new_message_title}
           </button>
         )}
       </div>
@@ -342,7 +343,7 @@ export default function MessagesCenter({
       {composerOpen && (
         <div className="card border-blue-200 bg-blue-50 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-blue-900">יצירת הודעה חדשה</h3>
+            <h3 className="text-lg font-bold text-blue-900">{strings.messagesCenter.create_message_title}</h3>
             <button
               onClick={handleCloseComposer}
               className="text-gray-400 hover:text-gray-600"
@@ -353,7 +354,7 @@ export default function MessagesCenter({
 
           {/* Message type selector */}
           <div>
-            <p className="text-sm font-medium text-gray-700 mb-2">סוג הודעה</p>
+            <p className="text-sm font-medium text-gray-700 mb-2">{strings.messagesCenter.message_type_label}</p>
             <div className="flex gap-2">
               {(['task_reminder', 'session_reminder'] as const).map((type) => (
                 <button
@@ -365,7 +366,7 @@ export default function MessagesCenter({
                       : 'bg-white text-gray-600 border-gray-300 hover:border-therapy-calm'
                   }`}
                 >
-                  {type === 'task_reminder' ? 'תזכורת משימה' : 'תזכורת לפגישה'}
+                  {type === 'task_reminder' ? strings.messagesCenter.type_task_reminder : strings.messagesCenter.type_session_reminder}
                 </button>
               ))}
             </div>
@@ -375,29 +376,29 @@ export default function MessagesCenter({
           {messageType === 'task_reminder' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                תיאור המשימה (אופציונלי)
+                {strings.messagesCenter.task_description_label}
               </label>
               <input
                 type="text"
                 value={taskText}
                 onChange={(e) => setTaskText(e.target.value)}
                 className="input-field"
-                placeholder="לדוגמה: תרגול נשימה 5 דקות ביום"
+                placeholder={strings.messagesCenter.task_description_placeholder}
               />
             </div>
           )}
 
           {messageType === 'session_reminder' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">בחר פגישה עתידית</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{strings.messagesCenter.session_select_label}</label>
               {sessionsLoading ? (
                 <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
                   <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-therapy-calm flex-shrink-0" />
-                  טוען פגישות...
+                  {strings.messagesCenter.sessions_loading}
                 </div>
               ) : upcomingSessions.length === 0 ? (
                 <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  לא נמצאו פגישות עתידיות עבור מטופל זה. יש ליצור פגישה לפני שליחת תזכורת.
+                  {strings.messagesCenter.no_future_sessions}
                 </div>
               ) : (
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
@@ -443,14 +444,14 @@ export default function MessagesCenter({
             {generating ? (
               <>
                 <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-therapy-calm"></span>
-                {messageType === 'session_reminder' ? 'יוצר תזכורת...' : 'מייצר הודעה...'}
+                {messageType === 'session_reminder' ? strings.messagesCenter.generating_reminder : strings.messagesCenter.generating_message}
               </>
             ) : (
               <>
                 <ArrowPathIcon className="h-4 w-4" />
                 {messageType === 'session_reminder'
-                  ? (generated ? 'עדכן תצוגה מקדימה' : 'צור תזכורת')
-                  : (generated ? 'ייצר מחדש' : 'ייצר הודעה')}
+                  ? (generated ? strings.messagesCenter.update_preview_button : strings.messagesCenter.generate_reminder_button)
+                  : (generated ? strings.messagesCenter.regenerate_button : strings.messagesCenter.generate_message_button)}
               </>
             )}
           </button>
@@ -464,27 +465,27 @@ export default function MessagesCenter({
             <div className="rounded-xl border border-blue-200 bg-white p-4 space-y-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-blue-700 uppercase tracking-wide">
                 <span>📋</span>
-                <span>תבנית WhatsApp מאושרת — לא ניתן לעריכה</span>
+                <span>{strings.messagesCenter.template_locked}</span>
               </div>
               <div className="text-sm text-gray-700 space-y-1 border-r-4 border-blue-300 pr-3">
-                <p><span className="text-gray-400">מטופל/ת: </span>{patientName}</p>
+                <p><span className="text-gray-400">{strings.messagesCenter.patient_label}</span>{patientName}</p>
                 <p>
-                  <span className="text-gray-400">תאריך: </span>
+                  <span className="text-gray-400">{strings.messagesCenter.date_label}</span>
                   {selectedSession ? formatDateIL(selectedSession.session_date) : '—'}
                 </p>
                 <p>
-                  <span className="text-gray-400">שעה: </span>
+                  <span className="text-gray-400">{strings.messagesCenter.time_label}</span>
                   {selectedSession ? (formatSessionTime(selectedSession.start_time) || '—') : '—'}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">
-                  ההודעה תישלח עם שם המטפל/ת ושם הקליניקה דרך תבנית WhatsApp מאושרת.
+                  {strings.messagesCenter.template_note}
                 </p>
               </div>
             </div>
           ) : generated && messageType === 'task_reminder' ? (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                תוכן ההודעה <span className="text-gray-400 font-normal">(ניתן לערוך)</span>
+                {strings.messagesCenter.content_label} <span className="text-gray-400 font-normal">{strings.messagesCenter.content_editable_note}</span>
               </label>
               <textarea
                 value={content}
@@ -499,7 +500,7 @@ export default function MessagesCenter({
           {/* Recipient */}
           {generated && (
             <div>
-              <p className="text-sm font-medium text-gray-700 mb-2">נמען</p>
+              <p className="text-sm font-medium text-gray-700 mb-2">{strings.messagesCenter.recipient_label}</p>
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -520,7 +521,7 @@ export default function MessagesCenter({
                     onChange={() => setUseCustomPhone(true)}
                     className="accent-therapy-calm"
                   />
-                  <span className="text-sm text-gray-700">מספר אחר:</span>
+                  <span className="text-sm text-gray-700">{strings.messagesCenter.other_number_label}</span>
                 </label>
                 {useCustomPhone && (
                   <div className="mr-6">
@@ -552,12 +553,12 @@ export default function MessagesCenter({
                   {confirming && !showScheduler ? (
                     <>
                       <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                      שולח...
+                      {strings.messagesCenter.sending_button}
                     </>
                   ) : (
                     <>
                       <PaperAirplaneIcon className="h-4 w-4" />
-                      שלח עכשיו
+                      {strings.messagesCenter.send_now_button}
                     </>
                   )}
                 </button>
@@ -573,24 +574,24 @@ export default function MessagesCenter({
                   className={`btn-secondary flex items-center justify-center gap-2 disabled:opacity-50 min-h-[44px] sm:min-h-0 touch-manipulation ${showScheduler ? 'ring-2 ring-therapy-calm' : ''}`}
                 >
                   <ClockIcon className="h-4 w-4" />
-                  תזמן לשעה אחרת
+                  {strings.messagesCenter.schedule_button}
                 </button>
                 <button
                   onClick={handleCloseComposer}
                   className="btn-secondary min-h-[44px] sm:min-h-0 touch-manipulation"
                 >
-                  ביטול
+                  {strings.messagesCenter.cancel_button}
                 </button>
               </div>
 
               {/* Scheduling panel — shown only when therapist clicks "תזמן" */}
               {showScheduler && (
                 <div className="bg-white border border-blue-200 rounded-xl p-4 space-y-3">
-                  <p className="text-sm font-medium text-gray-700">בחר מועד שליחה</p>
+                  <p className="text-sm font-medium text-gray-700">{strings.messagesCenter.schedule_modal_title}</p>
                   <div className="space-y-3">
                     {([
-                      { value: 'today', label: 'היום בשעה' },
-                      { value: 'custom', label: 'תאריך ושעה ספציפיים' },
+                      { value: 'today', label: strings.messagesCenter.schedule_today },
+                      { value: 'custom', label: strings.messagesCenter.schedule_custom },
                     ] as const).map(({ value, label }) => (
                       <div key={value} className="space-y-1">
                         <label className="flex items-center gap-2 cursor-pointer">
@@ -642,12 +643,12 @@ export default function MessagesCenter({
                     {confirming && showScheduler ? (
                       <>
                         <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                        מתזמן...
+                        {strings.messagesCenter.scheduling_button}
                       </>
                     ) : (
                       <>
                         <ClockIcon className="h-4 w-4" />
-                        אשר תזמון
+                        {strings.messagesCenter.schedule_confirm_button}
                       </>
                     )}
                   </button>
@@ -660,7 +661,7 @@ export default function MessagesCenter({
 
       {/* ── History ── */}
       <div>
-        <h3 className="text-base font-bold text-gray-800 mb-3">היסטוריית הודעות</h3>
+        <h3 className="text-base font-bold text-gray-800 mb-3">{strings.messagesCenter.history_title}</h3>
 
         {historyLoading ? (
           <div className="flex items-center justify-center h-24">
@@ -669,7 +670,7 @@ export default function MessagesCenter({
         ) : messages.length === 0 ? (
           <div className="card text-center py-10 text-gray-400">
             <PaperAirplaneIcon className="h-10 w-10 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">אין הודעות עדיין</p>
+            <p className="text-sm">{strings.messagesCenter.no_messages}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -749,7 +750,7 @@ export default function MessagesCenter({
                           className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
                         >
                           <PencilSquareIcon className="h-4 w-4" />
-                          ערוך
+                          {strings.messagesCenter.edit_button}
                         </button>
                       )}
                       <button
@@ -757,7 +758,7 @@ export default function MessagesCenter({
                         className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700"
                       >
                         <XMarkIcon className="h-4 w-4" />
-                        בטל תזמון
+                        {strings.messagesCenter.cancel_schedule_button}
                       </button>
                     </div>
                   )}
@@ -766,7 +767,7 @@ export default function MessagesCenter({
                   {msg.status === 'failed' && (
                     <div className="flex items-center gap-1 text-xs text-red-600">
                       <ExclamationTriangleIcon className="h-3 w-3" />
-                      השליחה נכשלה — נסה שוב
+                      {strings.messagesCenter.send_failed}
                     </div>
                   )}
                 </div>
@@ -783,7 +784,7 @@ export default function MessagesCenter({
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir="rtl">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <h2 className="text-base font-bold text-gray-900">חסר מספר טלפון</h2>
+            <h2 className="text-base font-bold text-gray-900">{strings.messagesCenter.missing_phone_title}</h2>
             <button
               onClick={() => { setShowMissingPhone(false); setSavePhoneError('') }}
               className="text-gray-400 hover:text-gray-600 p-1"
@@ -793,10 +794,10 @@ export default function MessagesCenter({
           </div>
           <div className="px-5 py-4 space-y-4">
             <p className="text-sm text-gray-600">
-              למטופל/ת זה אין מספר טלפון שמור. הוסיפו מספר כדי לשלוח הודעות WhatsApp.
+              {strings.messagesCenter.missing_phone_hint}
             </p>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">טלפון (חובה)</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">{strings.messagesCenter.phone_label}</label>
               <PhoneInput
                 value={addedPhone}
                 onChange={setAddedPhone}
@@ -804,7 +805,7 @@ export default function MessagesCenter({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">אימייל (אופציונלי)</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">{strings.messagesCenter.email_label}</label>
               <input
                 type="email"
                 value={addedEmail}
@@ -831,20 +832,20 @@ export default function MessagesCenter({
                   setShowMissingPhone(false)
                   await handleConfirm(pendingSendAt)
                 } catch (err: any) {
-                  setSavePhoneError(err.response?.data?.detail || 'שגיאה בשמירה')
+                  setSavePhoneError(err.response?.data?.detail || strings.messagesCenter.save_phone_error)
                 } finally {
                   setSavingPhone(false)
                 }
               }}
               className="btn-primary flex-1 min-h-[44px] disabled:opacity-50"
             >
-              {savingPhone ? 'שומר...' : 'שמור ושלח'}
+              {savingPhone ? strings.messagesCenter.save_phone_saving : strings.messagesCenter.save_phone_button}
             </button>
             <button
               onClick={() => { setShowMissingPhone(false); setSavePhoneError('') }}
               className="btn-secondary flex-1 min-h-[44px]"
             >
-              ביטול
+              {strings.messagesCenter.cancel_button}
             </button>
           </div>
         </div>

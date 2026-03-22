@@ -14,6 +14,7 @@ import {
   ArrowPathIcon,
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI, exercisesAPI } from '@/lib/api'
+import { strings } from '@/i18n/he'
 import { usePrepStream } from '@/hooks/usePrepStream'
 import MultiClipRecorder from '@/components/MultiClipRecorder'
 import { formatDateIL, formatDatetimeIL } from '@/lib/dateUtils'
@@ -196,7 +197,7 @@ export default function SessionDetailPage() {
         }
       } catch (err) {
         console.error('Error loading session:', err)
-        setError('שגיאה בטעינת הפגישה')
+        setError(strings.sessionDetail.error_loading)
       } finally {
         setLoading(false)
       }
@@ -223,7 +224,7 @@ export default function SessionDetailPage() {
       setSummary(result)
       setSession((prev) => prev ? { ...prev, summary_id: result.id } : prev)
     } catch (err: any) {
-      const detail = err.response?.data?.detail || 'שגיאה ביצירת הסיכום'
+      const detail = err.response?.data?.detail || strings.sessionDetail.error_creating_summary
       setError(detail)
     } finally {
       setGenerating(false)
@@ -248,10 +249,10 @@ export default function SessionDetailPage() {
 
   const sessionTypeLabel = (t?: string) => {
     const map: Record<string, string> = {
-      individual: 'טיפול אישי',
-      couples: 'טיפול זוגי',
-      group: 'טיפול קבוצתי',
-      family: 'טיפול משפחתי',
+      individual: strings.sessionDetail.type_individual,
+      couples: strings.sessionDetail.type_couples,
+      group: strings.sessionDetail.type_group,
+      family: strings.sessionDetail.type_family,
     }
     return map[t || ''] || t || ''
   }
@@ -269,7 +270,7 @@ export default function SessionDetailPage() {
       setPendingTranscript('')
       try { localStorage.removeItem(transcriptKey) } catch { /* ignore */ }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'שגיאה ביצירת הסיכום')
+      setError(err.response?.data?.detail || strings.sessionDetail.error_creating_summary)
     } finally {
       setFinalizing(false)
     }
@@ -295,7 +296,7 @@ export default function SessionDetailPage() {
       setSummary(result)
       setEditing(false)
     } catch (err: any) {
-      const detail = err.response?.data?.detail || 'שגיאה בשמירת הטיוטה'
+      const detail = err.response?.data?.detail || strings.sessionDetail.error_saving_draft
       setError(detail)
     } finally {
       setSaving(false)
@@ -323,7 +324,7 @@ export default function SessionDetailPage() {
       setEditing(false)
       try { localStorage.removeItem(transcriptKey) } catch { /* ignore */ }
     } catch (err: any) {
-      const detail = err.response?.data?.detail || 'שגיאה באישור הסיכום'
+      const detail = err.response?.data?.detail || strings.sessionDetail.error_approving
       setError(detail)
     } finally {
       setSaving(false)
@@ -339,7 +340,7 @@ export default function SessionDetailPage() {
       setSummary(result)
       setEditingTranscript(false)
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'שגיאה בעדכון הסיכום')
+      setError(err.response?.data?.detail || strings.sessionDetail.error_updating)
     } finally {
       setRegenerating(false)
     }
@@ -353,14 +354,14 @@ export default function SessionDetailPage() {
       // Navigate back to the patient's sessions tab; the session remains but has no summary
       if (session?.patient_id) {
         navigate(`/patients/${session.patient_id}`, {
-          state: { initialTab: 'sessions', toast: 'הסיכום נמחק. הפגישה נשארה ברשימה ללא סיכום.' },
+          state: { initialTab: 'sessions', toast: strings.sessionDetail.toast_summary_deleted },
         })
       } else {
         setSummary(null)
         setConfirmDeleteSummary(false)
       }
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'שגיאה במחיקת הסיכום')
+      setError(err.response?.data?.detail || strings.sessionDetail.error_deleting)
     } finally {
       setDeletingSummary(false)
     }
@@ -371,7 +372,7 @@ export default function SessionDetailPage() {
       <div className="flex items-center justify-center h-64" dir="rtl">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-therapy-calm mx-auto mb-4"></div>
-          <p className="text-gray-600">טוען פגישה...</p>
+          <p className="text-gray-600">{strings.sessionDetail.loading}</p>
         </div>
       </div>
     )
@@ -380,7 +381,7 @@ export default function SessionDetailPage() {
   if (!session) {
     return (
       <div className="text-center py-12" dir="rtl">
-        <p className="text-gray-600">פגישה לא נמצאה</p>
+        <p className="text-gray-600">{strings.sessionDetail.not_found}</p>
       </div>
     )
   }
@@ -394,7 +395,7 @@ export default function SessionDetailPage() {
           className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
         >
           <ArrowRightIcon className="h-5 w-5" />
-          חזרה לפגישות
+          {strings.sessionDetail.back_button}
         </button>
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 bg-therapy-calm text-white rounded-full flex items-center justify-center">
@@ -410,8 +411,8 @@ export default function SessionDetailPage() {
             </button>
             <div className="flex items-center gap-3 text-sm text-gray-600 mt-1">
               <span>{formatDateIL(session.session_date)}</span>
-              {session.session_number && <span>פגישה #{session.session_number}</span>}
-              {session.duration_minutes && <span>{session.duration_minutes} דקות</span>}
+              {session.session_number && <span>{strings.sessionDetail.session_label} #{session.session_number}</span>}
+              {session.duration_minutes && <span>{session.duration_minutes} {strings.sessionDetail.minutes_unit}</span>}
               {session.session_type && (
                 <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">
                   {sessionTypeLabel(session.session_type)}
@@ -430,12 +431,12 @@ export default function SessionDetailPage() {
           <ClipboardDocumentListIcon className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-amber-900">
-              יש {openTasksCount} משימות פתוחות למטופל הזה
+              {strings.sessionDetail.open_tasks_prefix} {openTasksCount} {strings.sessionDetail.open_tasks_suffix}
             </p>
             <p className="text-xs text-amber-700 mt-0.5">
               {summary
-                ? 'גלול למטה למעקב המשימות כדי לעיין ולעדכן אותן.'
-                : 'רצוי לבדוק ולעדכן אותן לאחר יצירת הסיכום.'}
+                ? strings.sessionDetail.view_tasks_hint
+                : strings.sessionDetail.check_tasks_after_summary}
             </p>
           </div>
         </div>
@@ -447,7 +448,7 @@ export default function SessionDetailPage() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-amber-900 flex items-center gap-2">
               <LightBulbIcon className="h-5 w-5" />
-              הכנה לפגישה
+              {strings.sessionDetail.prep_title}
             </h2>
             <button
               onClick={() => { setShowPrepPanel(false); prepStream.reset() }}
@@ -461,7 +462,7 @@ export default function SessionDetailPage() {
             <div className="flex justify-center py-6">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600 mx-auto mb-2"></div>
-                <p className="text-sm text-amber-700">מחלץ נתונים מהסיכומים...</p>
+                <p className="text-sm text-amber-700">{strings.sessionDetail.extracting_data}</p>
               </div>
             </div>
           ) : prepStream.phase === 'rendering' || prepStream.phase === 'done' ? (
@@ -469,7 +470,7 @@ export default function SessionDetailPage() {
               {prepStream.phase === 'rendering' && !prepStream.text && (
                 <div className="flex items-center gap-2 text-amber-700 text-sm mb-3">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
-                  <span>מייצר תדריך...</span>
+                  <span>{strings.sessionDetail.generating_briefing}</span>
                 </div>
               )}
               <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{prepStream.text}</p>
@@ -481,7 +482,7 @@ export default function SessionDetailPage() {
                 onClick={() => prepStream.start(Number(sessionId))}
                 className="mt-2 text-sm px-3 py-1 bg-amber-200 rounded-lg hover:bg-amber-300 transition-colors"
               >
-                נסה שוב
+                {strings.sessionDetail.retry_button}
               </button>
             </div>
           ) : null}
@@ -491,7 +492,7 @@ export default function SessionDetailPage() {
       {/* Input Section — Voice Recap or Text Notes (only when no summary yet) */}
       {!summary && (
         <div className="card">
-          <h2 className="text-lg font-bold mb-3">תיעוד הפגישה</h2>
+          <h2 className="text-lg font-bold mb-3">{strings.sessionDetail.documentation_title}</h2>
 
           {/* Mode Tabs */}
           <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
@@ -504,7 +505,7 @@ export default function SessionDetailPage() {
               }`}
             >
               <MicrophoneIcon className="h-4 w-4" />
-              סיכום קולי
+              {strings.sessionDetail.tab_voice}
             </button>
             <button
               onClick={() => setInputMode('text')}
@@ -515,7 +516,7 @@ export default function SessionDetailPage() {
               }`}
             >
               <DocumentTextIcon className="h-4 w-4" />
-              רשימות טקסט
+              {strings.sessionDetail.tab_text}
             </button>
           </div>
 
@@ -535,18 +536,18 @@ export default function SessionDetailPage() {
           {inputMode === 'text' && (
             <>
               <p className="text-sm text-gray-600 mb-3">
-                הקלד או הדבק את הרשימות מהפגישה. ה-AI יצור סיכום מובנה בסגנון שלך.
+                {strings.sessionDetail.text_prompt}
               </p>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 className="input-field h-48 resize-none"
-                placeholder="למשל: המטופל דיווח על שיפור קל בחרדה. עבדנו על חשיפה הדרגתית למצבים חברתיים. הטלנו משימה של יומן מחשבות..."
+                placeholder={strings.sessionDetail.text_placeholder}
                 disabled={generating}
               />
               <div className="flex items-center justify-between mt-4">
                 <span className="text-xs text-gray-400">
-                  {notes.length > 0 ? `${notes.length} תווים` : ''}
+                  {notes.length > 0 ? `${notes.length} ${strings.sessionDetail.char_count_label}` : ''}
                 </span>
                 <button
                   onClick={handleGenerateSummary}
@@ -556,10 +557,10 @@ export default function SessionDetailPage() {
                   {generating ? (
                     <span className="flex items-center gap-2">
                       <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                      יוצר סיכום...
+                      {strings.sessionDetail.creating_summary}
                     </span>
                   ) : (
-                    'צור סיכום AI'
+                    strings.sessionDetail.create_ai_summary_button
                   )}
                 </button>
               </div>
@@ -584,28 +585,28 @@ export default function SessionDetailPage() {
           {/* Header + Status + Actions */}
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-bold">סיכום הפגישה</h2>
+              <h2 className="text-lg font-bold">{strings.sessionDetail.summary_title}</h2>
               <CopyButton text={sessionSummaryToText(summary)} />
               <button
                 type="button"
                 onClick={() => window.open(`/sessions/${sessionId}/print`, '_blank')}
-                title="הדפסה"
+                title={strings.sessionDetail.print_button}
                 className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors"
               >
-                🖨 הדפסה
+                {strings.sessionDetail.print_button}
               </button>
             </div>
             <div className="flex items-center gap-2">
               {summary.status === 'approved' || summary.approved_by_therapist ? (
                 <span className="badge badge-approved">
                   <CheckCircleIcon className="h-4 w-4 inline ml-1" />
-                  מאושר
+                  {strings.sessionDetail.badge_approved}
                 </span>
               ) : (
-                <span className="badge badge-draft">טיוטה</span>
+                <span className="badge badge-draft">{strings.sessionDetail.badge_draft}</span>
               )}
               <span className="text-xs text-gray-400">
-                נוצר מ{summary.generated_from === 'text' ? 'טקסט' : 'הקלטה'}
+                {strings.sessionDetail.generated_from_label}{summary.generated_from === 'text' ? strings.sessionDetail.generated_from_text : strings.sessionDetail.generated_from_voice}
               </span>
             </div>
           </div>
@@ -615,7 +616,7 @@ export default function SessionDetailPage() {
             {!editing && (
               <button onClick={startEditing} className="btn-secondary flex items-center gap-2">
                 <PencilSquareIcon className="h-4 w-4" />
-                ערוך סיכום
+                {strings.sessionDetail.edit_summary_button}
               </button>
             )}
             {!editing && summary.status !== 'approved' && !summary.approved_by_therapist && (
@@ -625,7 +626,7 @@ export default function SessionDetailPage() {
                 className="btn-primary flex items-center gap-2 disabled:opacity-50"
               >
                 <CheckCircleIcon className="h-4 w-4" />
-                {saving ? 'מאשר...' : 'אשר סיכום'}
+                {saving ? strings.sessionDetail.approving : strings.sessionDetail.approve_button}
               </button>
             )}
             {editing && (
@@ -635,7 +636,7 @@ export default function SessionDetailPage() {
                   disabled={saving}
                   className="btn-secondary disabled:opacity-50"
                 >
-                  {saving ? 'שומר...' : 'שמור טיוטה'}
+                  {saving ? strings.sessionDetail.saving : strings.sessionDetail.save_draft_button}
                 </button>
                 <button
                   onClick={handleApprove}
@@ -643,13 +644,13 @@ export default function SessionDetailPage() {
                   className="btn-primary flex items-center gap-2 disabled:opacity-50"
                 >
                   <CheckCircleIcon className="h-4 w-4" />
-                  {saving ? 'מאשר...' : 'שמור ואשר'}
+                  {saving ? strings.sessionDetail.approving : strings.sessionDetail.save_and_approve_button}
                 </button>
                 <button
                   onClick={() => setEditing(false)}
                   className="text-gray-500 hover:text-gray-700 text-sm"
                 >
-                  ביטול
+                  {strings.sessionDetail.cancel_button}
                 </button>
               </>
             )}
@@ -659,7 +660,7 @@ export default function SessionDetailPage() {
                 className="mr-auto flex items-center gap-1 text-sm text-red-400 hover:text-red-600"
               >
                 <TrashIcon className="h-4 w-4" />
-                מחק סיכום
+                {strings.sessionDetail.delete_summary_button}
               </button>
             )}
           </div>
@@ -669,21 +670,21 @@ export default function SessionDetailPage() {
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
               <ExclamationTriangleIcon className="h-5 w-5 text-red-500 shrink-0" />
               <p className="text-sm text-red-700 flex-1">
-                למחוק את הסיכום? הפעולה בלתי הפיכה. הפגישה תישמר ותוכל ליצור סיכום חדש.
+                {strings.sessionDetail.delete_confirm_message}
               </p>
               <div className="flex gap-2 shrink-0">
                 <button
                   onClick={() => setConfirmDeleteSummary(false)}
                   className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg"
                 >
-                  ביטול
+                  {strings.sessionDetail.cancel_button}
                 </button>
                 <button
                   onClick={handleDeleteSummary}
                   disabled={deletingSummary}
                   className="text-sm text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg disabled:opacity-50"
                 >
-                  {deletingSummary ? 'מוחק...' : 'מחק'}
+                  {deletingSummary ? strings.sessionDetail.deleting : strings.sessionDetail.delete_button}
                 </button>
               </div>
             </div>
@@ -697,7 +698,7 @@ export default function SessionDetailPage() {
                   onClick={() => setShowTranscript(!showTranscript)}
                   className="text-sm text-blue-600 hover:text-blue-800"
                 >
-                  {showTranscript ? 'הסתר תמליל' : 'הצג תמליל מקורי'}
+                  {showTranscript ? strings.sessionDetail.hide_transcript : strings.sessionDetail.show_transcript}
                 </button>
                 {showTranscript && !editingTranscript && (
                   <button
@@ -708,7 +709,7 @@ export default function SessionDetailPage() {
                     className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
                   >
                     <PencilSquareIcon className="h-3.5 w-3.5" />
-                    ערוך תמליל
+                    {strings.sessionDetail.edit_transcript_button}
                   </button>
                 )}
                 {editingTranscript && (
@@ -716,7 +717,7 @@ export default function SessionDetailPage() {
                     onClick={() => setEditingTranscript(false)}
                     className="text-sm text-gray-400 hover:text-gray-600"
                   >
-                    בטל עריכה
+                    {strings.sessionDetail.cancel_edit_button}
                   </button>
                 )}
               </div>
@@ -726,7 +727,7 @@ export default function SessionDetailPage() {
                   <div className="card border-blue-200 bg-blue-50">
                     <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
                       <MicrophoneIcon className="h-4 w-4" />
-                      עריכת תמליל
+                      {strings.sessionDetail.edit_transcript_title}
                     </h3>
                     <textarea
                       value={editTranscriptText}
@@ -741,7 +742,7 @@ export default function SessionDetailPage() {
                         className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
                       >
                         <ArrowPathIcon className={`h-4 w-4 ${regenerating ? 'animate-spin' : ''}`} />
-                        {regenerating ? 'מעדכן סיכום...' : 'עדכן סיכום מהתמליל המתוקן'}
+                        {regenerating ? strings.sessionDetail.updating_summary : strings.sessionDetail.update_from_transcript_button}
                       </button>
                     </div>
                   </div>
@@ -751,7 +752,7 @@ export default function SessionDetailPage() {
                     <div className="card border-blue-200 bg-blue-50">
                       <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
                         <MicrophoneIcon className="h-4 w-4" />
-                        תמליל מקורי
+                        {strings.sessionDetail.original_transcript_title}
                         <span className="text-xs font-normal text-blue-500 mr-1">
                           {formatDatetimeIL(summary.created_at)}
                         </span>
@@ -762,7 +763,7 @@ export default function SessionDetailPage() {
                     </div>
                     {/* Summary panel (side-by-side) — editable in edit mode */}
                     <div className="card">
-                      <h3 className="font-bold text-gray-800 mb-2">סיכום</h3>
+                      <h3 className="font-bold text-gray-800 mb-2">{strings.sessionDetail.section_summary}</h3>
                       {editing ? (
                         <>
                           <textarea
@@ -790,7 +791,7 @@ export default function SessionDetailPage() {
             <>
               {editing ? (
                 <div className="card flex flex-col">
-                  <h3 className="font-bold text-gray-800 mb-2">סיכום כללי</h3>
+                  <h3 className="font-bold text-gray-800 mb-2">{strings.sessionDetail.section_general}</h3>
                   <textarea
                     value={editFullSummary}
                     onChange={(e) => setEditFullSummary(e.target.value)}
@@ -802,7 +803,7 @@ export default function SessionDetailPage() {
               ) : (
                 summary.full_summary && (
                   <div className="card">
-                    <h3 className="font-bold text-gray-800 mb-2">סיכום כללי</h3>
+                    <h3 className="font-bold text-gray-800 mb-2">{strings.sessionDetail.section_general}</h3>
                     <p className="text-gray-700 whitespace-pre-line">{stripAiArtifacts(summary.full_summary)}</p>
                   </div>
                 )
@@ -813,46 +814,46 @@ export default function SessionDetailPage() {
           {/* Structured Sections */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {editing ? (
-              <EditableListSection title="נושאים שנדונו" value={editTopics} onChange={setEditTopics} />
+              <EditableListSection title={strings.sessionDetail.section_topics} value={editTopics} onChange={setEditTopics} />
             ) : (
-              <SummarySection title="נושאים שנדונו" items={summary.topics_discussed} />
+              <SummarySection title={strings.sessionDetail.section_topics} items={summary.topics_discussed} />
             )}
 
             {editing ? (
-              <EditableListSection title="התערבויות" value={editInterventions} onChange={setEditInterventions} />
+              <EditableListSection title={strings.sessionDetail.section_interventions} value={editInterventions} onChange={setEditInterventions} />
             ) : (
-              <SummarySection title="התערבויות" items={summary.interventions_used} />
+              <SummarySection title={strings.sessionDetail.section_interventions} items={summary.interventions_used} />
             )}
 
             {editing ? (
-              <EditableListSection title="משימות בית" value={editHomework} onChange={setEditHomework} />
+              <EditableListSection title={strings.sessionDetail.section_homework} value={editHomework} onChange={setEditHomework} />
             ) : (
-              <SummarySection title="משימות בית" items={summary.homework_assigned} />
+              <SummarySection title={strings.sessionDetail.section_homework} items={summary.homework_assigned} />
             )}
 
             {editing ? (
-              <EditableTextSection title="התקדמות המטופל" value={editProgress} onChange={setEditProgress} />
+              <EditableTextSection title={strings.sessionDetail.section_progress} value={editProgress} onChange={setEditProgress} />
             ) : (
-              <SummaryTextSection title="התקדמות המטופל" text={summary.patient_progress} />
+              <SummaryTextSection title={strings.sessionDetail.section_progress} text={summary.patient_progress} />
             )}
 
             {editing ? (
-              <EditableTextSection title="תוכנית לפגישה הבאה" value={editNextPlan} onChange={setEditNextPlan} />
+              <EditableTextSection title={strings.sessionDetail.section_next_session} value={editNextPlan} onChange={setEditNextPlan} />
             ) : (
-              <SummaryTextSection title="תוכנית לפגישה הבאה" text={summary.next_session_plan} />
+              <SummaryTextSection title={strings.sessionDetail.section_next_session} text={summary.next_session_plan} />
             )}
 
             {editing ? (
-              <EditableTextSection title="מצב רוח נצפה" value={editMood} onChange={setEditMood} />
+              <EditableTextSection title={strings.sessionDetail.section_mood} value={editMood} onChange={setEditMood} />
             ) : (
-              <SummaryTextSection title="מצב רוח נצפה" text={summary.mood_observed} />
+              <SummaryTextSection title={strings.sessionDetail.section_mood} text={summary.mood_observed} />
             )}
           </div>
 
           {/* Risk Assessment */}
           {editing ? (
             <div className="card border-amber-200 bg-amber-50">
-              <h3 className="font-bold text-amber-800 mb-2">הערכת סיכון</h3>
+              <h3 className="font-bold text-amber-800 mb-2">{strings.sessionDetail.section_risk}</h3>
               <textarea
                 value={editRisk}
                 onChange={(e) => setEditRisk(e.target.value)}
@@ -862,7 +863,7 @@ export default function SessionDetailPage() {
           ) : (
             summary.risk_assessment && (
               <div className="card border-amber-200 bg-amber-50">
-                <h3 className="font-bold text-amber-800 mb-1">הערכת סיכון</h3>
+                <h3 className="font-bold text-amber-800 mb-1">{strings.sessionDetail.section_risk}</h3>
                 <p className="text-amber-700">{summary.risk_assessment}</p>
               </div>
             )
@@ -888,7 +889,7 @@ export default function SessionDetailPage() {
             <div className="flex items-center justify-between px-5 py-4 border-b border-blue-100 flex-shrink-0 bg-blue-50 rounded-t-2xl">
               <div className="flex items-center gap-2">
                 <MicrophoneIcon className="h-5 w-5 text-blue-600" />
-                <h2 className="text-base font-bold text-blue-900">בדיקת תמליל לפני יצירת סיכום</h2>
+                <h2 className="text-base font-bold text-blue-900">{strings.sessionDetail.transcript_review_title}</h2>
               </div>
               <button
                 onClick={() => { setShowTranscriptReview(false); setPendingTranscript('') }}
@@ -899,7 +900,7 @@ export default function SessionDetailPage() {
             </div>
             <div className="overflow-y-auto flex-1 p-5">
               <p className="text-sm text-gray-500 mb-3">
-                זהו המיזוג של כל הקטעים שהוקלטו. ניתן לערוך לפני יצירת הסיכום.
+                {strings.sessionDetail.transcript_review_desc}
               </p>
               <textarea
                 value={pendingTranscript}
@@ -913,7 +914,7 @@ export default function SessionDetailPage() {
                 onClick={() => { setShowTranscriptReview(false); setPendingTranscript('') }}
                 className="btn-secondary"
               >
-                ביטול
+                {strings.sessionDetail.cancel_button}
               </button>
               <button
                 onClick={handleFinalizeWithTranscript}
@@ -923,12 +924,12 @@ export default function SessionDetailPage() {
                 {finalizing ? (
                   <>
                     <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                    יוצר סיכום...
+                    {strings.sessionDetail.creating_summary}
                   </>
                 ) : (
                   <>
                     <CheckCircleIcon className="h-4 w-4" />
-                    צור סיכום מהתמליל
+                    {strings.sessionDetail.create_from_transcript_button}
                   </>
                 )}
               </button>
@@ -997,12 +998,12 @@ function EditableListSection({
   return (
     <div className="card">
       <h3 className="font-bold text-gray-800 mb-1">{title}</h3>
-      <p className="text-xs text-gray-400 mb-2">פריט אחד בכל שורה</p>
+      <p className="text-xs text-gray-400 mb-2">{strings.sessionDetail.list_placeholder.replace('...', '')}</p>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="input-field h-24 resize-none text-sm"
-        placeholder="פריט אחד בכל שורה..."
+        placeholder={strings.sessionDetail.list_placeholder}
       />
     </div>
   )
@@ -1116,7 +1117,7 @@ function ExerciseTracker({
 
   return (
     <div className="card border-green-200">
-      <h3 className="font-bold text-gray-800 mb-3">מעקב משימות</h3>
+      <h3 className="font-bold text-gray-800 mb-3">{strings.sessionDetail.tasks_title}</h3>
 
       {/* Tracked exercises with checkboxes */}
       {exercises.length > 0 && (
@@ -1128,7 +1129,7 @@ function ExerciseTracker({
                 onClick={() => editingId !== ex.id && toggleExercise(ex)}
                 disabled={toggling === ex.id || editingId === ex.id}
                 className="mt-0.5 flex-shrink-0"
-                aria-label={ex.completed ? 'סמן כלא הושלם' : 'סמן כהושלם'}
+                aria-label={ex.completed ? strings.sessionDetail.task_mark_incomplete : strings.sessionDetail.task_mark_complete}
               >
                 {toggling === ex.id ? (
                   <span className="w-5 h-5 rounded-full border-2 border-green-400 animate-spin border-t-transparent inline-block" />
@@ -1157,13 +1158,13 @@ function ExerciseTracker({
                     onClick={() => saveEdit(ex)}
                     className="text-xs text-green-600 hover:text-green-800 flex-shrink-0"
                   >
-                    שמור
+                    {strings.sessionDetail.task_save_button}
                   </button>
                   <button
                     onClick={() => setEditingId(null)}
                     className="text-xs text-gray-400 hover:text-gray-600 flex-shrink-0"
                   >
-                    ביטול
+                    {strings.sessionDetail.cancel_button}
                   </button>
                 </>
               ) : (
@@ -1186,8 +1187,8 @@ function ExerciseTracker({
                         onClick={() => deleteExercise(ex)}
                         disabled={deletingId === ex.id}
                         className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors disabled:opacity-50"
-                        aria-label="הסר משימה"
-                        title="הסר משימה"
+                        aria-label={strings.sessionDetail.task_delete_button}
+                        title={strings.sessionDetail.task_delete_button}
                       >
                         <XMarkIcon className="h-4 w-4" />
                       </button>
@@ -1203,7 +1204,7 @@ function ExerciseTracker({
       {/* Untracked AI suggestions — each can be added as a task or dismissed */}
       {untracked.length > 0 && (
         <div className="mb-3">
-          <p className="text-xs text-gray-500 mb-1.5">הצעות AI (טרם אושרו כמשימות):</p>
+          <p className="text-xs text-gray-500 mb-1.5">{strings.sessionDetail.ai_suggestions_title}</p>
           <div className="space-y-1.5">
             {untracked.map((s) => (
               <div
@@ -1215,14 +1216,14 @@ function ExerciseTracker({
                   onClick={() => trackSuggestion(s)}
                   disabled={adding === s}
                   className="flex-shrink-0 text-xs font-medium text-green-700 hover:text-green-900 border border-green-300 hover:border-green-500 bg-white hover:bg-green-50 rounded px-2 py-0.5 transition-colors disabled:opacity-50 whitespace-nowrap touch-manipulation"
-                  title="הוסף כמשימה פעילה"
+                  title={strings.sessionDetail.add_as_task_title}
                 >
-                  {adding === s ? '...' : '+ הוסף'}
+                  {adding === s ? '...' : `+ ${strings.sessionDetail.add_task_button}`}
                 </button>
                 <button
                   onClick={() => dismissSuggestion(s)}
                   className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors touch-manipulation"
-                  title="לא רלוונטי — הסתר"
+                  title={strings.sessionDetail.hide_suggestion_title}
                   aria-label="הסתר הצעה"
                 >
                   <XMarkIcon className="h-4 w-4" />
@@ -1276,7 +1277,7 @@ function AutoExpandTextarea({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit() }
           }}
-          placeholder="הוסף משימה מותאמת... (Enter לשמירה, Shift+Enter לשורה חדשה)"
+          placeholder={strings.sessionDetail.add_task_placeholder}
           rows={2}
           className="input-field flex-1 text-sm py-1.5 resize-none overflow-hidden min-h-[36px]"
           style={{ height: 'auto' }}
@@ -1286,7 +1287,7 @@ function AutoExpandTextarea({
           disabled={!value.trim() || disabled}
           className="btn-secondary text-sm py-1.5 px-3 disabled:opacity-50 flex-shrink-0"
         >
-          {disabled ? '...' : 'הוסף'}
+          {disabled ? '...' : strings.sessionDetail.add_button}
         </button>
       </div>
       <p className="text-right text-xs text-gray-400">{value.length}/{MAX}</p>

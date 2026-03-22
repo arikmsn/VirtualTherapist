@@ -9,6 +9,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { MicrophoneIcon, StopIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { strings } from '@/i18n/he'
 
 interface AudioRecorderProps {
   /** Called with the recorded audio blob when user confirms the recording */
@@ -81,10 +82,10 @@ export default function AudioRecorder({
       // navigator.permissions.query is NOT consulted — it reports inconsistent
       // states on iOS Safari and some Android browsers, causing false "blocked" messages.
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        setPermissionError('גישה למיקרופון נחסמה בדפדפן. יש לאפשר גישה בהגדרות הדפדפן ולרענן את הדף.')
+        setPermissionError(strings.audioRecorder.error_mic_blocked)
       } else {
         // NotFoundError, NotReadableError, AbortError, OverconstrainedError, or unknown
-        setPermissionError('לא הצלחנו להתחיל הקלטה. נסה שוב, או בדוק את המיקרופון והגדרות המכשיר.')
+        setPermissionError(strings.audioRecorder.error_mic_generic)
       }
     }
   }, [])
@@ -137,7 +138,7 @@ export default function AudioRecorder({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
             </span>
-            <span className="text-red-700 font-medium">מקליט...</span>
+            <span className="text-red-700 font-medium">{strings.audioRecorder.recording_indicator}</span>
           </div>
           <span className="text-red-600 font-mono text-lg">{formatTime(elapsed)}</span>
           <div className="flex-1" />
@@ -146,7 +147,7 @@ export default function AudioRecorder({
             className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
           >
             <StopIcon className="h-5 w-5" />
-            עצור הקלטה
+            {strings.audioRecorder.stop_button}
           </button>
         </div>
       )}
@@ -155,7 +156,7 @@ export default function AudioRecorder({
       {!recording && audioBlob && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-3">
-            <span className="text-blue-700 font-medium">הקלטה מוכנה</span>
+            <span className="text-blue-700 font-medium">{strings.audioRecorder.ready_label}</span>
             <span className="text-blue-600 font-mono">{formatTime(elapsed)}</span>
           </div>
 
@@ -173,10 +174,10 @@ export default function AudioRecorder({
               {processing ? (
                 <>
                   <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                  מתמלל ויוצר סיכום...
+                  {strings.audioRecorder.submit_processing}
                 </>
               ) : (
-                'תמלל וצור סיכום'
+                strings.audioRecorder.submit_button
               )}
             </button>
             <button
@@ -185,7 +186,7 @@ export default function AudioRecorder({
               className="flex items-center gap-2 text-gray-500 hover:text-red-600 text-sm disabled:opacity-50"
             >
               <TrashIcon className="h-4 w-4" />
-              מחק והקלט מחדש
+              {strings.audioRecorder.discard_button}
             </button>
           </div>
         </div>
@@ -195,7 +196,7 @@ export default function AudioRecorder({
       {!recording && !audioBlob && (
         <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
           <p className="text-sm text-gray-500 mb-3">
-            הקלט סיכום קולי קצר (1-2 דקות): מצב המטופל, התערבויות, תגובה, משימות, הערכת סיכון.
+            {strings.audioRecorder.idle_hint}
           </p>
           <button
             onClick={startRecording}
@@ -203,7 +204,7 @@ export default function AudioRecorder({
             className="inline-flex items-center gap-2 px-6 py-3 bg-therapy-calm text-white rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             <MicrophoneIcon className="h-5 w-5" />
-            התחל הקלטה קולית
+            {strings.audioRecorder.start_button}
           </button>
         </div>
       )}

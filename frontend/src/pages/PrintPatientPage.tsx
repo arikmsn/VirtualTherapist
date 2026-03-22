@@ -19,6 +19,7 @@ import { patientsAPI, patientSummariesAPI, treatmentPlanAPI, therapistAPI } from
 import AppLogo from '@/components/common/AppLogo'
 import { deepSummaryToText, treatmentPlanToText, type DeepSummary } from '@/lib/docText'
 import { formatDateIL } from '@/lib/dateUtils'
+import { strings } from '@/i18n/he'
 
 interface Patient {
   id: number
@@ -93,7 +94,7 @@ export default function PrintPatientPage() {
           setPlan(v)
         }
       } catch (err: any) {
-        setError(err.response?.data?.detail || 'שגיאה בטעינת הנתונים')
+        setError(err.response?.data?.detail || strings.printPatient.error_loading)
       } finally {
         setLoading(false)
       }
@@ -106,7 +107,7 @@ export default function PrintPatientPage() {
       <div className="min-h-screen flex items-center justify-center" dir="rtl">
         <div className="text-center space-y-3">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="text-sm text-gray-500">טוען מסמכים...</p>
+          <p className="text-sm text-gray-500">{strings.printPatient.loading}</p>
         </div>
       </div>
     )
@@ -115,8 +116,8 @@ export default function PrintPatientPage() {
   if (error || !patient) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4" dir="rtl">
-        <p className="text-red-600">{error || 'לא נמצאו נתונים'}</p>
-        <Link to={`/patients/${id}`} className="text-indigo-600 underline text-sm">חזרה לפרופיל המטופל</Link>
+        <p className="text-red-600">{error || strings.printPatient.not_found}</p>
+        <Link to={`/patients/${id}`} className="text-indigo-600 underline text-sm">{strings.printPatient.back_button}</Link>
       </div>
     )
   }
@@ -131,21 +132,21 @@ export default function PrintPatientPage() {
   const planRisks = (pj.risk_considerations ?? []) as string[]
   const hasPlanContent = !!(planPresentingProblem || planFocusAreas.length || planPrimaryGoals.length || planInterventionsPlanned.length || planMilestones.length || planRisks.length)
 
-  const PRIORITY_HE: Record<string, string> = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' }
-  const STATUS_HE: Record<string, string> = { not_started: 'לא החלה', in_progress: 'בתהליך', achieved: 'הושגה', dropped: 'הופסקה' }
+  const PRIORITY_HE: Record<string, string> = { high: strings.printPatient.priority_high, medium: strings.printPatient.priority_medium, low: strings.printPatient.priority_low }
+  const STATUS_HE: Record<string, string> = { not_started: strings.printPatient.status_not_started, in_progress: strings.printPatient.status_in_progress, achieved: strings.printPatient.status_achieved, dropped: strings.printPatient.status_dropped }
 
   return (
     <div className="min-h-screen bg-white" dir="rtl">
       {/* ── Print controls (hidden in print) ── */}
       <div className="no-print sticky top-0 z-10 bg-gray-50 border-b border-gray-200 px-6 py-3 flex items-center justify-between">
         <Link to={`/patients/${id}`} className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1">
-          ← חזרה לפרופיל המטופל
+          ← {strings.printPatient.back_button}
         </Link>
         <button
           onClick={() => window.print()}
           className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
         >
-          🖨 הדפסה / שמור PDF
+          {strings.printPatient.print_button}
         </button>
       </div>
 
@@ -163,19 +164,19 @@ export default function PrintPatientPage() {
         <div className="mb-6 space-y-1">
           <h1 className="text-2xl font-bold text-gray-900">
             {showSummary && showPlan
-              ? 'מסמכים קליניים'
+              ? strings.printPatient.documents_title
               : showSummary
-              ? 'סיכום עומק AI'
-              : 'תוכנית טיפולית'}
+              ? strings.printPatient.deep_summary_header
+              : strings.printPatient.treatment_plan_header}
           </h1>
           <div className="text-sm text-gray-600 space-y-0.5">
-            <p><span className="font-medium">מטופל/ת:</span> {patient.full_name}</p>
-            {therapistName && <p><span className="font-medium">מטפל/ת:</span> {therapistName}</p>}
+            <p><span className="font-medium">{strings.printPatient.patient_label}</span> {patient.full_name}</p>
+            {therapistName && <p><span className="font-medium">{strings.printPatient.therapist_label}</span> {therapistName}</p>}
             {patient.start_date && (
-              <p><span className="font-medium">תחילת טיפול:</span> {formatDateIL(patient.start_date)}</p>
+              <p><span className="font-medium">{strings.printPatient.treatment_start_label}</span> {formatDateIL(patient.start_date)}</p>
             )}
             {patient.primary_concerns && (
-              <p><span className="font-medium">הפניה בגין:</span> {patient.primary_concerns}</p>
+              <p><span className="font-medium">{strings.printPatient.referral_reason_label}</span> {patient.primary_concerns}</p>
             )}
           </div>
         </div>
@@ -184,11 +185,11 @@ export default function PrintPatientPage() {
         {showSummary && (
           <div className="mb-10">
             <h2 className="text-lg font-bold text-purple-900 mb-4 flex items-center gap-2 border-b-2 border-purple-100 pb-2">
-              ✦ סיכום עומק AI
+              {strings.printPatient.deep_summary_header}
             </h2>
 
             {!insight && !insightRenderedText ? (
-              <p className="text-gray-400 text-sm">אין סיכום עומק זמין.</p>
+              <p className="text-gray-400 text-sm">{strings.printPatient.no_deep_summary}</p>
             ) : insightRenderedText ? (
               // rendered_text is the canonical output — works for all schema versions (legacy, phase-6, CBT/phase-8)
               <p className="text-gray-800 text-sm whitespace-pre-line leading-relaxed">{insightRenderedText}</p>
@@ -196,13 +197,13 @@ export default function PrintPatientPage() {
               <div className="space-y-5 text-sm leading-relaxed">
                 {insight.overall_treatment_picture && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">תמונת מצב כללית של הטיפול</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">{strings.printPatient.section_overall}</h3>
                     <p className="text-gray-800 whitespace-pre-line">{insight.overall_treatment_picture}</p>
                   </section>
                 )}
                 {(insight.timeline_highlights ?? []).length > 0 && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">אבני דרך לאורך הדרך</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">{strings.printPatient.section_timeline}</h3>
                     <ul className="list-disc list-inside space-y-1 text-gray-800">
                       {(insight.timeline_highlights ?? []).map((h, i) => <li key={i}>{h}</li>)}
                     </ul>
@@ -210,26 +211,26 @@ export default function PrintPatientPage() {
                 )}
                 {insight.goals_and_tasks && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">מטרות ומשימות</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">{strings.printPatient.section_goals}</h3>
                     <p className="text-gray-800 whitespace-pre-line">{insight.goals_and_tasks}</p>
                   </section>
                 )}
                 {insight.measurable_progress && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">סימני התקדמות</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">{strings.printPatient.section_progress}</h3>
                     <p className="text-gray-800 whitespace-pre-line">{insight.measurable_progress}</p>
                   </section>
                 )}
                 {insight.directions_for_next_phase && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">כיוונים להמשך</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">{strings.printPatient.section_directions}</h3>
                     <p className="text-gray-800 whitespace-pre-line">{insight.directions_for_next_phase}</p>
                   </section>
                 )}
                 {/* Legacy fields */}
                 {!insight.overall_treatment_picture && insight.overview && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">סקירה כללית</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">{strings.printPatient.section_overview}</h3>
                     <p className="text-gray-800 whitespace-pre-line">{insight.overview}</p>
                   </section>
                 )}
@@ -242,23 +243,23 @@ export default function PrintPatientPage() {
         {showPlan && (
           <div className="mb-10">
             <h2 className="text-lg font-bold text-indigo-900 mb-4 flex items-center gap-2 border-b-2 border-indigo-100 pb-2">
-              📋 תוכנית טיפולית
+              {strings.printPatient.treatment_plan_header}
             </h2>
 
             {!plan || !hasPlanContent ? (
-              <p className="text-gray-400 text-sm">אין תוכנית טיפולית שמורה.</p>
+              <p className="text-gray-400 text-sm">{strings.printPatient.no_treatment_plan}</p>
             ) : (
               <div className="space-y-5 text-sm leading-relaxed">
                 {planPresentingProblem && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">📋 בעיה מוצגת</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">{strings.printPatient.section_presenting}</h3>
                     <p className="text-gray-800 whitespace-pre-line">{planPresentingProblem}</p>
                   </section>
                 )}
 
                 {planFocusAreas.length > 0 && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">🔍 תחומי התמקדות</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">{strings.printPatient.section_focus}</h3>
                     <div className="flex flex-wrap gap-1.5">
                       {planFocusAreas.map((area, i) => (
                         <span key={i} className="px-2 py-0.5 border border-indigo-200 text-indigo-800 rounded-full text-xs">{area}</span>
@@ -269,14 +270,14 @@ export default function PrintPatientPage() {
 
                 {planPrimaryGoals.length > 0 && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-2">🎯 מטרות טיפוליות</h3>
+                    <h3 className="font-bold text-gray-900 mb-2">{strings.printPatient.section_goals_therapeutic}</h3>
                     <div className="space-y-2">
                       {planPrimaryGoals.map((g, i) => (
                         <div key={i} className="border border-gray-100 rounded p-3">
                           <p className="text-gray-800">{g.description}</p>
                           <div className="flex gap-3 mt-1 text-xs text-gray-500">
-                            {g.priority && <span>עדיפות: {PRIORITY_HE[g.priority] ?? g.priority}</span>}
-                            {g.status && <span>סטטוס: {STATUS_HE[g.status] ?? g.status}</span>}
+                            {g.priority && <span>{strings.printPatient.priority_label} {PRIORITY_HE[g.priority] ?? g.priority}</span>}
+                            {g.status && <span>{strings.printPatient.status_label} {STATUS_HE[g.status] ?? g.status}</span>}
                           </div>
                         </div>
                       ))}
@@ -286,7 +287,7 @@ export default function PrintPatientPage() {
 
                 {planInterventionsPlanned.length > 0 && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">🛠️ התערבויות מתוכננות</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">{strings.printPatient.section_interventions}</h3>
                     <ul className="list-disc list-inside space-y-1 text-gray-800">
                       {planInterventionsPlanned.map((item, i) => (
                         <li key={i}>
@@ -300,12 +301,12 @@ export default function PrintPatientPage() {
 
                 {planMilestones.length > 0 && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">📍 אבני דרך</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">{strings.printPatient.section_milestones}</h3>
                     <ul className="list-disc list-inside space-y-1 text-gray-800">
                       {planMilestones.map((m, i) => (
                         <li key={i}>
                           {m.description}
-                          {m.target_by_session && <span className="text-gray-500"> (פגישה יעד: {m.target_by_session})</span>}
+                          {m.target_by_session && <span className="text-gray-500"> ({strings.printPatient.target_session_label} {m.target_by_session})</span>}
                           {m.achieved && <span className="text-green-600"> ✓</span>}
                         </li>
                       ))}
@@ -315,7 +316,7 @@ export default function PrintPatientPage() {
 
                 {planRisks.length > 0 && (
                   <section>
-                    <h3 className="font-bold text-gray-900 mb-1.5">⚠️ שיקולי סיכון</h3>
+                    <h3 className="font-bold text-gray-900 mb-1.5">{strings.printPatient.section_risks}</h3>
                     <ul className="list-disc list-inside space-y-1 text-gray-800">
                       {planRisks.map((r, i) => <li key={i}>{r}</li>)}
                     </ul>
@@ -323,10 +324,10 @@ export default function PrintPatientPage() {
                 )}
 
                 {plan.approved_at && (
-                  <p className="text-xs text-gray-400">אושר: {formatDateIL(plan.approved_at)}</p>
+                  <p className="text-xs text-gray-400">{strings.printPatient.approved_label} {formatDateIL(plan.approved_at)}</p>
                 )}
                 {!plan.approved_at && (
-                  <p className="text-xs text-amber-600">* הצעת AI — טרם אושרה</p>
+                  <p className="text-xs text-amber-600">{strings.printPatient.unapproved_label}</p>
                 )}
               </div>
             )}
@@ -335,7 +336,7 @@ export default function PrintPatientPage() {
 
         {/* Footer */}
         <div className="mt-12 pt-4 border-t border-gray-200 text-xs text-gray-400 text-center">
-          <p>מסמך זה הופק על ידי TherapyCompanion.AI · סודי</p>
+          <p>{strings.printPatient.footer}</p>
         </div>
       </div>
 
