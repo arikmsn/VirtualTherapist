@@ -306,6 +306,8 @@ class DeepSummaryService:
 
     def approve_deep_summary(self, summary_id: int, therapist_id: int) -> DeepSummary:
         """Approve a deep summary. Raises ValueError if not found or wrong owner."""
+        import asyncio
+
         summary = self.db.query(DeepSummary).filter(
             DeepSummary.id == summary_id,
             DeepSummary.therapist_id == therapist_id,
@@ -315,6 +317,14 @@ class DeepSummaryService:
         summary.status = DeepSummaryStatus.APPROVED.value
         summary.approved_at = datetime.utcnow()
         self.db.flush()
+
+        # Treatment plan precompute — fire-and-forget after every deep summary approval
+        try:
+            from app.ai.precompute import precompute_treatment_plan_for_patient
+            asyncio.create_task(precompute_treatment_plan_for_patient(summary.patient_id))
+        except RuntimeError:
+            pass  # no event loop in tests
+
         return summary
 
     def delete_deep_summary(self, summary_id: int, therapist_id: int) -> None:
@@ -403,10 +413,25 @@ class DeepSummaryService:
                 if entry.content in existing_contents:
                     continue
 
+                # Derive a safe title — DB enforces NOT NULL
+                _title = (
+                    entry.get("title")
+                    or entry.get("short_label")
+                    or entry.get("tag")
+                    # Fall back to first 8 words of content
+                    or " ".join(entry.content.split()[:8])
+                    or "Clinical note"
+                ) if hasattr(entry, "get") else (
+                    # VaultEntry is a dataclass — access attrs directly
+                    getattr(entry, "title", None)
+                    or " ".join(entry.content.split()[:8])
+                    or "Clinical note"
+                )
+
                 vault_row = TherapistReferenceVault(
                     therapist_id=therapist_id,
                     client_id=client_id,
-                    title=None,   # AI-extracted entries have no title
+                    title=_title[:255],   # respect column length; never None
                     content=entry.content,
                     entry_type=entry.entry_type,
                     tags=entry.tags,
@@ -420,7 +445,19 @@ class DeepSummaryService:
                 stored += 1
 
             if stored:
-                self.db.flush()
+                try:
+                    self.db.flush()
+                except Exception as flush_exc:
+                    # flush failed (e.g. IntegrityError on another column) — discard vault rows
+                    try:
+                        self.db.rollback()
+                    except Exception:
+                        pass
+                    logger.warning(
+                        f"[vault] flush failed for client={client_id} "
+                        f"({stored} entries discarded): {flush_exc!r}"
+                    )
+                    return 0
 
             logger.info(
                 f"[vault] EXTRACT client={client_id} "
@@ -429,6 +466,11 @@ class DeepSummaryService:
             return stored
 
         except Exception as exc:
+            # Catch-all — rollback any pending state so the session remains usable
+            try:
+                self.db.rollback()
+            except Exception:
+                pass
             logger.warning(
                 f"_extract_and_store_vault_entries client={client_id} "
                 f"failed (non-blocking): {exc!r}"
