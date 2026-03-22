@@ -13,7 +13,7 @@
 import { useState, useEffect } from 'react'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
-import { patientsAPI, sessionsAPI, therapistAPI } from '@/lib/api'
+import { patientsAPI, patientNotesAPI, sessionsAPI, therapistAPI } from '@/lib/api'
 
 interface Props {
   onComplete: () => void
@@ -57,14 +57,21 @@ for (let h = 7; h <= 22; h++) {
   }
 }
 
-// Label map for therapy approach values
+// Label map for therapy approach values (keys match primary_therapy_modes lowercase values)
 const APPROACH_LABELS: Record<string, string> = {
-  CBT: 'CBT — קוגניטיבי התנהגותי',
-  DBT: 'DBT — דיאלקטי התנהגותי',
-  ACT: 'ACT — קבלה ומחויבות',
+  cbt: 'CBT — קוגניטיבי-התנהגותי',
+  dbt: 'DBT — דיאלקטי-התנהגותי',
+  act: 'ACT — קבלה ומחויבות',
   psychodynamic: 'פסיכודינמי',
   humanistic: 'הומניסטי',
+  family_systemic: 'משפחתי/מערכתי',
+  psychodrama: 'פסיכודרמה',
   integrative: 'אינטגרטיבי',
+  emdr: 'EMDR',
+  ot_functional: 'ריפוי בעיסוק — גישה תפקודית',
+  ot_sensory: 'ריפוי בעיסוק — אינטגרציה חושית',
+  slp_communicative_social: 'קלינאות תקשורת — תקשורתית-חברתית',
+  slp_phonological_articulation: 'קלינאות תקשורת — פונולוגית/הגייתית',
   other: 'כללי / אחר',
 }
 
@@ -287,14 +294,20 @@ export default function OnboardingWizard({ onComplete }: Props) {
   const buildPrimaryConcerns = (p: PatientForm) =>
     p.age ? `גיל: ${p.age}\n${p.primary_concerns}` : p.primary_concerns
 
-  const createPatient = async (p: PatientForm) =>
-    patientsAPI.create({
+  const createPatient = async (p: PatientForm) => {
+    const created = await patientsAPI.create({
       full_name: p.full_name,
       primary_concerns: buildPrimaryConcerns(p),
       diagnosis: p.therapy_approach && p.therapy_approach !== 'other'
         ? `שיטת טיפול: ${p.therapy_approach}`
         : undefined,
     })
+    // Save reason-for-referral as a patient note so it appears in the notes section
+    if (p.primary_concerns.trim()) {
+      await patientNotesAPI.create(created.id, p.primary_concerns.trim()).catch(() => {})
+    }
+    return created
+  }
 
   const submitStep1 = async () => {
     const err = validatePatient(patient1)
