@@ -893,10 +893,25 @@ export default function PatientProfilePage() {
     setInsightLoading(true)
     setInsightError('')
     try {
+      // force_sync=true is baked into the API call — blocks until generation completes.
       const result = await patientSummariesAPI.generateDeepSummary(pid)
       if (result.summary_json) {
         setInsight(result.summary_json as unknown as DeepSummary)
       }
+      // Immediately inject the new summary into deepHistory so the card renders
+      // as soon as the spinner clears — no need to wait for loadDeepHistory().
+      if (result.summary_id) {
+        setDeepHistory(prev => [
+          {
+            summary_id: result.summary_id,
+            created_at: result.created_at,
+            rendered_text: result.rendered_text,
+            summary_json: result.summary_json,
+          },
+          ...prev.filter(s => s.summary_id !== result.summary_id),
+        ])
+      }
+      // Background refresh to pick up any ordering or metadata changes.
       loadDeepHistory()
     } catch (err: any) {
       setInsightError(err.response?.data?.detail || 'שגיאה ביצירת סיכום העומק')

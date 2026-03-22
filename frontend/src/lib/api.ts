@@ -497,7 +497,9 @@ export const patientSummariesAPI = {
   },
 
   generateDeepSummary: async (patientId: number) => {
-    const response = await api.post(`/clients/${patientId}/deep-summary`)
+    // force_sync=true: blocks until the summary is generated, always returns 200 with the full object.
+    // Use this for interactive button clicks — the UI shows a spinner while waiting.
+    const response = await api.post(`/clients/${patientId}/deep-summary?force_sync=true`)
     return response.data as {
       summary_id: number
       status: string
@@ -510,13 +512,14 @@ export const patientSummariesAPI = {
 
   getLatestDeepSummary: async (patientId: number) => {
     const response = await api.get(`/clients/${patientId}/deep-summary`)
+    // May return {status:"not_started"} or {status:"generating"} when no summary exists yet.
     return response.data as {
-      summary_id: number
+      summary_id?: number
       status: string
-      sessions_covered: number | null
-      summary_json: Record<string, unknown> | null
-      rendered_text: string | null
-      created_at: string
+      sessions_covered?: number | null
+      summary_json?: Record<string, unknown> | null
+      rendered_text?: string | null
+      created_at?: string
     }
   },
 
