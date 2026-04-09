@@ -204,61 +204,11 @@ async def shutdown_event():
     logger.info(f"Shutting down {settings.APP_NAME}")
 
 
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "app": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "status": "running",
-        "environment": settings.ENVIRONMENT
-    }
-
-
 @app.get("/health")
 async def health_check():
-    """Health check endpoint — includes last smoke-test result from the eval framework."""
-    from app.core.database import SessionLocal
-    from app.models.eval import AIEvalRun
-
-    ai_layer: dict = {
-        "last_smoke_test_passed": None,
-        "last_smoke_test_at": None,
-        "last_smoke_test_run_id": None,
-    }
-    try:
-        db = SessionLocal()
-        try:
-            last_smoke = (
-                db.query(AIEvalRun)
-                .filter(AIEvalRun.run_type == "smoke_test")
-                .order_by(AIEvalRun.run_at.desc())
-                .first()
-            )
-            if last_smoke:
-                ai_layer["last_smoke_test_passed"] = last_smoke.passed
-                ai_layer["last_smoke_test_at"] = (
-                    last_smoke.run_at.isoformat() if last_smoke.run_at else None
-                )
-                ai_layer["last_smoke_test_run_id"] = last_smoke.id
-        finally:
-            db.close()
-    except Exception:
-        pass  # DB unavailable — return None fields, don't crash health check
-
+    """Health check endpoint — lightweight, no DB query."""
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
-        "ai_layer": ai_layer,
     }
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.DEBUG
-    )
