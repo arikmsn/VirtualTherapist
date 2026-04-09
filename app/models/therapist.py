@@ -60,7 +60,9 @@ class Therapist(BaseModel):
     signature_profiles = relationship(
         "TherapistSignatureProfile",
         foreign_keys="TherapistSignatureProfile.therapist_id",
+        back_populates="therapist",
         cascade="all, delete-orphan",
+        overlaps="therapist",
     )
     profile = relationship(
         "TherapistProfile", back_populates="therapist",

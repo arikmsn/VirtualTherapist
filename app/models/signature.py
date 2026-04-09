@@ -74,4 +74,5 @@ class TherapistSignatureProfile(BaseModel):
     uses_clinical_jargon = Column(Boolean, nullable=True)
 
     # ── Relationships ─────────────────────────────────────────────────────────
-    therapist = relationship("Therapist", foreign_keys=[therapist_id])
+    therapist = relationship("Therapist", foreign_keys=[therapist_id],
+                            back_populates="signature_profiles", overlaps="signature_profiles")
