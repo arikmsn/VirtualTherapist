@@ -3,6 +3,20 @@
 Routes messages to Green API or Twilio based on the WHATSAPP_PROVIDER setting.
 send_whatsapp_message() is the ONLY function the rest of the app should call
 for WhatsApp delivery.
+
+Production note (2026-04-13):
+  WHATSAPP_PROVIDER defaults to "green_api" and is not overridden on Render.
+  Twilio is NOT in the live production path — the Twilio branch is dead code.
+
+  Root cause of 2026-04-13 incident:
+  Green API's sendMessage() uses the synchronous `requests` library internally.
+  Calling it directly inside an async function blocked the asyncio event loop
+  for 5–15 seconds per scheduler tick, causing Render health probes on other
+  endpoints to time out, which triggered repeated service restarts.
+
+  Fix: send_via_green_api() now wraps sendMessage() in run_in_executor() so
+  the blocking HTTP call runs in a thread pool without stalling the event loop.
+  The Twilio branch received the same fix defensively.
 """
 
 from typing import Optional

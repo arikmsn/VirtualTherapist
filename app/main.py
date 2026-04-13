@@ -154,6 +154,7 @@ async def startup_event():
         seconds=30,
         id="poll_scheduled_messages",
         replace_existing=True,
+        misfire_grace_time=30,  # absorb short blocking without noisy "missed by" warnings
     )
 
     scheduler.add_job(
