@@ -742,37 +742,151 @@ class MessageService:
         return message
 
 
+def _deliver_due_messages_sync() -> int:
+    """
+    Synchronous implementation of the scheduler poll — runs inside a thread
+    via run_in_executor so it NEVER touches the asyncio event loop directly.
+
+    This means asyncio.wait_for() can actually enforce the timeout even if
+    Postgres is slow or Green API blocks, because the event loop stays free.
+    """
+    import time
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        now_naive = datetime.utcnow()
+        due = db.query(Message).filter(
+            Message.status == MessageStatus.SCHEDULED,
+            Message.scheduled_send_at <= now_naive,
+        ).all()
+
+        if not due:
+            return 0
+
+        logger.info(f"[scheduler] found {len(due)} due message(s)")
+        count = 0
+        for message in due:
+            _t = time.monotonic()
+            logger.info(f"[scheduler] processing message_id={message.id}")
+            try:
+                # Resolve phone
+                to_phone = message.recipient_phone
+                if not to_phone:
+                    from app.security.encryption import decrypt_data
+                    patient = db.query(Patient).filter(Patient.id == message.patient_id).first()
+                    if patient and patient.phone_encrypted:
+                        to_phone = decrypt_data(patient.phone_encrypted)
+
+                if not to_phone:
+                    logger.error(f"[scheduler] message_id={message.id} no phone — marking FAILED")
+                    message.status = MessageStatus.FAILED
+                    db.commit()
+                    continue
+
+                # Build WhatsApp payload and send synchronously via httpx
+                from app.core.config import settings
+                from app.services.whatsapp_service import format_phone_to_green_api, _build_plain_text
+                import httpx as _httpx
+
+                provider = (settings.WHATSAPP_PROVIDER or "green_api").lower()
+
+                if provider == "green_api":
+                    instance_id = str(settings.GREEN_API_INSTANCE_ID or "")
+                    api_token = str(settings.GREEN_API_TOKEN or "")
+                    if not instance_id or not api_token:
+                        raise RuntimeError("GREEN_API credentials not set")
+                    chat_id = format_phone_to_green_api(to_phone)
+                    body = message.content or ""
+                    # Green API REST endpoint — same URL the library uses internally,
+                    # but called via httpx with an explicit 10s timeout so a slow
+                    # Green API server cannot block the thread indefinitely.
+                    resp = _httpx.post(
+                        f"https://api.green-api.com/waInstance{instance_id}/sendMessage/{api_token}",
+                        json={"chatId": chat_id, "message": body},
+                        timeout=10.0,
+                    )
+                    resp.raise_for_status()
+                    id_message = resp.json().get("idMessage", "")
+                    logger.info(f"[scheduler] message_id={message.id} sent via Green API idMessage={id_message}")
+                    result_status = "sent"
+                    result_error = ""
+                else:
+                    # Twilio — not in live production path, kept for completeness
+                    from app.services.channels.whatsapp import WhatsAppChannel
+                    from app.core.config import settings as _s
+                    ch = WhatsAppChannel(
+                        account_sid=_s.TWILIO_ACCOUNT_SID,
+                        from_number=_s.TWILIO_WHATSAPP_NUMBER,
+                        api_key_sid=_s.TWILIO_API_KEY_SID,
+                        api_key_secret=_s.TWILIO_API_KEY_SECRET,
+                    )
+                    # Twilio client.messages.create is sync — safe here in thread
+                    import json as _json
+                    kwargs = {"from_": ch.from_number, "to": f"whatsapp:{to_phone}"}
+                    msg = ch.client.messages.create(body=message.content, **kwargs)
+                    result_status = "sent"
+                    result_error = ""
+                    logger.info(f"[scheduler] message_id={message.id} sent via Twilio sid={msg.sid}")
+
+                message.status = MessageStatus.SENT
+                message.sent_at = datetime.utcnow()
+                db.commit()
+                count += 1
+
+            except Exception as exc:
+                elapsed_ms_inner = (time.monotonic() - _t) * 1000
+                logger.error(
+                    f"[scheduler] message_id={message.id} delivery failed after "
+                    f"{elapsed_ms_inner:.0f}ms: {exc!r}"
+                )
+                message.status = MessageStatus.FAILED
+                db.commit()
+            else:
+                elapsed_ms_inner = (time.monotonic() - _t) * 1000
+                logger.info(f"[scheduler] message_id={message.id} took {elapsed_ms_inner:.0f}ms")
+
+        return count
+    finally:
+        db.close()
+
+
 async def deliver_due_scheduled_messages() -> None:
     """
     APScheduler polling job — runs every 30 seconds.
-    Creates its own DB session so it stays independent of request sessions.
 
-    Bounded by a 25-second total timeout so a slow WhatsApp API cannot
-    block the event loop across scheduler ticks.
+    The entire DB poll + send is executed in a ThreadPoolExecutor so the
+    asyncio event loop is NEVER blocked by synchronous I/O (SQLAlchemy
+    queries, Green API HTTP calls). asyncio.wait_for() can then reliably
+    enforce the 25-second tick timeout even if Postgres or Green API hangs.
+
+    Root cause note (2026-04-13): asyncio.wait_for() wrapping an async
+    function that contains synchronous blocking calls (db.query().all(),
+    Green API requests lib) is ineffective — the event loop is frozen and
+    cannot deliver the cancellation. Fix: run everything in a thread.
     """
     import asyncio
     import time
-    from app.core.database import SessionLocal
 
     t0 = time.monotonic()
     logger.info("[scheduler] deliver_due_scheduled_messages started")
 
-    db = SessionLocal()
+    loop = asyncio.get_event_loop()
+    count = -1
     try:
-        svc = MessageService(db)
-        try:
-            count = await asyncio.wait_for(svc.deliver_due_messages(), timeout=25.0)
-        except asyncio.TimeoutError:
-            logger.error(
-                "[scheduler] deliver_due_scheduled_messages timed out after 25s — "
-                "some messages may not have been delivered this tick"
-            )
-            count = -1
+        count = await asyncio.wait_for(
+            loop.run_in_executor(None, _deliver_due_messages_sync),
+            timeout=25.0,
+        )
+    except asyncio.TimeoutError:
+        logger.error(
+            "[scheduler] deliver_due_scheduled_messages TIMEOUT after 25s — "
+            "Postgres or Green API hung; tick aborted. Event loop was NOT blocked."
+        )
+        count = -1
     except Exception as exc:
         logger.error(f"[scheduler] deliver_due_scheduled_messages unhandled error: {exc!r}")
         count = -1
-    finally:
-        db.close()
 
     elapsed_ms = (time.monotonic() - t0) * 1000
     logger.info(
