@@ -75,11 +75,17 @@ async def send_via_green_api(phone: str, message: str) -> SendResult:
     api_token = str(api_token)
 
     try:
+        import asyncio
         from whatsapp_api_client_python import API
         green_api = API.GreenAPI(instance_id, api_token)
         chat_id = format_phone_to_green_api(phone)
         logger.info(f"[GreenAPI] Sending to {chat_id}: {safe_message!r}")
-        response = green_api.sending.sendMessage(chat_id, safe_message)
+        # The Green API library uses synchronous `requests` — run in thread pool
+        # so it cannot block the asyncio event loop.
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None, lambda: green_api.sending.sendMessage(chat_id, safe_message)
+        )
         id_message = str(response.data.get("idMessage", "")) if response.data else ""
         logger.info(f"[GreenAPI] Sent to {chat_id}: idMessage={id_message}")
         return SendResult(status="sent", provider_id=id_message, error="")

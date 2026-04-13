@@ -608,16 +608,22 @@ class MessageService:
         if not due:
             return 0
 
-        logger.info(f"Scheduler poll: {len(due)} message(s) due for delivery")
+        logger.info(f"[scheduler] found {len(due)} due message(s)")
         count = 0
         for message in due:
+            import time as _time
+            _t = _time.monotonic()
+            logger.info(f"[scheduler] processing message_id={message.id}")
             try:
                 await self.deliver_message(message.id)
                 count += 1
             except Exception as exc:
-                logger.error(f"Scheduler: failed to deliver message {message.id}: {exc!r}")
+                logger.error(f"[scheduler] message_id={message.id} delivery failed: {exc!r}")
                 message.status = MessageStatus.FAILED
                 self.db.commit()
+            finally:
+                elapsed = (_time.monotonic() - _t) * 1000
+                logger.info(f"[scheduler] message_id={message.id} took {elapsed:.0f}ms")
 
         return count
 
@@ -740,12 +746,36 @@ async def deliver_due_scheduled_messages() -> None:
     """
     APScheduler polling job — runs every 30 seconds.
     Creates its own DB session so it stays independent of request sessions.
+
+    Bounded by a 25-second total timeout so a slow WhatsApp API cannot
+    block the event loop across scheduler ticks.
     """
+    import asyncio
+    import time
     from app.core.database import SessionLocal
+
+    t0 = time.monotonic()
+    logger.info("[scheduler] deliver_due_scheduled_messages started")
 
     db = SessionLocal()
     try:
         svc = MessageService(db)
-        await svc.deliver_due_messages()
+        try:
+            count = await asyncio.wait_for(svc.deliver_due_messages(), timeout=25.0)
+        except asyncio.TimeoutError:
+            logger.error(
+                "[scheduler] deliver_due_scheduled_messages timed out after 25s — "
+                "some messages may not have been delivered this tick"
+            )
+            count = -1
+    except Exception as exc:
+        logger.error(f"[scheduler] deliver_due_scheduled_messages unhandled error: {exc!r}")
+        count = -1
     finally:
         db.close()
+
+    elapsed_ms = (time.monotonic() - t0) * 1000
+    logger.info(
+        f"[scheduler] deliver_due_scheduled_messages finished — "
+        f"delivered={count} elapsed={elapsed_ms:.0f}ms"
+    )

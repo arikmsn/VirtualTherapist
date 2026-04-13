@@ -48,6 +48,7 @@ class WhatsAppChannel(BaseChannel):
         content_sid: str | None = None,
         content_variables: dict[str, str] | None = None,
     ) -> SendResult:
+        import asyncio
         to = to_phone if to_phone.startswith("whatsapp:") else f"whatsapp:{to_phone}"
         try:
             if content_sid:
@@ -61,10 +62,17 @@ class WhatsAppChannel(BaseChannel):
                     f"content_sid={content_sid} "
                     f"content_variables={cv_serialized!r}"
                 )
-                msg = self.client.messages.create(**kwargs)
+                # Twilio SDK uses synchronous `requests` — run in thread pool
+                loop = asyncio.get_event_loop()
+                msg = await loop.run_in_executor(
+                    None, lambda: self.client.messages.create(**kwargs)
+                )
                 logger.info(f"WhatsApp template sent: sid={msg.sid} to={to} content_sid={content_sid}")
             else:
-                msg = self.client.messages.create(body=body, from_=self.from_number, to=to)
+                loop = asyncio.get_event_loop()
+                msg = await loop.run_in_executor(
+                    None, lambda: self.client.messages.create(body=body, from_=self.from_number, to=to)
+                )
                 logger.info(f"WhatsApp sent: sid={msg.sid} to={to}")
             return SendResult(status="sent", provider_id=msg.sid, error="")
         except Exception as e:
