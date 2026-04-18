@@ -91,6 +91,7 @@ class TherapistRow(BaseModel):
     id: int
     email: str
     full_name: str
+    phone: Optional[str] = None
     is_active: bool
     is_admin: bool
     is_blocked: bool
@@ -99,6 +100,7 @@ class TherapistRow(BaseModel):
     session_count: int
     ai_call_count: int
     active_patients: int
+    patient_limit: int = 10
     intended_plan: Optional[str] = None
 
 
@@ -321,6 +323,7 @@ def list_therapists(
             id=t.id,
             email=t.email,
             full_name=t.full_name,
+            phone=t.phone,
             is_active=bool(t.is_active),
             is_admin=bool(t.is_admin),
             is_blocked=bool(t.is_blocked),
@@ -329,6 +332,7 @@ def list_therapists(
             session_count=session_count,
             ai_call_count=ai_count,
             active_patients=active_patients,
+            patient_limit=t.patient_limit if t.patient_limit is not None else 10,
             intended_plan=t.intended_plan,
         ))
     return result
@@ -389,10 +393,61 @@ def block_therapist(
     ai_count = db.query(func.count(AIGenerationLog.id)).filter(AIGenerationLog.therapist_id == t.id).scalar() or 0
 
     return TherapistRow(
-        id=t.id, email=t.email, full_name=t.full_name,
+        id=t.id, email=t.email, full_name=t.full_name, phone=t.phone,
         is_active=bool(t.is_active), is_admin=bool(t.is_admin), is_blocked=bool(t.is_blocked),
         last_login=t.last_login, created_at=t.created_at,
         session_count=session_count, ai_call_count=ai_count, active_patients=active_patients,
+        patient_limit=t.patient_limit if t.patient_limit is not None else 10,
+        intended_plan=t.intended_plan,
+    )
+
+
+class PatientLimitRequest(BaseModel):
+    limit: int
+
+
+@router.patch("/therapists/{therapist_id}/patient-limit", response_model=TherapistRow)
+def set_patient_limit(
+    therapist_id: int,
+    body: PatientLimitRequest,
+    admin: Therapist = Depends(get_admin_therapist),
+    db: DBSession = Depends(get_db),
+):
+    if body.limit < 0:
+        raise HTTPException(status_code=400, detail="Limit must be >= 0")
+
+    t = db.query(Therapist).filter(Therapist.id == therapist_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Therapist not found")
+
+    t.patient_limit = body.limit
+    db.commit()
+    db.refresh(t)
+
+    try:
+        from app.models.session import Session as TherapySession
+        session_count = db.query(func.count(TherapySession.id)).filter(TherapySession.therapist_id == t.id).scalar() or 0
+    except Exception:
+        session_count = 0
+
+    try:
+        from app.models.patient import Patient, PatientStatus
+        active_patients = (
+            db.query(func.count(Patient.id))
+            .filter(Patient.therapist_id == t.id, Patient.status == PatientStatus.ACTIVE.value)
+            .scalar() or 0
+        )
+    except Exception:
+        active_patients = 0
+
+    ai_count = db.query(func.count(AIGenerationLog.id)).filter(AIGenerationLog.therapist_id == t.id).scalar() or 0
+
+    return TherapistRow(
+        id=t.id, email=t.email, full_name=t.full_name, phone=t.phone,
+        is_active=bool(t.is_active), is_admin=bool(t.is_admin), is_blocked=bool(t.is_blocked),
+        last_login=t.last_login, created_at=t.created_at,
+        session_count=session_count, ai_call_count=ai_count, active_patients=active_patients,
+        patient_limit=t.patient_limit,
         intended_plan=t.intended_plan,
     )
 

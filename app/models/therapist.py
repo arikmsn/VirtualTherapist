@@ -43,6 +43,9 @@ class Therapist(BaseModel):
     intro_wizard_completed = Column(Boolean, default=False)
     profile_setup_completed = Column(Boolean, default=False)
 
+    # Patient quota — max patients allowed; admin can raise per-therapist after payment
+    patient_limit = Column(Integer, default=10, nullable=False, server_default='10')
+
     # Marketing attribution — set from ?plan= query param on /register
     intended_plan = Column(String(50), nullable=True)      # e.g. 'pro'; NULL = no plan param
 

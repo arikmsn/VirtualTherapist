@@ -110,6 +110,11 @@ async def create_patient(
         return PatientResponse.model_validate(patient)
 
     except ValueError as e:
+        if str(e) == "patient_limit_reached":
+            raise HTTPException(
+                status_code=403,
+                detail="הגעת למגבלת 10 המטופלים הכלולים בתוכנית החינמית. צרו איתנו קשר כדי להמשיך להוסיף מטופלים.",
+            )
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception(f"create_patient failed for therapist {current_therapist.id}: {e!r}")

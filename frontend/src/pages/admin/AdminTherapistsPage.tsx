@@ -79,6 +79,54 @@ function DeleteModal({
   )
 }
 
+// ── Patient Limit Modal ───────────────────────────────────────────────────────
+function LimitModal({
+  therapist, onConfirm, onClose, loading,
+}: { therapist: TherapistRow; onConfirm: (limit: number) => void; onClose: () => void; loading: boolean }) {
+  const [value, setValue] = useState(String(therapist.patient_limit))
+  const parsed = parseInt(value, 10)
+  const valid = !isNaN(parsed) && parsed >= 0
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" dir="rtl">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-2xl">👥</span>
+          <h2 className="text-base font-bold text-white">שינוי מגבלת מטופלים</h2>
+        </div>
+        <p className="text-sm text-gray-400 mb-1">{therapist.full_name}</p>
+        <p className="text-xs text-gray-500 mb-4">מגבלה נוכחית: {therapist.patient_limit}</p>
+        <input
+          type="number"
+          min={0}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg px-4 py-2.5 text-sm mb-5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          dir="ltr"
+          onKeyDown={(e) => e.key === 'Enter' && valid && onConfirm(parsed)}
+          autoFocus
+        />
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg transition-colors"
+          >
+            ביטול
+          </button>
+          <button
+            onClick={() => valid && onConfirm(parsed)}
+            disabled={!valid || loading}
+            className="px-4 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? 'שומר...' : 'שמור'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Temp Password Modal ───────────────────────────────────────────────────────
 function TempPasswordModal({
   therapist, onConfirm, onClose, loading,
@@ -130,6 +178,8 @@ export default function AdminTherapistsPage() {
   const [deleting, setDeleting] = useState(false)
   const [tempPwTarget, setTempPwTarget] = useState<TherapistRow | null>(null)
   const [sendingPw, setSendingPw] = useState(false)
+  const [limitTarget, setLimitTarget] = useState<TherapistRow | null>(null)
+  const [settingLimit, setSettingLimit] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   const showToast = (message: string, type: 'success' | 'error') => setToast({ message, type })
@@ -188,6 +238,21 @@ export default function AdminTherapistsPage() {
     }
   }
 
+  async function confirmSetLimit(limit: number) {
+    if (!limitTarget) return
+    setSettingLimit(true)
+    try {
+      const updated = await adminAPI.setPatientLimit(limitTarget.id, limit)
+      setTherapists((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+      showToast(`מגבלת מטופלים עודכנה ל-${limit} עבור ${limitTarget.full_name}`, 'success')
+      setLimitTarget(null)
+    } catch (e: unknown) {
+      showToast(`שגיאה: ${e instanceof Error ? e.message : e}`, 'error')
+    } finally {
+      setSettingLimit(false)
+    }
+  }
+
   const filtered = therapists.filter(
     (t) =>
       t.full_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -226,6 +291,14 @@ export default function AdminTherapistsPage() {
           onConfirm={confirmTempPassword}
           onClose={() => !sendingPw && setTempPwTarget(null)}
           loading={sendingPw}
+        />
+      )}
+      {limitTarget && (
+        <LimitModal
+          therapist={limitTarget}
+          onConfirm={confirmSetLimit}
+          onClose={() => !settingLimit && setLimitTarget(null)}
+          loading={settingLimit}
         />
       )}
 
@@ -267,7 +340,7 @@ export default function AdminTherapistsPage() {
               <th className="text-right px-4 py-3 font-medium">שם / אימייל</th>
               <th className="text-right px-4 py-3 font-medium">נרשם</th>
               <th className="text-right px-4 py-3 font-medium">כניסה אחרונה</th>
-              <th className="text-center px-4 py-3 font-medium">מטופלים פעילים</th>
+              <th className="text-center px-4 py-3 font-medium">מטופלים / מגבלה</th>
               <th className="text-center px-4 py-3 font-medium">פגישות</th>
               <th className="text-center px-4 py-3 font-medium">AI</th>
               <th className="text-center px-4 py-3 font-medium">תוכנית</th>
@@ -286,6 +359,9 @@ export default function AdminTherapistsPage() {
                 <td className="px-4 py-3">
                   <p className="text-white font-medium">{t.full_name}</p>
                   <p className="text-gray-400 text-xs">{t.email}</p>
+                  {t.phone && (
+                    <p className="text-gray-500 text-xs font-mono">{t.phone}</p>
+                  )}
                   {t.is_admin && (
                     <span className="text-xs bg-indigo-900 text-indigo-300 px-1.5 py-0.5 rounded mt-0.5 inline-block">
                       אדמין
@@ -295,9 +371,17 @@ export default function AdminTherapistsPage() {
                 <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{formatDate(t.created_at)}</td>
                 <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{formatDate(t.last_login)}</td>
                 <td className="px-4 py-3 text-center">
-                  <span className={`text-sm font-medium ${t.active_patients > 0 ? 'text-green-400' : 'text-gray-500'}`}>
-                    {t.active_patients}
-                  </span>
+                  <button
+                    onClick={() => setLimitTarget(t)}
+                    className="group flex items-center justify-center gap-1 mx-auto"
+                    title="שנה מגבלה"
+                  >
+                    <span className={`text-sm font-medium ${t.active_patients >= t.patient_limit ? 'text-red-400' : t.active_patients > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                      {t.active_patients}
+                    </span>
+                    <span className="text-gray-600 text-xs">/ {t.patient_limit}</span>
+                    <span className="text-gray-700 text-xs opacity-0 group-hover:opacity-100 transition-opacity">✎</span>
+                  </button>
                 </td>
                 <td className="px-4 py-3 text-center text-gray-300">{t.session_count}</td>
                 <td className="px-4 py-3 text-center text-gray-300">{t.ai_call_count}</td>

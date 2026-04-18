@@ -67,6 +67,7 @@ export interface TherapistRow {
   id: number
   email: string
   full_name: string
+  phone?: string | null
   is_active: boolean
   is_admin: boolean
   is_blocked: boolean
@@ -75,6 +76,7 @@ export interface TherapistRow {
   session_count: number
   ai_call_count: number
   active_patients: number
+  patient_limit: number
   intended_plan: string | null
 }
 
@@ -136,6 +138,8 @@ export const adminAPI = {
     get<TherapistRow[]>(`/admin-panel/therapists${intendedPlan ? `?intended_plan=${encodeURIComponent(intendedPlan)}` : ''}`),
   blockTherapist: (id: number, is_blocked: boolean) =>
     patch<TherapistRow>(`/admin-panel/therapists/${id}/block`, { is_blocked }),
+  setPatientLimit: (id: number, limit: number) =>
+    patch<TherapistRow>(`/admin-panel/therapists/${id}/patient-limit`, { limit }),
   getUsage: (days = 30) => get<UsageStats>(`/admin-panel/usage?days=${days}`),
   getAlerts: (unreadOnly = false) =>
     get<AlertRow[]>(`/admin-panel/alerts${unreadOnly ? '?unread_only=true' : ''}`),

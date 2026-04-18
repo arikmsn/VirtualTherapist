@@ -2,6 +2,7 @@
 
 from typing import Optional, Dict, Any, List
 from datetime import date
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.patient import Patient, PatientStatus
 from app.security.encryption import encrypt_data, decrypt_data
@@ -40,7 +41,24 @@ class PatientService:
         preferred_contact_time: Optional[str] = None,
         allow_ai_contact: bool = True,
     ) -> Patient:
-        """Create a new patient with encrypted personal data"""
+        """Create a new patient with encrypted personal data.
+
+        Raises ValueError with key 'patient_limit_reached' if the therapist
+        has reached their allowed patient quota.
+        """
+        from app.models.therapist import Therapist
+
+        therapist = self.db.query(Therapist).filter(Therapist.id == therapist_id).first()
+        if therapist:
+            # Count ALL patients regardless of status — prevents gaming by archiving
+            total_patients = (
+                self.db.query(func.count(Patient.id))
+                .filter(Patient.therapist_id == therapist_id)
+                .scalar() or 0
+            )
+            limit = therapist.patient_limit if therapist.patient_limit is not None else 10
+            if total_patients >= limit:
+                raise ValueError("patient_limit_reached")
 
         patient = Patient(
             therapist_id=therapist_id,
