@@ -107,7 +107,7 @@ class SessionSummary(BaseModel):
     # CRITICAL: signature engine learning only uses approved rows; this field
     # lets us compute edit distance (ai_draft_text vs final full_summary).
     ai_draft_text = Column(Text)
-    ai_model = Column(String(200))           # model that generated this summary
+    ai_model = Column(Text)                  # model that generated this summary
     ai_prompt_version = Column(String(50))   # prompt version tag at generation time
     ai_confidence = Column(Integer)          # 0–100 confidence from generation call
     modality_pack_id = Column(Integer, ForeignKey("modality_packs.id",

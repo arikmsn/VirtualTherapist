@@ -197,7 +197,11 @@ class SessionService:
             self.db.add(log_row)
             self.db.flush()
         except Exception as exc:
-            logger.warning(f"_write_generation_log failed (non-blocking): {exc}")
+            logger.warning(
+                f"_write_generation_log failed (non-blocking): "
+                f"therapist_id={therapist_id} session_id={session_id} "
+                f"flow_type={flow_type.value} summary_id={session_summary_id}: {exc}"
+            )
 
     async def create_session(
         self,
@@ -1248,7 +1252,7 @@ class SessionService:
                     "summaries": [
                         {
                             "summary_id": s.get("summary_id"),
-                            "approved_at": s.get("approved_at"),
+                            "finalized_at": s.get("finalized_at"),
                             "full_summary": s.get("full_summary"),
                         }
                         for s in _approved_fp
@@ -1392,7 +1396,7 @@ class SessionService:
             "summaries": [
                 {
                     "summary_id": s.get("summary_id"),
-                    "approved_at": s.get("approved_at"),
+                    "finalized_at": s.get("finalized_at"),
                     "full_summary": s.get("full_summary"),
                 }
                 for s in approved_summaries
@@ -1506,7 +1510,7 @@ class SessionService:
             if summary and summary.approved_by_therapist:
                 result.append({
                     "summary_id": summary.id,
-                    "approved_at": str(summary.edit_ended_at) if summary.edit_ended_at else None,
+                    "finalized_at": str(summary.edit_ended_at) if summary.edit_ended_at else None,
                     "session_date": str(s.session_date),
                     "session_number": s.session_number,
                     "full_summary": summary.full_summary,

@@ -1,6 +1,7 @@
 """Session management routes"""
 
 import json
+import time
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DBSession
@@ -858,7 +859,7 @@ async def stream_prep_v2(
             _fp = compute_fingerprint({
                 "mode": mode.value,
                 "summaries": [
-                    {"summary_id": s.get("summary_id"), "approved_at": s.get("approved_at"),
+                    {"summary_id": s.get("summary_id"), "finalized_at": s.get("finalized_at"),
                      "full_summary": s.get("full_summary")}
                     for s in _fp_summaries
                 ],
@@ -1015,7 +1016,7 @@ async def stream_prep_v2(
             session.prep_input_fingerprint = compute_fingerprint({
                 "mode": mode.value,
                 "summaries": [
-                    {"summary_id": s.get("summary_id"), "approved_at": s.get("approved_at"),
+                    {"summary_id": s.get("summary_id"), "finalized_at": s.get("finalized_at"),
                      "full_summary": s.get("full_summary")}
                     for s in approved_summaries
                 ],
@@ -1225,6 +1226,7 @@ async def finalize_clips(
 
     session_service = SessionService(db)
     therapist_service = TherapistService(db)
+    _t0 = time.monotonic()
 
     try:
         agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
@@ -1240,6 +1242,11 @@ async def finalize_clips(
         summary.generated_from = "audio"
         db.commit()
         db.refresh(summary)
+        logger.info(
+            f"finalize_clips session={session_id} therapist={current_therapist.id} "
+            f"summary_id={summary.id} ai_model={summary.ai_model} "
+            f"time_ms={int((time.monotonic() - _t0) * 1000)}"
+        )
         return _summary_response_with_meta(summary)
 
     except ValueError as e:

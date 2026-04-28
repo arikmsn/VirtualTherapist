@@ -642,22 +642,28 @@ async def get_today_insights(
 
             approved_summaries = []
             if session_id_list:
-                summaries_raw = (
-                    db.query(SessionSummary)
+                # FK lives on Session.summary_id → session_summaries.id, not the reverse.
+                # Query Session rows that have a linked approved summary, then access
+                # summary via the ORM relationship — never touch SessionSummary.session_id.
+                sessions_with_summary = (
+                    db.query(TherapySession)
                     .filter(
-                        SessionSummary.session_id.in_(session_id_list),
-                        SessionSummary.status == SummaryStatus.APPROVED,
+                        TherapySession.id.in_(session_id_list),
+                        TherapySession.summary_id.isnot(None),
                     )
                     .all()
                 )
-                # Sort newest first via session_info_map
-                summaries_sorted = sorted(
-                    summaries_raw,
-                    key=lambda ss: session_info_map.get(ss.session_id, {}).get("session_date", today),
+                approved_pairs = [
+                    (s, s.summary)
+                    for s in sessions_with_summary
+                    if s.summary and s.summary.status == SummaryStatus.APPROVED
+                ]
+                approved_pairs.sort(
+                    key=lambda pair: session_info_map.get(pair[0].id, {}).get("session_date", today),
                     reverse=True,
                 )
-                for ss in summaries_sorted[:2]:
-                    info = session_info_map.get(ss.session_id, {})
+                for sess, ss in approved_pairs[:2]:
+                    info = session_info_map.get(sess.id, {})
                     approved_summaries.append({
                         "session_date": str(info.get("session_date", "?")),
                         "session_number": info.get("session_number"),
