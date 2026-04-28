@@ -226,3 +226,84 @@ class TestRouterProviderIntegration:
 
         from app.core.config import settings
         assert call_args.get("model") == settings.AI_STANDARD_MODEL
+
+
+# ── Temperature suppression for Opus 4-7 ─────────────────────────────────────
+
+class TestOpusTemperatureSuppression:
+    """claude-opus-4-7 rejects the temperature parameter (400 error).
+    The provider must omit it entirely for that model family.
+    """
+
+    @pytest.fixture
+    def mock_response(self):
+        r = MagicMock()
+        r.content = [MagicMock(text="ok")]
+        r.usage = MagicMock(input_tokens=10, output_tokens=5)
+        return r
+
+    @pytest.mark.asyncio
+    async def test_opus_4_7_omits_temperature(self, mock_response):
+        """generate() must NOT include 'temperature' in kwargs for claude-opus-4-7."""
+        captured: dict = {}
+
+        async def capture_create(**kwargs):
+            captured.update(kwargs)
+            return mock_response
+
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.messages.create = capture_create
+            mock_cls.return_value = mock_instance
+
+            provider = AnthropicProvider(api_key="test-key")
+            await provider.generate(
+                [{"role": "user", "content": "summarise"}],
+                model="claude-opus-4-7",
+                flow_type=FlowType.DEEP_SUMMARY,
+                temperature=0.7,
+            )
+
+        assert "temperature" not in captured, (
+            "temperature must be omitted for claude-opus-4-7 to avoid 400 deprecation error"
+        )
+
+    @pytest.mark.asyncio
+    async def test_other_models_still_send_temperature(self, mock_response):
+        """Non-Opus models must still receive the temperature parameter."""
+        captured: dict = {}
+
+        async def capture_create(**kwargs):
+            captured.update(kwargs)
+            return mock_response
+
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.messages.create = capture_create
+            mock_cls.return_value = mock_instance
+
+            provider = AnthropicProvider(api_key="test-key")
+            await provider.generate(
+                [{"role": "user", "content": "hello"}],
+                model="claude-sonnet-4-6",
+                flow_type=FlowType.SESSION_SUMMARY,
+                temperature=0.5,
+            )
+
+        assert captured.get("temperature") == 0.5
+
+
+# ── mood_observed column width ────────────────────────────────────────────────
+
+class TestMoodObservedColumnWidth:
+    """After migration 042, mood_observed is TEXT — no length constraint."""
+
+    def test_mood_observed_is_text_not_varchar(self):
+        from sqlalchemy import Text
+        from app.models.session import SessionSummary
+
+        col = SessionSummary.__table__.c["mood_observed"]
+        assert isinstance(col.type, Text), (
+            "mood_observed must be Text (not String/VARCHAR) to avoid "
+            "StringDataRightTruncation when AI generates long observations"
+        )

@@ -95,9 +95,12 @@ class AnthropicProvider(AIProvider):
         kwargs: dict = dict(
             model=model,
             messages=turns,
-            temperature=temperature,
             max_tokens=max_tokens,
         )
+        # claude-opus-4-7 (and future extended-thinking models) reject the temperature
+        # parameter with a 400 "temperature is deprecated for this model" error.
+        if not model.startswith("claude-opus-4-7"):
+            kwargs["temperature"] = temperature
         if system_text:
             kwargs["system"] = system_text
 
@@ -155,9 +158,10 @@ class AnthropicProvider(AIProvider):
         kwargs: dict = dict(
             model=model,
             messages=turns,
-            temperature=temperature,
             max_tokens=max_tokens,
         )
+        if not model.startswith("claude-opus-4-7"):
+            kwargs["temperature"] = temperature
         if system_text:
             kwargs["system"] = system_text
 

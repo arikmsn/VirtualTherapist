@@ -99,7 +99,7 @@ class SessionSummary(BaseModel):
     )
 
     # Clinical Observations
-    mood_observed = Column(String(100))
+    mood_observed = Column(Text)
     risk_assessment = Column(Text)  # Safety/risk notes
 
     # AI Generation Metadata (added migration 014)
