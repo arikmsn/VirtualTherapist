@@ -11,6 +11,33 @@ from app.services.audit_service import AuditService
 from app.core.config import settings
 from loguru import logger
 
+_QUOTA_REJECTION_REASON = "greenapi_quota_exceeded_correspondents"
+_QUOTA_KEYWORDS = ("CORRESPONDENTS_QUOTA_EXCEEDED", "correspondentsStatus", "Monthly quota has been exceeded")
+
+
+def _is_greenapi_quota_error(http_status_code: int, error_text: str) -> bool:
+    """Return True if this failure is a Green-API correspondent-quota error (HTTP 466)."""
+    if http_status_code == 466:
+        return True
+    return any(kw in error_text for kw in _QUOTA_KEYWORDS)
+
+
+def get_quota_failed_messages_since(db: Session, since: datetime) -> list:
+    """Return FAILED messages with rejection_reason indicating a quota block since `since`.
+
+    Read-only helper for internal analysis — not exposed as an API endpoint.
+    """
+    return (
+        db.query(Message)
+        .filter(
+            Message.status == MessageStatus.FAILED,
+            Message.rejection_reason == _QUOTA_REJECTION_REASON,
+            Message.created_at >= since,
+        )
+        .order_by(Message.created_at.desc())
+        .all()
+    )
+
 
 class MessageService:
     """
@@ -718,15 +745,26 @@ class MessageService:
         else:
             message.status = MessageStatus.FAILED
             error_str = result.get("error", "")
-            if "63016" in error_str:
-                failure_reason = "outside 24h window - template required"
-                message.rejection_reason = failure_reason
+            http_code = result.get("http_status_code", 0)
+            if _is_greenapi_quota_error(http_code, error_str):
+                message.rejection_reason = "greenapi_quota_exceeded_correspondents"
+                logger.warning(
+                    f"[quota] message_id={message_id} therapist_id={message.therapist_id} "
+                    f"patient_id={message.patient_id} chat={to_phone} "
+                    f"http_status={http_code} rejection_reason=greenapi_quota_exceeded_correspondents"
+                )
+            elif "63016" in error_str:
+                message.rejection_reason = "outside 24h window - template required"
                 logger.error(
                     f"Message {message_id} rejected (63016 — outside 24h WhatsApp window). "
                     f"patient_id={message.patient_id} phone={to_phone}. Use a Content Template."
                 )
             else:
-                logger.error(f"Message {message_id} delivery failed: {error_str}")
+                logger.error(
+                    f"Message {message_id} delivery failed: http_status={http_code} "
+                    f"therapist_id={message.therapist_id} patient_id={message.patient_id} "
+                    f"chat={to_phone} error={error_str!r}"
+                )
 
         self.db.commit()
         self.db.refresh(message)
@@ -808,7 +846,11 @@ def _deliver_due_messages_sync() -> int:
                     )
                     resp.raise_for_status()
                     id_message = resp.json().get("idMessage", "")
-                    logger.info(f"[scheduler] message_id={message.id} sent via Green API idMessage={id_message}")
+                    logger.info(
+                        f"[scheduler] message_id={message.id} therapist_id={message.therapist_id} "
+                        f"patient_id={message.patient_id} chat={chat_id} "
+                        f"sent via Green API idMessage={id_message}"
+                    )
                     result_status = "sent"
                     result_error = ""
                 else:
@@ -836,10 +878,27 @@ def _deliver_due_messages_sync() -> int:
 
             except Exception as exc:
                 elapsed_ms_inner = (time.monotonic() - _t) * 1000
-                logger.error(
-                    f"[scheduler] message_id={message.id} delivery failed after "
-                    f"{elapsed_ms_inner:.0f}ms: {exc!r}"
-                )
+                import httpx as _httpx_exc
+                http_code = 0
+                error_text = str(exc)
+                if isinstance(exc, _httpx_exc.HTTPStatusError):
+                    http_code = exc.response.status_code
+                    error_text = exc.response.text[:500]
+                if _is_greenapi_quota_error(http_code, error_text):
+                    message.rejection_reason = "greenapi_quota_exceeded_correspondents"
+                    logger.warning(
+                        f"[scheduler][quota] message_id={message.id} "
+                        f"therapist_id={message.therapist_id} patient_id={message.patient_id} "
+                        f"chat={message.recipient_phone} http_status={http_code} "
+                        f"rejection_reason=greenapi_quota_exceeded_correspondents "
+                        f"elapsed_ms={elapsed_ms_inner:.0f}"
+                    )
+                else:
+                    logger.error(
+                        f"[scheduler] message_id={message.id} therapist_id={message.therapist_id} "
+                        f"patient_id={message.patient_id} chat={message.recipient_phone} "
+                        f"http_status={http_code} delivery failed after {elapsed_ms_inner:.0f}ms: {exc!r}"
+                    )
                 message.status = MessageStatus.FAILED
                 db.commit()
             else:

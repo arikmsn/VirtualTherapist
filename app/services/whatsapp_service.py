@@ -56,13 +56,15 @@ def _build_plain_text(content_variables: dict) -> str:
 
 async def send_via_green_api(phone: str, message: str) -> SendResult:
     """Send a plain-text WhatsApp message via Green API."""
+    import asyncio
+    import httpx
     from app.core.config import settings
 
     # ── Guard: phone ──────────────────────────────────────────────────────────
     if not phone:
         err = "send_via_green_api: phone is empty/None — cannot send"
         logger.error(err)
-        return SendResult(status="failed", provider_id="", error=err)
+        return SendResult(status="failed", provider_id="", error=err, http_status_code=0)
 
     # ── Guard: message ────────────────────────────────────────────────────────
     safe_message = message if isinstance(message, str) else (str(message) if message is not None else "")
@@ -71,9 +73,6 @@ async def send_via_green_api(phone: str, message: str) -> SendResult:
         safe_message = "תזכורת פגישה"
 
     # ── Guard: credentials ────────────────────────────────────────────────────
-    # The Green API library builds a URL via url.replace("{idInstance}", instance_id).
-    # If either credential is None the library raises TypeError: replace() argument 2
-    # must be str, not None.  Catch this before handing control to the library.
     instance_id = settings.GREEN_API_INSTANCE_ID
     api_token = settings.GREEN_API_TOKEN
     if not instance_id or not api_token:
@@ -82,30 +81,34 @@ async def send_via_green_api(phone: str, message: str) -> SendResult:
             "message not sent. Configure these env vars in Render."
         )
         logger.error(f"[GreenAPI] {err} (phone={phone})")
-        return SendResult(status="failed", provider_id="", error=err)
+        return SendResult(status="failed", provider_id="", error=err, http_status_code=0)
 
-    # Coerce to str so the library never receives a non-string argument
     instance_id = str(instance_id)
     api_token = str(api_token)
+    chat_id = format_phone_to_green_api(phone)
 
-    try:
-        import asyncio
-        from whatsapp_api_client_python import API
-        green_api = API.GreenAPI(instance_id, api_token)
-        chat_id = format_phone_to_green_api(phone)
-        logger.info(f"[GreenAPI] Sending to {chat_id}: {safe_message!r}")
-        # The Green API library uses synchronous `requests` — run in thread pool
-        # so it cannot block the asyncio event loop.
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None, lambda: green_api.sending.sendMessage(chat_id, safe_message)
-        )
-        id_message = str(response.data.get("idMessage", "")) if response.data else ""
-        logger.info(f"[GreenAPI] Sent to {chat_id}: idMessage={id_message}")
-        return SendResult(status="sent", provider_id=id_message, error="")
-    except Exception as e:
-        logger.exception(f"[GreenAPI] Send failed to {phone}: {e}")
-        return SendResult(status="failed", provider_id="", error=str(e))
+    def _do_send() -> SendResult:
+        url = f"https://api.green-api.com/waInstance{instance_id}/sendMessage/{api_token}"
+        try:
+            resp = httpx.post(url, json={"chatId": chat_id, "message": safe_message}, timeout=10.0)
+            resp.raise_for_status()
+            id_message = resp.json().get("idMessage", "")
+            logger.info(f"[GreenAPI] Sent to {chat_id}: idMessage={id_message}")
+            return SendResult(status="sent", provider_id=str(id_message), error="", http_status_code=resp.status_code)
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code
+            resp_text = exc.response.text[:500]
+            logger.error(
+                f"[GreenAPI] HTTP {status_code} sending to {chat_id}: {resp_text!r}"
+            )
+            return SendResult(status="failed", provider_id="", error=resp_text, http_status_code=status_code)
+        except Exception as exc:
+            logger.exception(f"[GreenAPI] Send failed to {phone}: {exc}")
+            return SendResult(status="failed", provider_id="", error=str(exc), http_status_code=0)
+
+    logger.info(f"[GreenAPI] Sending to {chat_id}: {safe_message!r}")
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _do_send)
 
 
 async def send_via_twilio(

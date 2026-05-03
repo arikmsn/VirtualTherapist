@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.api.routes import auth, agent, messages, patients, sessions, therapist, debug, exercises, admin
 from app.api.routes import formal_records, treatment_plans, deep_summaries, ui_affordances, eval as eval_routes
-from app.api.routes import admin_panel
+from app.api.routes import admin_panel, whatsapp as whatsapp_routes
 from app.core.scheduler import scheduler
 from app.services.message_service import deliver_due_scheduled_messages
 from loguru import logger
@@ -102,6 +102,9 @@ if settings.ADMIN_SECRET:
 
 # Admin panel — always mounted, protected by admin JWT (is_admin=True claim).
 app.include_router(admin_panel.router, prefix="/api/v1/admin-panel", tags=["Admin Panel"])
+
+# WhatsApp webhooks — unauthenticated; Green-API pushes events here.
+app.include_router(whatsapp_routes.router, prefix="/api/v1/whatsapp", tags=["WhatsApp Webhooks"])
 
 
 def _check_inactive_therapists():

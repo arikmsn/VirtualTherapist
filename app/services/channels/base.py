@@ -2,12 +2,17 @@
 
 from abc import ABC, abstractmethod
 from typing import TypedDict
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
 
 
 class SendResult(TypedDict):
-    status: str        # "sent" or "failed"
-    provider_id: str   # Channel-specific message ID (empty string on failure)
-    error: str         # Error description (empty string on success)
+    status: str               # "sent" or "failed"
+    provider_id: str          # Channel-specific message ID (empty string on failure)
+    error: str                # Error description (empty string on success)
+    http_status_code: NotRequired[int]  # HTTP status from provider (0 if not applicable)
 
 
 class BaseChannel(ABC):
