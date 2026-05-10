@@ -1,6 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
 import { adminAPI, TherapistRow } from '@/lib/adminApi'
 
+type PlanValue = 'free' | 'pro' | 'clinic'
+
+const PLAN_LABELS: Record<PlanValue, string> = {
+  free: 'חינמי',
+  pro: 'Pro',
+  clinic: 'קליניקה',
+}
+
+function planLabel(t: TherapistRow): string {
+  const p = (t.plan ?? 'free') as PlanValue
+  if (p === 'clinic' && t.clinic_name) return `קליניקה (${t.clinic_name})`
+  return PLAN_LABELS[p] ?? p
+}
+
+function planBadge(t: TherapistRow) {
+  const p = (t.plan ?? 'free') as PlanValue
+  if (p === 'free') return <span className="text-gray-500 text-xs">חינמי</span>
+  if (p === 'pro') return <span className="text-xs bg-indigo-900 text-indigo-300 px-2 py-0.5 rounded-full font-medium">Pro</span>
+  return (
+    <span className="text-xs bg-teal-900 text-teal-300 px-2 py-0.5 rounded-full font-medium">
+      {t.clinic_name ? `קליניקה (${t.clinic_name})` : 'קליניקה'}
+    </span>
+  )
+}
+
 function formatDate(iso: string | null) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('he-IL', {
@@ -165,6 +190,65 @@ function TempPasswordModal({
   )
 }
 
+// ── Plan Modal ────────────────────────────────────────────────────────────────
+function PlanModal({
+  therapist, onConfirm, onClose, loading,
+}: { therapist: TherapistRow; onConfirm: (plan: PlanValue, clinicName: string) => void; onClose: () => void; loading: boolean }) {
+  const [plan, setPlan] = useState<PlanValue>((therapist.plan ?? 'free') as PlanValue)
+  const [clinicName, setClinicName] = useState(therapist.clinic_name ?? '')
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" dir="rtl">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-2xl">💳</span>
+          <h2 className="text-base font-bold text-white">שינוי תוכנית</h2>
+        </div>
+        <p className="text-sm text-gray-400 mb-4">{therapist.full_name}</p>
+
+        <select
+          value={plan}
+          onChange={(e) => setPlan(e.target.value as PlanValue)}
+          className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg px-4 py-2.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          autoFocus
+        >
+          <option value="free">חינמי</option>
+          <option value="pro">Pro</option>
+          <option value="clinic">קליניקה</option>
+        </select>
+
+        {plan === 'clinic' && (
+          <input
+            type="text"
+            placeholder="שם הקליניקה / העסק"
+            value={clinicName}
+            onChange={(e) => setClinicName(e.target.value)}
+            className="w-full bg-gray-800 border border-gray-600 text-white rounded-lg px-4 py-2.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-teal-500"
+          />
+        )}
+
+        <div className="flex gap-3 justify-end mt-2">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg transition-colors"
+          >
+            ביטול
+          </button>
+          <button
+            onClick={() => onConfirm(plan, clinicName)}
+            disabled={loading || (plan === 'clinic' && !clinicName.trim())}
+            className="px-4 py-2 text-sm font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? 'שומר...' : 'שמור'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function AdminTherapistsPage() {
   const [therapists, setTherapists] = useState<TherapistRow[]>([])
@@ -180,6 +264,8 @@ export default function AdminTherapistsPage() {
   const [sendingPw, setSendingPw] = useState(false)
   const [limitTarget, setLimitTarget] = useState<TherapistRow | null>(null)
   const [settingLimit, setSettingLimit] = useState(false)
+  const [planTarget, setPlanTarget] = useState<TherapistRow | null>(null)
+  const [settingPlan, setSettingPlan] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   const showToast = (message: string, type: 'success' | 'error') => setToast({ message, type })
@@ -238,6 +324,21 @@ export default function AdminTherapistsPage() {
     }
   }
 
+  async function confirmSetPlan(plan: PlanValue, clinicName: string) {
+    if (!planTarget) return
+    setSettingPlan(true)
+    try {
+      const updated = await adminAPI.setPlan(planTarget.id, plan, plan === 'clinic' ? clinicName : undefined)
+      setTherapists((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+      showToast(`תוכנית עודכנה ל-${planLabel(updated)} עבור ${planTarget.full_name}`, 'success')
+      setPlanTarget(null)
+    } catch (e: unknown) {
+      showToast(`שגיאה: ${e instanceof Error ? e.message : e}`, 'error')
+    } finally {
+      setSettingPlan(false)
+    }
+  }
+
   async function confirmSetLimit(limit: number) {
     if (!limitTarget) return
     setSettingLimit(true)
@@ -259,7 +360,8 @@ export default function AdminTherapistsPage() {
       t.email.toLowerCase().includes(search.toLowerCase()),
   )
 
-  const proCount = therapists.filter((t) => t.intended_plan === 'pro').length
+  const proCount = therapists.filter((t) => (t.plan ?? 'free') === 'pro').length
+  const clinicCount = therapists.filter((t) => (t.plan ?? 'free') === 'clinic').length
 
   if (loading) {
     return (
@@ -301,13 +403,26 @@ export default function AdminTherapistsPage() {
           loading={settingLimit}
         />
       )}
+      {planTarget && (
+        <PlanModal
+          therapist={planTarget}
+          onConfirm={confirmSetPlan}
+          onClose={() => !settingPlan && setPlanTarget(null)}
+          loading={settingPlan}
+        />
+      )}
 
       <h1 className="text-2xl font-bold text-white mb-1">מטפלים</h1>
       <p className="text-sm text-gray-400 mb-6">
         {therapists.length} חשבונות רשומים
         {proCount > 0 && (
           <span className="mr-2 text-xs bg-indigo-900 text-indigo-300 px-2 py-0.5 rounded-full">
-            {proCount} pro
+            {proCount} Pro
+          </span>
+        )}
+        {clinicCount > 0 && (
+          <span className="mr-2 text-xs bg-teal-900 text-teal-300 px-2 py-0.5 rounded-full">
+            {clinicCount} קליניקה
           </span>
         )}
       </p>
@@ -327,7 +442,9 @@ export default function AdminTherapistsPage() {
           className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
           <option value="">כל התוכניות</option>
-          <option value="pro">pro בלבד</option>
+          <option value="free">חינמי</option>
+          <option value="pro">Pro</option>
+          <option value="clinic">קליניקה</option>
         </select>
       </div>
 
@@ -386,11 +503,16 @@ export default function AdminTherapistsPage() {
                 <td className="px-4 py-3 text-center text-gray-300">{t.session_count}</td>
                 <td className="px-4 py-3 text-center text-gray-300">{t.ai_call_count}</td>
                 <td className="px-4 py-3 text-center">
-                  {t.intended_plan === 'pro' ? (
-                    <span className="text-xs bg-indigo-900 text-indigo-300 px-2 py-0.5 rounded-full font-medium">pro</span>
-                  ) : (
-                    <span className="text-gray-600 text-xs">—</span>
-                  )}
+                  {!t.is_admin ? (
+                    <button
+                      onClick={() => setPlanTarget(t)}
+                      className="group inline-flex items-center gap-1"
+                      title="שנה תוכנית"
+                    >
+                      {planBadge(t)}
+                      <span className="text-gray-700 text-xs opacity-0 group-hover:opacity-100 transition-opacity">✎</span>
+                    </button>
+                  ) : planBadge(t)}
                 </td>
                 <td className="px-4 py-3 text-center">
                   {t.is_blocked ? (

@@ -87,6 +87,9 @@ class DashboardExtended(BaseModel):
     token_by_day_stacked: List[Dict[str, Any]]
 
 
+_VALID_PLANS = {"free", "pro", "clinic"}
+
+
 class TherapistRow(BaseModel):
     id: int
     email: str
@@ -102,6 +105,8 @@ class TherapistRow(BaseModel):
     active_patients: int
     patient_limit: int = 10
     intended_plan: Optional[str] = None
+    plan: str = "free"
+    clinic_name: Optional[str] = None
 
 
 class AlertRow(BaseModel):
@@ -140,6 +145,29 @@ class UsageStats(BaseModel):
     by_type: List[UsageTypeStats]
     total_calls: int
     total_tokens: int
+
+
+# ── Row builder ──────────────────────────────────────────────────────────────
+
+def _therapist_row(t: Therapist, session_count: int, ai_count: int, active_patients: int) -> TherapistRow:
+    return TherapistRow(
+        id=t.id,
+        email=t.email,
+        full_name=t.full_name,
+        phone=t.phone,
+        is_active=bool(t.is_active),
+        is_admin=bool(t.is_admin),
+        is_blocked=bool(t.is_blocked),
+        last_login=t.last_login,
+        created_at=t.created_at,
+        session_count=session_count,
+        ai_call_count=ai_count,
+        active_patients=active_patients,
+        patient_limit=t.patient_limit if t.patient_limit is not None else 10,
+        intended_plan=t.intended_plan,
+        plan=t.plan if t.plan else "free",
+        clinic_name=t.clinic_name,
+    )
 
 
 # ── Token cost estimation ─────────────────────────────────────────────────────
@@ -283,10 +311,13 @@ def admin_dashboard(
 def list_therapists(
     admin: Therapist = Depends(get_admin_therapist),
     db: DBSession = Depends(get_db),
-    intended_plan: Optional[str] = Query(None, description="Filter by intended_plan value (e.g. 'pro')"),
+    intended_plan: Optional[str] = Query(None, description="Deprecated: use 'plan' instead"),
+    plan: Optional[str] = Query(None, description="Filter by plan ('free', 'pro', 'clinic')"),
 ):
     query = db.query(Therapist)
-    if intended_plan is not None:
+    if plan is not None:
+        query = query.filter(Therapist.plan == plan)
+    elif intended_plan is not None:
         query = query.filter(Therapist.intended_plan == intended_plan)
     therapists = query.order_by(Therapist.created_at.desc()).all()
     result = []
@@ -319,22 +350,7 @@ def list_therapists(
             .filter(AIGenerationLog.therapist_id == t.id)
             .scalar() or 0
         )
-        result.append(TherapistRow(
-            id=t.id,
-            email=t.email,
-            full_name=t.full_name,
-            phone=t.phone,
-            is_active=bool(t.is_active),
-            is_admin=bool(t.is_admin),
-            is_blocked=bool(t.is_blocked),
-            last_login=t.last_login,
-            created_at=t.created_at,
-            session_count=session_count,
-            ai_call_count=ai_count,
-            active_patients=active_patients,
-            patient_limit=t.patient_limit if t.patient_limit is not None else 10,
-            intended_plan=t.intended_plan,
-        ))
+        result.append(_therapist_row(t, session_count, ai_count, active_patients))
     return result
 
 
@@ -392,14 +408,7 @@ def block_therapist(
 
     ai_count = db.query(func.count(AIGenerationLog.id)).filter(AIGenerationLog.therapist_id == t.id).scalar() or 0
 
-    return TherapistRow(
-        id=t.id, email=t.email, full_name=t.full_name, phone=t.phone,
-        is_active=bool(t.is_active), is_admin=bool(t.is_admin), is_blocked=bool(t.is_blocked),
-        last_login=t.last_login, created_at=t.created_at,
-        session_count=session_count, ai_call_count=ai_count, active_patients=active_patients,
-        patient_limit=t.patient_limit if t.patient_limit is not None else 10,
-        intended_plan=t.intended_plan,
-    )
+    return _therapist_row(t, session_count, ai_count, active_patients)
 
 
 class PatientLimitRequest(BaseModel):
@@ -442,14 +451,55 @@ def set_patient_limit(
 
     ai_count = db.query(func.count(AIGenerationLog.id)).filter(AIGenerationLog.therapist_id == t.id).scalar() or 0
 
-    return TherapistRow(
-        id=t.id, email=t.email, full_name=t.full_name, phone=t.phone,
-        is_active=bool(t.is_active), is_admin=bool(t.is_admin), is_blocked=bool(t.is_blocked),
-        last_login=t.last_login, created_at=t.created_at,
-        session_count=session_count, ai_call_count=ai_count, active_patients=active_patients,
-        patient_limit=t.patient_limit,
-        intended_plan=t.intended_plan,
-    )
+    return _therapist_row(t, session_count, ai_count, active_patients)
+
+
+class PlanRequest(BaseModel):
+    plan: str
+    clinic_name: Optional[str] = None
+
+
+@router.patch("/therapists/{therapist_id}/plan", response_model=TherapistRow)
+def set_therapist_plan(
+    therapist_id: int,
+    body: PlanRequest,
+    admin: Therapist = Depends(get_admin_therapist),
+    db: DBSession = Depends(get_db),
+):
+    if body.plan not in _VALID_PLANS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid plan '{body.plan}'. Allowed values: {sorted(_VALID_PLANS)}",
+        )
+
+    t = db.query(Therapist).filter(Therapist.id == therapist_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Therapist not found")
+
+    t.plan = body.plan
+    t.clinic_name = body.clinic_name if body.plan == "clinic" else None
+    db.commit()
+    db.refresh(t)
+
+    try:
+        from app.models.session import Session as TherapySession
+        session_count = db.query(func.count(TherapySession.id)).filter(TherapySession.therapist_id == t.id).scalar() or 0
+    except Exception:
+        session_count = 0
+
+    try:
+        from app.models.patient import Patient, PatientStatus
+        active_patients = (
+            db.query(func.count(Patient.id))
+            .filter(Patient.therapist_id == t.id, Patient.status == PatientStatus.ACTIVE.value)
+            .scalar() or 0
+        )
+    except Exception:
+        active_patients = 0
+
+    ai_count = db.query(func.count(AIGenerationLog.id)).filter(AIGenerationLog.therapist_id == t.id).scalar() or 0
+
+    return _therapist_row(t, session_count, ai_count, active_patients)
 
 
 @router.get("/usage", response_model=UsageStats)

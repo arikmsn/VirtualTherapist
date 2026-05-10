@@ -123,6 +123,7 @@ async def register(
         therapist.accepted_terms_at = datetime.now(timezone.utc)
         if request.intended_plan == 'pro':
             therapist.intended_plan = 'pro'
+            therapist.plan = 'pro'
         db.commit()
 
         # Create access token

@@ -78,6 +78,8 @@ export interface TherapistRow {
   active_patients: number
   patient_limit: number
   intended_plan: string | null
+  plan: 'free' | 'pro' | 'clinic'
+  clinic_name: string | null
 }
 
 export interface AlertRow {
@@ -134,8 +136,10 @@ export const adminAPI = {
   },
 
   getDashboard: () => get<DashboardExtended>('/admin-panel/dashboard'),
-  getTherapists: (intendedPlan?: string) =>
-    get<TherapistRow[]>(`/admin-panel/therapists${intendedPlan ? `?intended_plan=${encodeURIComponent(intendedPlan)}` : ''}`),
+  getTherapists: (plan?: string) =>
+    get<TherapistRow[]>(`/admin-panel/therapists${plan ? `?plan=${encodeURIComponent(plan)}` : ''}`),
+  setPlan: (id: number, plan: string, clinicName?: string) =>
+    patch<TherapistRow>(`/admin-panel/therapists/${id}/plan`, { plan, clinic_name: clinicName ?? null }),
   blockTherapist: (id: number, is_blocked: boolean) =>
     patch<TherapistRow>(`/admin-panel/therapists/${id}/block`, { is_blocked }),
   setPatientLimit: (id: number, limit: number) =>

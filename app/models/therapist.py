@@ -49,6 +49,10 @@ class Therapist(BaseModel):
     # Marketing attribution — set from ?plan= query param on /register
     intended_plan = Column(String(50), nullable=True)      # e.g. 'pro'; NULL = no plan param
 
+    # Authoritative plan label — "free" | "pro" | "clinic" (admin-editable)
+    plan = Column(String(50), nullable=False, server_default='free', default='free')
+    clinic_name = Column(Text, nullable=True)              # non-null only when plan='clinic'
+
     # Terms & Privacy consent — timestamp of explicit acceptance (NULL = pre-consent era)
     accepted_terms_at = Column(DateTime, nullable=True)
 
