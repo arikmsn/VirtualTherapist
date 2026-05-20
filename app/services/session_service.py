@@ -1527,10 +1527,18 @@ class SessionService:
         """
         Delete a session and its associated summary (if any).
 
-        FK order: delete the session row first (drops the FK reference on sessions.summary_id),
-        then delete the now-orphaned summary row.
+        FK order:
+        1. Null exercises.session_summary_id for any exercises linked to this summary —
+           exercises (patient homework) survive, only their summary attribution is cleared.
+           Migration 045 enforces this at the DB level via ON DELETE SET NULL; the
+           explicit UPDATE here is defense-in-depth and makes the intent clear.
+        2. Delete the session row (removes the sessions.summary_id FK reference).
+        3. Delete the now-orphaned summary row.
+
         Raises ValueError if the session is not found or not owned by this therapist.
         """
+        from app.models.exercise import Exercise
+
         session = self.db.query(TherapySession).filter(
             TherapySession.id == session_id,
             TherapySession.therapist_id == therapist_id,
@@ -1539,6 +1547,14 @@ class SessionService:
             raise ValueError("Session not found")
 
         summary_id = session.summary_id
+
+        if summary_id:
+            # Null the summary link on any exercises that reference this summary.
+            self.db.query(Exercise).filter(
+                Exercise.session_summary_id == summary_id,
+            ).update({"session_summary_id": None}, synchronize_session=False)
+            self.db.flush()
+
         self.db.delete(session)
         self.db.flush()
 
@@ -1577,6 +1593,11 @@ class SessionService:
             raise ValueError("No summary to delete")
 
         summary_id = session.summary_id
+        # Null exercises before unlinking and deleting the summary row (defense-in-depth;
+        # migration 045 enforces ON DELETE SET NULL at the DB level).
+        self.db.query(Exercise).filter(
+            Exercise.session_summary_id == summary_id,
+        ).update({"session_summary_id": None}, synchronize_session=False)
         # Unlink FK before deleting the summary row
         session.summary_id = None
         self.db.flush()

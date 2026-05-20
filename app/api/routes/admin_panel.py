@@ -675,7 +675,16 @@ def delete_therapist(
                     return 0
                 raise
 
-        # Null sessions.summary_id before deleting session_summaries (FK safety)
+        # Null exercises.session_summary_id before deleting summaries (FK: exercises → session_summaries).
+        # Must run before the session_summaries DELETE; migration 045 adds ON DELETE SET NULL at the
+        # DB level, but the explicit UPDATE here is defense-in-depth.
+        db.execute(
+            text("UPDATE exercises SET session_summary_id = NULL WHERE therapist_id = :tid"),
+            {"tid": tid},
+        )
+        _del("exercises",            "therapist_id = :tid", {"tid": tid})
+
+        # Null sessions.summary_id before deleting session_summaries (FK: sessions → session_summaries)
         summary_ids = [
             r[0]
             for r in db.execute(
@@ -691,8 +700,6 @@ def delete_therapist(
             n = db.execute(text(f"DELETE FROM session_summaries WHERE id IN ({id_list})")).rowcount
             if n:
                 deleted["session_summaries"] = n
-
-        _del("exercises",            "therapist_id = :tid", {"tid": tid})
         _del("sessions",             "therapist_id = :tid", {"tid": tid})
         _del("messages",             "therapist_id = :tid", {"tid": tid})
         _del("patient_notes",        "therapist_id = :tid", {"tid": tid})

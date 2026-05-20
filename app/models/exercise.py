@@ -14,7 +14,7 @@ class Exercise(BaseModel):
 
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False, index=True)
     therapist_id = Column(Integer, ForeignKey("therapists.id"), nullable=False)
-    session_summary_id = Column(Integer, ForeignKey("session_summaries.id"), nullable=True)
+    session_summary_id = Column(Integer, ForeignKey("session_summaries.id", ondelete="SET NULL"), nullable=True)
 
     description = Column(Text, nullable=False)
     completed = Column(Boolean, default=False, nullable=False)
