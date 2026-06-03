@@ -502,54 +502,80 @@ async def submit_feedback(
 ):
     """
     Send feedback / bug report to info@metapel.online via SendGrid.
-    Falls back to log-only when SENDGRID_API_KEY is not set (dev environments).
-    Raises HTTP 500 if SendGrid is configured but the send fails.
+    - Falls back to log-only when SENDGRID_API_KEY is absent (dev/staging without SendGrid).
+    - Raises HTTP 500 when SendGrid is configured but delivery fails.
+    - The blocking sg.send() call runs in a thread pool so it never blocks the event loop.
     """
+    import asyncio
     from app.core.config import settings as _s
 
     label = "דיווח על תקלה" if body.type == "bug" else "יצירת קשר"
     subject_line = f"[{label}] {body.subject or 'ללא נושא'} — {current_therapist.email}"
 
-    # Always log regardless of email outcome
+    # Always log the feedback content regardless of email outcome
     logger.warning(
-        f"[feedback] type={body.type!r} therapist_id={current_therapist.id} "
+        f"[feedback] RECEIVED type={body.type!r} therapist_id={current_therapist.id} "
         f"email={current_therapist.email!r} subject={body.subject!r} "
-        f"message={body.message!r}"
+        f"message_len={len(body.message)}"
     )
 
     if not _s.SENDGRID_API_KEY:
-        # Dev / staging without SendGrid — log only, return success so UI doesn't break
-        logger.warning("[feedback] SENDGRID_API_KEY not set — email not sent, logged only")
-        return
+        logger.warning("[feedback] SENDGRID_API_KEY not configured — feedback logged only, email NOT sent")
+        return  # 204 — acceptable in dev; UI shows success
 
     html_body = f"""
 <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1F2937;">
-  <h2 style="color: #2563EB;">{label}</h2>
-  <table style="width:100%; border-collapse:collapse;">
-    <tr><td style="padding:4px 0; font-weight:bold;">מטפל/ת:</td><td>{current_therapist.full_name} ({current_therapist.email})</td></tr>
-    <tr><td style="padding:4px 0; font-weight:bold;">נושא:</td><td>{body.subject or '—'}</td></tr>
+  <h2 style="color: #2563EB; margin-top:0;">{label}</h2>
+  <table style="width:100%; border-collapse:collapse; font-size:14px;">
+    <tr><td style="padding:4px 8px 4px 0; font-weight:bold; white-space:nowrap;">מטפל/ת:</td>
+        <td style="padding:4px 0;">{current_therapist.full_name} &lt;{current_therapist.email}&gt;</td></tr>
+    <tr><td style="padding:4px 8px 4px 0; font-weight:bold; white-space:nowrap;">נושא:</td>
+        <td style="padding:4px 0;">{body.subject or '—'}</td></tr>
   </table>
   <hr style="margin:16px 0; border:none; border-top:1px solid #E5E7EB;"/>
-  <div style="background:#F9FAFB; border-radius:8px; padding:16px; white-space:pre-wrap;">{body.message}</div>
+  <div style="background:#F9FAFB; border-radius:8px; padding:16px; white-space:pre-wrap; font-size:14px; line-height:1.6;">{body.message}</div>
 </div>
 """
-    try:
+    plain_body = (
+        f"{label}\n"
+        f"מטפל/ת: {current_therapist.full_name} <{current_therapist.email}>\n"
+        f"נושא: {body.subject or '—'}\n\n"
+        f"{body.message}"
+    )
+
+    def _send_via_sendgrid() -> int:
+        """Synchronous helper — called via asyncio.to_thread so it doesn't block the event loop."""
         import sendgrid
-        from sendgrid.helpers.mail import Mail
+        from sendgrid.helpers.mail import Mail, Content, To
 
         message = Mail(
             from_email=(_s.SENDGRID_FROM_EMAIL, "Metapel Feedback"),
             to_emails="info@metapel.online",
             subject=subject_line,
-            html_content=html_body,
         )
+        message.add_content(Content("text/plain", plain_body))
+        message.add_content(Content("text/html", html_body))
+
         sg = sendgrid.SendGridAPIClient(api_key=_s.SENDGRID_API_KEY)
         response = sg.send(message)
-        if response.status_code not in (200, 202):
-            raise RuntimeError(f"SendGrid returned {response.status_code}: {response.body}")
-        logger.info(f"[feedback] email sent to info@metapel.online for therapist {current_therapist.id}")
+        return response.status_code
+
+    try:
+        logger.info(
+            f"[feedback] attempting SendGrid send to info@metapel.online "
+            f"from {_s.SENDGRID_FROM_EMAIL!r} for therapist {current_therapist.id}"
+        )
+        status = await asyncio.to_thread(_send_via_sendgrid)
+        if status not in (200, 202):
+            raise RuntimeError(f"SendGrid returned unexpected status {status}")
+        logger.info(
+            f"[feedback] SendGrid accepted (status={status}): "
+            f"therapist_id={current_therapist.id} type={body.type!r}"
+        )
     except Exception as exc:
-        logger.error(f"[feedback] SendGrid send failed: {exc}")
+        logger.error(
+            f"[feedback] SendGrid delivery FAILED for therapist_id={current_therapist.id}: {exc!r}"
+        )
         raise HTTPException(status_code=500, detail="שגיאה בשליחת ההודעה. נסה שנית.")
 
 

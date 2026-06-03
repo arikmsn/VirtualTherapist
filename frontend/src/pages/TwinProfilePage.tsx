@@ -74,6 +74,7 @@ interface TherapistProfile {
   cbt_active: boolean
   protocols_used: string[]
   custom_protocols: ProtocolItem[]
+  default_session_duration?: number
 }
 
 interface ProtocolItem {
@@ -739,6 +740,11 @@ function AISettingsTab({
   defaultSessionDuration: number; setDefaultSessionDuration: (v: number) => void
 }) {
   const [newProhibition, setNewProhibition] = useState('')
+  // Local string state so the user can type freely (clear, partial values) without clamping on each keystroke
+  const [durationInput, setDurationInput] = useState(String(defaultSessionDuration))
+  // Sync display when the parent value changes (e.g. on initial profile load)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setDurationInput(String(defaultSessionDuration)) }, [defaultSessionDuration])
 
   const addProhibition = () => {
     const t = newProhibition.trim()
@@ -857,9 +863,21 @@ function AISettingsTab({
           <div className="flex items-center gap-3">
             <input
               type="number"
-              value={defaultSessionDuration}
-              onChange={(e) => setDefaultSessionDuration(Math.max(10, Math.min(180, parseInt(e.target.value) || 50)))}
-              min={10} max={180} step={5}
+              value={durationInput}
+              onChange={(e) => {
+                setDurationInput(e.target.value)          // allow free typing (including empty)
+                const v = parseInt(e.target.value, 10)
+                if (!isNaN(v)) setDefaultSessionDuration(v)  // update parent for dirty-state
+              }}
+              onBlur={() => {
+                // clamp and normalise only when the user leaves the field
+                const v = parseInt(durationInput, 10)
+                const clamped = isNaN(v) ? 50 : Math.max(10, Math.min(180, v))
+                setDurationInput(String(clamped))
+                setDefaultSessionDuration(clamped)
+              }}
+              min={10} max={180}
+              placeholder="50"
               className="input-field w-28"
             />
             <span className="text-sm text-gray-500">דקות (ברירת מחדל בעת יצירת פגישה)</span>
@@ -976,7 +994,8 @@ export default function TwinProfilePage() {
     education !== (profile.education || '') ||
     certifications !== (profile.certifications || '') ||
     yearsOfExperience !== (profile.years_of_experience || '') ||
-    areasOfExpertise !== (profile.areas_of_expertise || '')
+    areasOfExpertise !== (profile.areas_of_expertise || '') ||
+    defaultSessionDuration !== (profile.default_session_duration ?? 50)
   )
 
   useEffect(() => {
