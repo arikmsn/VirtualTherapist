@@ -563,6 +563,7 @@ class SessionService:
             risk_assessment=risk_notes,
             clinical_json=clinical_json_dict,
             generated_from="text",
+            notes_input=therapist_notes,
             therapist_edited=False,
             approved_by_therapist=False,
             ai_draft_text=rendered_text,   # rendered prose = what therapist sees and edits

@@ -25,6 +25,7 @@ interface SessionSummary {
   id: number
   full_summary: string | null
   transcript: string | null
+  notes_input: string | null
   topics_discussed: string[] | null
   interventions_used: string[] | null
   patient_progress: string | null
@@ -86,6 +87,9 @@ export default function SessionDetailPage() {
 
   // Transcript toggle (for side-by-side view)
   const [showTranscript, setShowTranscript] = useState(true)
+
+  // Source notes toggle
+  const [showNotesInput, setShowNotesInput] = useState(false)
 
   // Transcript editing + regenerate
   const [editingTranscript, setEditingTranscript] = useState(false)
@@ -458,23 +462,19 @@ export default function SessionDetailPage() {
             </button>
           </div>
 
-          {prepStream.phase === 'extracting' ? (
+          {prepStream.phase === 'extracting' || prepStream.phase === 'rendering' ? (
             <div className="flex justify-center py-6">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600 mx-auto mb-2"></div>
-                <p className="text-sm text-amber-700">{strings.sessionDetail.extracting_data}</p>
+                <p className="text-sm text-amber-700">
+                  {prepStream.phase === 'extracting'
+                    ? strings.sessionDetail.extracting_data
+                    : strings.sessionDetail.generating_briefing}
+                </p>
               </div>
             </div>
-          ) : prepStream.phase === 'rendering' || prepStream.phase === 'done' ? (
-            <div>
-              {prepStream.phase === 'rendering' && !prepStream.text && (
-                <div className="flex items-center gap-2 text-amber-700 text-sm mb-3">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
-                  <span>{strings.sessionDetail.generating_briefing}</span>
-                </div>
-              )}
-              <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{prepStream.text}</p>
-            </div>
+          ) : prepStream.phase === 'done' ? (
+            <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{prepStream.text}</p>
           ) : prepStream.phase === 'error' ? (
             <div className="text-amber-800 text-sm">
               <p>{prepStream.error}</p>
@@ -687,6 +687,27 @@ export default function SessionDetailPage() {
                   {deletingSummary ? strings.sessionDetail.deleting : strings.sessionDetail.delete_button}
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Source notes (text-generated summaries) */}
+          {summary.generated_from === 'text' && summary.notes_input && (
+            <div>
+              <button
+                onClick={() => setShowNotesInput(!showNotesInput)}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                {showNotesInput ? 'הסתר הערות מקור' : 'הצג הערות מקור'}
+              </button>
+              {showNotesInput && (
+                <div className="card border-blue-200 bg-blue-50 mt-2">
+                  <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
+                    <DocumentTextIcon className="h-4 w-4" />
+                    הערות מקור
+                  </h3>
+                  <p className="text-sm text-blue-900 whitespace-pre-wrap">{summary.notes_input}</p>
+                </div>
+              )}
             </div>
           )}
 

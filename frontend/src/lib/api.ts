@@ -365,8 +365,13 @@ export const sessionsAPI = {
     return response.data
   },
 
-  update: async (sessionId: number, data: Record<string, unknown>) => {
+  update: async (sessionId: number, data: { session_date?: string; start_time?: string; session_type?: string; duration_minutes?: number } | Record<string, unknown>) => {
     const response = await api.put(`/sessions/${sessionId}`, data)
+    return response.data
+  },
+
+  setPaid: async (sessionId: number, isPaid: boolean) => {
+    const response = await api.patch(`/sessions/${sessionId}/paid`, { is_paid: isPaid })
     return response.data
   },
 

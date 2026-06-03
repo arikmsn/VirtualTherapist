@@ -66,6 +66,8 @@ class SessionResponse(BaseModel):
     has_recording: bool
     summary_id: Optional[int] = None
     summary_status: Optional[str] = None   # "draft" | "approved" | None (no summary)
+    is_paid: bool = False
+    paid_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
@@ -114,6 +116,7 @@ class SummaryResponse(BaseModel):
     id: int
     full_summary: Optional[str] = None
     transcript: Optional[str] = None
+    notes_input: Optional[str] = None
     generated_from: Optional[str] = None
     therapist_edited: bool
     approved_by_therapist: bool
@@ -382,6 +385,33 @@ async def update_session(
     except Exception as e:
         logger.exception(f"update_session session={session_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class PaidRequest(BaseModel):
+    is_paid: bool
+
+
+@router.patch("/{session_id}/paid", response_model=SessionResponse)
+async def set_session_paid(
+    session_id: int,
+    body: PaidRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Mark a session as paid or unpaid"""
+    from app.models.session import Session as _Session
+
+    session = db.query(_Session).filter(
+        _Session.id == session_id,
+        _Session.therapist_id == current_therapist.id,
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session.is_paid = body.is_paid
+    session.paid_at = datetime.utcnow() if body.is_paid else None
+    db.commit()
+    db.refresh(session)
+    return SessionResponse.model_validate(session)
 
 
 # --- Summary endpoints ---

@@ -75,6 +75,7 @@ export default function PatientsPage() {
     primary_concerns: '',
   })
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
 
   const loadPatients = async (): Promise<Patient[]> => {
     try {
@@ -174,6 +175,7 @@ export default function PatientsPage() {
   const handleCreatePatient = async () => {
     if (!newPatient.full_name.trim()) return
     setCreating(true)
+    setCreateError('')
     try {
       await patientsAPI.create({
         full_name: newPatient.full_name,
@@ -184,8 +186,12 @@ export default function PatientsPage() {
       setNewPatient({ full_name: '', phone: '', email: '', primary_concerns: '' })
       setShowCreateForm(false)
       await loadPatients()
-    } catch (error) {
-      console.error('Error creating patient:', error)
+    } catch (error: any) {
+      if (error.response?.status === 403 && error.response?.data?.detail === 'patient_limit_reached') {
+        setCreateError('הגעת למכסת המטופלים המקסימלית. לשדרוג או לסיוע, פנה/י אלינו בכתובת info@metapel.online')
+      } else {
+        setCreateError('אירעה שגיאה ביצירת המטופל. נסה/י שוב.')
+      }
     } finally {
       setCreating(false)
     }
@@ -233,7 +239,7 @@ export default function PatientsPage() {
           <p className="hidden sm:block text-gray-600 mt-2">{strings.patients.page_subtitle}</p>
         </div>
         <button
-          onClick={() => setShowCreateForm(true)}
+          onClick={() => { setShowCreateForm(true); setCreateError('') }}
           className="btn-primary flex items-center gap-2 flex-shrink-0 min-h-[44px] touch-manipulation"
         >
           <PlusIcon className="h-5 w-5" />
@@ -252,6 +258,7 @@ export default function PatientsPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="input-field pr-10"
               placeholder={strings.patients.search_placeholder}
+              autoComplete="off"
             />
           </div>
           {inactiveCount > 0 && (
@@ -538,7 +545,7 @@ export default function PatientsPage() {
             {/* Sticky header */}
             <div className="flex items-center justify-between px-3 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
               <h2 className="text-xl font-bold">{strings.patients.new_patient_modal_title}</h2>
-              <button onClick={() => setShowCreateForm(false)} className="touch-manipulation p-1">
+              <button onClick={() => { setShowCreateForm(false); setCreateError('') }} className="touch-manipulation p-1">
                 <XMarkIcon className="h-6 w-6 text-gray-500 hover:text-gray-700" />
               </button>
             </div>
@@ -550,7 +557,7 @@ export default function PatientsPage() {
                 <input
                   type="text"
                   value={newPatient.full_name}
-                  onChange={(e) => setNewPatient({ ...newPatient, full_name: e.target.value })}
+                  onChange={(e) => setNewPatient((prev) => ({ ...prev, full_name: e.target.value }))}
                   className="input-field"
                   placeholder={strings.patients.full_name_placeholder}
                 />
@@ -559,7 +566,7 @@ export default function PatientsPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">{strings.patients.phone_modal_label}</label>
                 <PhoneInput
                   value={newPatient.phone}
-                  onChange={(e164) => setNewPatient({ ...newPatient, phone: e164 })}
+                  onChange={(e164) => setNewPatient((prev) => ({ ...prev, phone: e164 }))}
                   className="w-full"
                 />
               </div>
@@ -568,7 +575,7 @@ export default function PatientsPage() {
                 <input
                   type="email"
                   value={newPatient.email}
-                  onChange={(e) => setNewPatient({ ...newPatient, email: e.target.value })}
+                  onChange={(e) => setNewPatient((prev) => ({ ...prev, email: e.target.value }))}
                   className="input-field"
                   placeholder="patient@example.com"
                 />
@@ -577,12 +584,19 @@ export default function PatientsPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">{strings.patients.primary_concerns_label}</label>
                 <textarea
                   value={newPatient.primary_concerns}
-                  onChange={(e) => setNewPatient({ ...newPatient, primary_concerns: e.target.value })}
+                  onChange={(e) => setNewPatient((prev) => ({ ...prev, primary_concerns: e.target.value }))}
                   className="input-field h-20 resize-none"
                   placeholder={strings.patients.primary_concerns_placeholder}
                 />
               </div>
             </div>
+
+            {/* Error message */}
+            {createError && (
+              <div className="mx-3 sm:mx-6 mb-2 text-red-700 text-sm bg-red-50 border border-red-200 rounded-lg p-3">
+                {createError}
+              </div>
+            )}
 
             {/* Sticky footer */}
             <div className="flex gap-3 px-3 sm:px-6 py-4 border-t border-gray-100 flex-shrink-0">
@@ -594,7 +608,7 @@ export default function PatientsPage() {
                 {creating ? strings.patients.create_patient_loading : strings.patients.create_patient_button}
               </button>
               <button
-                onClick={() => setShowCreateForm(false)}
+                onClick={() => { setShowCreateForm(false); setCreateError('') }}
                 className="btn-secondary flex-1 min-h-[44px] touch-manipulation"
               >
                 {strings.patients.cancel_button}

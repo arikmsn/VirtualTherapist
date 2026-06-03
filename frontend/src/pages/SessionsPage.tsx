@@ -8,6 +8,7 @@ import {
   TrashIcon,
   SparklesIcon,
   LightBulbIcon,
+  PencilIcon,
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI } from '@/lib/api'
 import { usePrepStream } from '@/hooks/usePrepStream'
@@ -26,6 +27,7 @@ interface Session {
   summary_id?: number
   summary_status?: string | null
   created_at: string
+  is_paid?: boolean
 }
 
 interface Patient {
@@ -61,9 +63,16 @@ export default function SessionsPage() {
   const [deleting, setDeleting] = useState(false)
   const [notifyPatient, setNotifyPatient] = useState(false)
 
-  // Prep brief modal state
-  const [prepSession, setPrepSession] = useState<Session | null>(null)
+  // Inline prep accordion state — one session at a time
+  const [expandedPrepSessionId, setExpandedPrepSessionId] = useState<number | null>(null)
   const prepStream = usePrepStream()
+
+  // Edit session modal state
+  const [editTarget, setEditTarget] = useState<Session | null>(null)
+  const [editDate, setEditDate] = useState('')
+  const [editTime, setEditTime] = useState('')
+  const [editDurMinutes, setEditDurMinutes] = useState('50')
+  const [saving, setSaving] = useState(false)
 
   // Create session modal state
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -74,7 +83,7 @@ export default function SessionsPage() {
     session_date: new Date().toISOString().split('T')[0],
     start_time: '',
     session_type: 'individual',
-    duration_minutes: '50',   // string so clearing the field stays empty (not 0)
+    duration_minutes: '50',
     notify_patient: false,
   })
 
@@ -184,19 +193,66 @@ export default function SessionsPage() {
 
   // Lock body scroll whenever a modal is open
   useEffect(() => {
-    const locked = !!deleteTarget || showCreateModal || !!prepSession
+    const locked = !!deleteTarget || showCreateModal || !!editTarget
     document.body.style.overflow = locked ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
-  }, [deleteTarget, showCreateModal, prepSession])
+  }, [deleteTarget, showCreateModal, editTarget])
 
-  const openPrepModal = (session: Session) => {
-    setPrepSession(session)
-    prepStream.start(session.id)
+  const togglePrepAccordion = (session: Session) => {
+    if (expandedPrepSessionId === session.id) {
+      setExpandedPrepSessionId(null)
+      prepStream.reset()
+    } else {
+      setExpandedPrepSessionId(session.id)
+      prepStream.start(session.id)
+    }
   }
 
-  const closePrepModal = () => {
-    setPrepSession(null)
-    prepStream.reset()
+  const openEditModal = (session: Session) => {
+    setEditTarget(session)
+    setEditDate(session.session_date)
+    const timeStr = session.session_date ? '' : ''
+    setEditTime(timeStr)
+    setEditDurMinutes(session.duration_minutes ? String(session.duration_minutes) : '50')
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editTarget) return
+    setSaving(true)
+    try {
+      const startTime = editTime ? `${editDate}T${editTime}:00` : undefined
+      await sessionsAPI.update(editTarget.id, {
+        session_date: editDate,
+        ...(startTime ? { start_time: startTime } : {}),
+        ...(editDurMinutes ? { duration_minutes: parseInt(editDurMinutes, 10) } : {}),
+      })
+      setSessions((prev) => prev.map((s) =>
+        s.id === editTarget.id
+          ? {
+              ...s,
+              session_date: editDate,
+              ...(startTime ? { start_time: startTime } : {}),
+              ...(editDurMinutes ? { duration_minutes: parseInt(editDurMinutes, 10) } : {}),
+            }
+          : s
+      ))
+      setEditTarget(null)
+    } catch (error) {
+      console.error('Error updating session:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleTogglePaid = async (session: Session) => {
+    try {
+      await sessionsAPI.setPaid(session.id, !session.is_paid)
+      setSessions((prev) => prev.map((s) =>
+        s.id === session.id ? { ...s, is_paid: !s.is_paid } : s
+      ))
+    } catch (error) {
+      console.error('Error toggling paid status:', error)
+    }
   }
 
   const filteredSessions = sessions.filter((session) => {
@@ -276,10 +332,9 @@ export default function SessionsPage() {
       {/* Sessions List */}
       <div className="space-y-4">
         {filteredSessions.map((session) => {
-          // Past: session date is strictly before today (today's sessions are not "past").
-          // warnPast is true only when the session is past AND has no summary yet.
           const isPast = session.session_date < todayStr
           const warnPast = session.summary_id == null && isPast
+          const isPrepExpanded = expandedPrepSessionId === session.id
 
           return (
             <div
@@ -288,7 +343,6 @@ export default function SessionsPage() {
                 warnPast ? 'border-l-4 border-l-amber-400 bg-amber-50' : ''
               }`}
             >
-              {/* Warning label — only for past sessions missing a summary */}
               {warnPast && (
                 <div className="mb-3">
                   <span className="text-xs font-medium text-amber-700 bg-amber-100 border border-amber-200 rounded-md px-2 py-0.5">
@@ -330,6 +384,19 @@ export default function SessionsPage() {
                           {strings.sessions.badge_none}
                         </span>
                       )}
+                      {/* Payment badge — only for sessions with a summary */}
+                      {session.summary_id != null && (
+                        <button
+                          onClick={() => handleTogglePaid(session)}
+                          className={`text-xs px-2 py-0.5 rounded-full border font-medium transition-colors touch-manipulation ${
+                            session.is_paid
+                              ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100'
+                              : 'bg-orange-50 text-orange-700 border-orange-300 hover:bg-orange-100'
+                          }`}
+                        >
+                          {session.is_paid ? 'שולם ✓' : 'לא שולם'}
+                        </button>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
@@ -350,13 +417,17 @@ export default function SessionsPage() {
                   </div>
                 </div>
 
-                {/* Actions — stacked row below info on mobile, inline on desktop */}
+                {/* Actions */}
                 <div className="flex gap-2 items-center flex-shrink-0 flex-wrap sm:flex-nowrap">
-                  {/* Prep button: only for upcoming/today sessions without an approved summary */}
+                  {/* Prep toggle button: only for upcoming/today sessions without an approved summary */}
                   {session.session_date >= todayStr && session.summary_status !== 'approved' && (
                     <button
-                      onClick={() => openPrepModal(session)}
-                      className="flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 border border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg px-3 py-2 min-h-[44px] sm:min-h-0 transition-colors touch-manipulation flex-shrink-0"
+                      onClick={() => togglePrepAccordion(session)}
+                      className={`flex items-center gap-1.5 text-sm font-medium border rounded-lg px-3 py-2 min-h-[44px] sm:min-h-0 transition-colors touch-manipulation flex-shrink-0 ${
+                        isPrepExpanded
+                          ? 'text-amber-900 border-amber-500 bg-amber-100'
+                          : 'text-amber-700 hover:text-amber-900 border-amber-300 hover:border-amber-500 bg-amber-50 hover:bg-amber-100'
+                      }`}
                     >
                       <SparklesIcon className="h-4 w-4" />
                       {strings.sessions.prep_button}
@@ -386,6 +457,14 @@ export default function SessionsPage() {
                       {strings.sessions.edit_draft_button}
                     </button>
                   )}
+                  {/* Edit session button */}
+                  <button
+                    onClick={() => openEditModal(session)}
+                    className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors touch-manipulation flex-shrink-0"
+                    title="ערוך תאריך/שעה"
+                  >
+                    <PencilIcon className="h-5 w-5" />
+                  </button>
                   <button
                     onClick={() => openDeleteModal(session)}
                     className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors touch-manipulation flex-shrink-0"
@@ -395,6 +474,46 @@ export default function SessionsPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Inline prep accordion */}
+              {isPrepExpanded && (
+                <div className="mt-4 pt-4 border-t border-amber-200 bg-amber-50 rounded-lg p-4 -mx-1">
+                  <div className="flex items-center gap-2 mb-3">
+                    <LightBulbIcon className="h-4 w-4 text-amber-700" />
+                    <span className="text-sm font-bold text-amber-900">{strings.sessions.prep_modal_title}</span>
+                  </div>
+                  {prepStream.phase === 'extracting' || (prepStream.phase === 'rendering') ? (
+                    <div className="flex items-center gap-2 text-amber-700 text-sm py-4 justify-center">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-amber-600"></div>
+                      <span>
+                        {prepStream.phase === 'extracting'
+                          ? strings.sessions.extracting_summaries
+                          : strings.sessions.generating_brief}
+                      </span>
+                    </div>
+                  ) : prepStream.phase === 'done' ? (
+                    <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{prepStream.text}</p>
+                  ) : prepStream.phase === 'error' ? (
+                    <div className="text-amber-800 text-sm space-y-2">
+                      <p>{prepStream.error}</p>
+                      <button
+                        onClick={() => { prepStream.reset(); prepStream.start(session.id) }}
+                        className="text-sm px-3 py-1 bg-amber-200 rounded-lg hover:bg-amber-300 transition-colors"
+                      >
+                        {strings.sessions.retry_button}
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="mt-3 pt-3 border-t border-amber-200">
+                    <button
+                      onClick={() => navigate(`/sessions/${session.id}`)}
+                      className="btn-secondary text-sm w-full min-h-[36px]"
+                    >
+                      {strings.sessions.create_summary_button}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}
@@ -481,79 +600,80 @@ export default function SessionsPage() {
         </div>
       )}
 
-      {/* Prep Brief Modal */}
-      {prepSession && (
+      {/* Edit Session Modal */}
+      {editTarget && (
         <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] animate-fade-in">
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-amber-100 flex-shrink-0 bg-amber-50 rounded-t-2xl">
-              <div>
-                <h2 className="text-lg font-bold text-amber-900 flex items-center gap-2">
-                  <LightBulbIcon className="h-5 w-5" />
-                  {strings.sessions.prep_modal_title}
-                </h2>
-                <p className="text-xs text-amber-700 mt-0.5">
-                  {prepSession.session_number ? `${strings.sessions.session_number_prefix}${prepSession.session_number} · ` : ''}
-                  {formatDateIL(prepSession.session_date)}
-                  {prepSession.session_type && ` · ${SESSION_TYPES.find((t) => t.value === prepSession.session_type)?.label || prepSession.session_type}`}
-                </p>
-              </div>
-              <button onClick={closePrepModal} className="text-amber-600 hover:text-amber-900 p-1 touch-manipulation">
-                <XMarkIcon className="h-5 w-5" />
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-xl font-bold text-gray-900">עריכת פגישה</h2>
+              <button onClick={() => setEditTarget(null)} className="text-gray-400 hover:text-gray-600 p-1 touch-manipulation">
+                <XMarkIcon className="h-6 w-6" />
               </button>
             </div>
 
-            {/* Body */}
-            <div className="overflow-y-auto flex-1 px-5 py-4">
-              {prepStream.phase === 'extracting' ? (
-                <div className="flex flex-col items-center justify-center py-10 gap-3">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
-                  <p className="text-sm text-amber-700">{strings.sessions.extracting_summaries}</p>
-                </div>
-              ) : prepStream.phase === 'rendering' || prepStream.phase === 'done' ? (
-                <div>
-                  {prepStream.phase === 'rendering' && !prepStream.text && (
-                    <div className="flex items-center gap-2 text-amber-700 text-sm mb-3">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
-                      <span>{strings.sessions.generating_brief}</span>
-                    </div>
+            <div className="px-6 py-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.sessions.date_label}</label>
+                <input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.sessions.start_time_label}</label>
+                <select
+                  value={editTime}
+                  onChange={(e) => setEditTime(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                >
+                  <option value="">{strings.sessions.time_placeholder}</option>
+                  {Array.from({ length: 14 }, (_, i) => i + 7).map((hour) =>
+                    [0, 30].map((min) => {
+                      const val = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
+                      return <option key={val} value={val}>{val}</option>
+                    })
                   )}
-                  <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{prepStream.text}</p>
-                </div>
-              ) : prepStream.phase === 'error' ? (
-                <div className="text-amber-800 text-sm space-y-2">
-                  <p>{prepStream.error}</p>
-                  <button
-                    onClick={() => openPrepModal(prepSession!)}
-                    className="text-sm px-3 py-1 bg-amber-200 rounded-lg hover:bg-amber-300 transition-colors"
-                  >
-                    {strings.sessions.retry_button}
-                  </button>
-                </div>
-              ) : null}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{strings.sessions.duration_label}</label>
+                <input
+                  type="number"
+                  value={editDurMinutes}
+                  onChange={(e) => setEditDurMinutes(e.target.value)}
+                  min={1}
+                  max={360}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                />
+              </div>
             </div>
 
-            {/* Footer */}
-            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
               <button
-                onClick={() => navigate(`/sessions/${prepSession.id}`)}
-                className="btn-secondary w-full min-h-[44px] touch-manipulation"
+                onClick={handleSaveEdit}
+                disabled={saving || !editDate}
+                className="btn-primary flex-1 disabled:opacity-50 min-h-[44px] touch-manipulation"
               >
-                {strings.sessions.create_summary_button}
+                {saving ? 'שומר...' : 'שמור'}
+              </button>
+              <button
+                onClick={() => setEditTarget(null)}
+                className="btn-secondary flex-1 min-h-[44px] touch-manipulation"
+              >
+                ביטול
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Create Session Modal
-          Mobile: top-aligned with mt-8 breathing room, scrollable content, sticky header+footer
-          Desktop: vertically centered, max 85vh */}
+      {/* Create Session Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-4 pt-8 sm:pt-4" dir="rtl">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[calc(100vh-6rem)] sm:max-h-[85vh] overflow-x-hidden">
 
-            {/* Sticky header */}
             <div className="flex items-center justify-between px-3 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
               <h2 className="text-xl font-bold text-gray-900">{strings.sessions.create_modal_title}</h2>
               <button
@@ -564,11 +684,9 @@ export default function SessionsPage() {
               </button>
             </div>
 
-            {/* Scrollable form body + sticky footer */}
             <form onSubmit={handleCreateSession} className="flex flex-col flex-1 min-h-0">
               <div className="overflow-y-auto flex-1 px-3 sm:px-6 py-4 space-y-4">
 
-                {/* Patient Select */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     {strings.sessions.patient_label}
@@ -609,7 +727,6 @@ export default function SessionsPage() {
                   )}
                 </div>
 
-                {/* Date */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     {strings.sessions.date_label}
@@ -625,7 +742,6 @@ export default function SessionsPage() {
                   />
                 </div>
 
-                {/* Start Time */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     {strings.sessions.start_time_label}
@@ -647,7 +763,6 @@ export default function SessionsPage() {
                   </select>
                 </div>
 
-                {/* Duration */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     {strings.sessions.duration_label}
@@ -665,7 +780,6 @@ export default function SessionsPage() {
                   />
                 </div>
 
-                {/* Session Type */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     {strings.sessions.session_type_label}
@@ -685,7 +799,6 @@ export default function SessionsPage() {
                   </select>
                 </div>
 
-                {/* Notify patient toggle */}
                 <div className="flex items-center justify-between py-1">
                   <div>
                     <div className="text-sm font-medium text-gray-700">{strings.sessions.notify_patient_label}</div>
@@ -713,7 +826,6 @@ export default function SessionsPage() {
                 )}
               </div>
 
-              {/* Sticky footer — always visible */}
               <div className="flex gap-3 px-3 sm:px-6 py-4 border-t border-gray-100 flex-shrink-0">
                 <button
                   type="submit"

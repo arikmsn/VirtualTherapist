@@ -20,6 +20,7 @@ export function usePrepStream() {
   const [text, setText] = useState('')
   const [error, setError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+  const bufRef = useRef('')
 
   const start = useCallback(async (sessionId: number) => {
     // Abort any in-progress request for a previous session
@@ -30,6 +31,7 @@ export function usePrepStream() {
     setPhase('extracting')
     setText('')
     setError('')
+    bufRef.current = ''
 
     // ── SSE streaming path (modern browsers) ──────────────────────────────
     if (typeof ReadableStream !== 'undefined') {
@@ -69,6 +71,7 @@ export function usePrepStream() {
               const data = line.slice(6)
 
               if (data === '[DONE]') {
+                setText(bufRef.current)
                 setPhase('done')
                 return
               }
@@ -80,10 +83,11 @@ export function usePrepStream() {
                 } else if (parsed.phase === 'rendering') {
                   setPhase('rendering')
                 } else if (parsed.phase === 'done') {
+                  setText(bufRef.current)
                   setPhase('done')
                   return
                 } else if (parsed.chunk != null) {
-                  setText((t) => t + parsed.chunk)
+                  bufRef.current += parsed.chunk
                 } else if (parsed.error) {
                   setError(parsed.error)
                   setPhase('error')
@@ -95,6 +99,7 @@ export function usePrepStream() {
             }
           }
 
+          setText(bufRef.current)
           setPhase('done')
           return
         }

@@ -84,6 +84,7 @@ interface Session {
   has_recording: boolean
   summary_id?: number
   summary_status?: string | null   // "draft" | "approved" | null
+  is_paid?: boolean
   created_at: string
 }
 
@@ -1218,9 +1219,16 @@ export default function PatientProfilePage() {
       {tab === 'sessions' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              {sessions.length > 0 ? `${sessions.length} ${strings.patientProfile.sessions_unit}` : strings.patientProfile.no_sessions}
-            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm text-gray-600">
+                {sessions.length > 0 ? `${sessions.length} ${strings.patientProfile.sessions_unit}` : strings.patientProfile.no_sessions}
+              </p>
+              {sessions.some((s) => s.summary_id != null && !s.is_paid) && (
+                <span className="text-xs bg-amber-100 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5 font-medium">
+                  יש פגישות ללא תשלום
+                </span>
+              )}
+            </div>
             <button
               onClick={() => setShowNewSession(true)}
               className="btn-primary flex items-center gap-2 text-sm min-h-[44px] touch-manipulation"
@@ -1278,6 +1286,15 @@ export default function PatientProfilePage() {
                           <span className="badge badge-draft text-xs">{strings.patientProfile.badge_draft}</span>
                         ) : (
                           <span className="badge text-xs bg-gray-100 text-gray-500">{strings.patientProfile.badge_no_summary}</span>
+                        )}
+                        {session.summary_id != null && (
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${
+                            session.is_paid
+                              ? 'bg-green-50 text-green-700 border-green-200'
+                              : 'bg-orange-50 text-orange-700 border-orange-200'
+                          }`}>
+                            {session.is_paid ? 'שולם' : 'לא שולם'}
+                          </span>
                         )}
                       </div>
                       {session.duration_minutes && (
@@ -2262,21 +2279,15 @@ export default function PatientProfilePage() {
               </button>
             </div>
             <div className="overflow-y-auto flex-1 p-4 sm:p-5">
-              {prepStream.phase === 'extracting' ? (
+              {prepStream.phase === 'extracting' || prepStream.phase === 'rendering' ? (
                 <div className="flex items-center justify-center py-12 gap-3">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
-                  <span className="text-amber-700 text-sm">מחלץ נתונים מהסיכומים...</span>
+                  <span className="text-amber-700 text-sm">
+                    {prepStream.phase === 'extracting' ? 'מחלץ נתונים מהסיכומים...' : 'מייצר תדריך...'}
+                  </span>
                 </div>
-              ) : prepStream.phase === 'rendering' || prepStream.phase === 'done' ? (
-                <div>
-                  {prepStream.phase === 'rendering' && !prepStream.text && (
-                    <div className="flex items-center gap-2 text-amber-700 text-sm mb-3">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-500"></div>
-                      <span>מייצר תדריך...</span>
-                    </div>
-                  )}
-                  <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{prepStream.text}</p>
-                </div>
+              ) : prepStream.phase === 'done' ? (
+                <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{prepStream.text}</p>
               ) : prepStream.phase === 'error' ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
                   <p className="text-sm">{prepStream.error}</p>
