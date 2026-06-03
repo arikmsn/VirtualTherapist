@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   DocumentTextIcon,
@@ -20,6 +20,7 @@ interface Session {
   therapist_id: number
   patient_id: number
   session_date: string
+  start_time?: string | null
   session_type?: string
   duration_minutes?: number
   session_number?: number
@@ -73,8 +74,10 @@ export default function SessionsPage() {
   const [editTarget, setEditTarget] = useState<Session | null>(null)
   const [editDate, setEditDate] = useState('')
   const [editTime, setEditTime] = useState('')
-  const [editDurMinutes, setEditDurMinutes] = useState('50')
+  const [editDurMinutes, setEditDurMinutes] = useState('')
   const [saving, setSaving] = useState(false)
+  // Tracks original values so the save button only enables on actual changes
+  const editInitialRef = useRef({ date: '', time: '', dur: '' })
 
   // Create session modal state
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -224,11 +227,15 @@ export default function SessionsPage() {
   }
 
   const openEditModal = (session: Session) => {
+    const timeStr = session.start_time
+      ? session.start_time.substring(11, 16)  // "YYYY-MM-DDTHH:MM..." → "HH:MM"
+      : ''
+    const durStr = session.duration_minutes != null ? String(session.duration_minutes) : ''
+    editInitialRef.current = { date: session.session_date, time: timeStr, dur: durStr }
     setEditTarget(session)
     setEditDate(session.session_date)
-    const timeStr = session.session_date ? '' : ''
     setEditTime(timeStr)
-    setEditDurMinutes(session.duration_minutes ? String(session.duration_minutes) : '50')
+    setEditDurMinutes(durStr)
   }
 
   const handleSaveEdit = async () => {
@@ -673,19 +680,12 @@ export default function SessionsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{strings.sessions.start_time_label}</label>
-                <select
+                <input
+                  type="time"
                   value={editTime}
                   onChange={(e) => setEditTime(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
-                >
-                  <option value="">{strings.sessions.time_placeholder}</option>
-                  {Array.from({ length: 14 }, (_, i) => i + 7).map((hour) =>
-                    [0, 30].map((min) => {
-                      const val = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`
-                      return <option key={val} value={val}>{val}</option>
-                    })
-                  )}
-                </select>
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{strings.sessions.duration_label}</label>
@@ -695,6 +695,7 @@ export default function SessionsPage() {
                   onChange={(e) => setEditDurMinutes(e.target.value)}
                   min={1}
                   max={360}
+                  placeholder="דקות"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
                 />
               </div>
@@ -703,10 +704,14 @@ export default function SessionsPage() {
             <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
               <button
                 onClick={handleSaveEdit}
-                disabled={saving || !editDate}
+                disabled={saving || !editDate || (
+                  editDate === editInitialRef.current.date &&
+                  editTime === editInitialRef.current.time &&
+                  editDurMinutes === editInitialRef.current.dur
+                )}
                 className="btn-primary flex-1 disabled:opacity-50 min-h-[44px] touch-manipulation"
               >
-                {saving ? 'שומר...' : 'שמור'}
+                {saving ? 'שומר...' : 'שמור שינויים'}
               </button>
               <button
                 onClick={() => setEditTarget(null)}

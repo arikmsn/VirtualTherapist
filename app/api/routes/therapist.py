@@ -500,12 +500,57 @@ async def submit_feedback(
     body: FeedbackRequest,
     current_therapist: Therapist = Depends(get_current_therapist),
 ):
-    """Log feedback / bug report from a therapist. Logged with WARNING priority so it surfaces in production logs."""
+    """
+    Send feedback / bug report to info@metapel.online via SendGrid.
+    Falls back to log-only when SENDGRID_API_KEY is not set (dev environments).
+    Raises HTTP 500 if SendGrid is configured but the send fails.
+    """
+    from app.core.config import settings as _s
+
+    label = "דיווח על תקלה" if body.type == "bug" else "יצירת קשר"
+    subject_line = f"[{label}] {body.subject or 'ללא נושא'} — {current_therapist.email}"
+
+    # Always log regardless of email outcome
     logger.warning(
         f"[feedback] type={body.type!r} therapist_id={current_therapist.id} "
         f"email={current_therapist.email!r} subject={body.subject!r} "
         f"message={body.message!r}"
     )
+
+    if not _s.SENDGRID_API_KEY:
+        # Dev / staging without SendGrid — log only, return success so UI doesn't break
+        logger.warning("[feedback] SENDGRID_API_KEY not set — email not sent, logged only")
+        return
+
+    html_body = f"""
+<div dir="rtl" style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1F2937;">
+  <h2 style="color: #2563EB;">{label}</h2>
+  <table style="width:100%; border-collapse:collapse;">
+    <tr><td style="padding:4px 0; font-weight:bold;">מטפל/ת:</td><td>{current_therapist.full_name} ({current_therapist.email})</td></tr>
+    <tr><td style="padding:4px 0; font-weight:bold;">נושא:</td><td>{body.subject or '—'}</td></tr>
+  </table>
+  <hr style="margin:16px 0; border:none; border-top:1px solid #E5E7EB;"/>
+  <div style="background:#F9FAFB; border-radius:8px; padding:16px; white-space:pre-wrap;">{body.message}</div>
+</div>
+"""
+    try:
+        import sendgrid
+        from sendgrid.helpers.mail import Mail
+
+        message = Mail(
+            from_email=(_s.SENDGRID_FROM_EMAIL, "Metapel Feedback"),
+            to_emails="info@metapel.online",
+            subject=subject_line,
+            html_content=html_body,
+        )
+        sg = sendgrid.SendGridAPIClient(api_key=_s.SENDGRID_API_KEY)
+        response = sg.send(message)
+        if response.status_code not in (200, 202):
+            raise RuntimeError(f"SendGrid returned {response.status_code}: {response.body}")
+        logger.info(f"[feedback] email sent to info@metapel.online for therapist {current_therapist.id}")
+    except Exception as exc:
+        logger.error(f"[feedback] SendGrid send failed: {exc}")
+        raise HTTPException(status_code=500, detail="שגיאה בשליחת ההודעה. נסה שנית.")
 
 
 class SideNoteResponse(BaseModel):

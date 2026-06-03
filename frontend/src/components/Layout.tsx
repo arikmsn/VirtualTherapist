@@ -64,8 +64,8 @@ export default function Layout() {
       await therapistAPI.submitFeedback(feedbackType, feedbackMessage, feedbackSubject || undefined)
       setFeedbackSent(true)
       setTimeout(() => setFeedbackOpen(false), 2000)
-    } catch {
-      setFeedbackError('שגיאה בשליחה. נסה שנית.')
+    } catch (err: any) {
+      setFeedbackError(err?.response?.data?.detail || 'שגיאה בשליחת ההודעה. נסה שנית.')
     } finally {
       setFeedbackSending(false)
     }

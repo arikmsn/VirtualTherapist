@@ -57,6 +57,10 @@ export default function PatientsPage() {
   const [pendingTasksCount, setPendingTasksCount] = useState(0)
   const [patientOpenTasks, setPatientOpenTasks] = useState<Record<number, number>>({})
   const [searchTerm, setSearchTerm] = useState('')
+  // Frozen copy of searchTerm taken when the create-patient modal opens.
+  // While the modal is open, the list uses this frozen value so browser
+  // autofill targeting the background search input cannot hide existing patients.
+  const [frozenSearchTerm, setFrozenSearchTerm] = useState('')
   const [showInactive, setShowInactive] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
 
@@ -230,9 +234,12 @@ export default function PatientsPage() {
 
   const activeCount = patients.filter((p) => p.status === 'active').length
 
+  // While the create-patient modal is open, use the frozen snapshot of searchTerm
+  // so browser autofill on background inputs cannot make the list appear empty.
+  const activeSearchTerm = showCreateForm ? frozenSearchTerm : searchTerm
   const filteredPatients = patients
     .filter((p) => showInactive || p.status !== 'inactive')
-    .filter((p) => p.full_name.includes(searchTerm))
+    .filter((p) => p.full_name.includes(activeSearchTerm))
     .sort((a, b) => a.full_name.localeCompare(b.full_name, 'he'))
 
   const inactiveCount = patients.filter((p) => p.status === 'inactive').length
@@ -257,7 +264,7 @@ export default function PatientsPage() {
           <p className="hidden sm:block text-gray-600 mt-2">{strings.patients.page_subtitle}</p>
         </div>
         <button
-          onClick={() => { setShowCreateForm(true); setCreateError('') }}
+          onClick={() => { setFrozenSearchTerm(searchTerm); setShowCreateForm(true); setCreateError('') }}
           className="btn-primary flex items-center gap-2 flex-shrink-0 min-h-[44px] touch-manipulation"
         >
           <PlusIcon className="h-5 w-5" />
@@ -277,6 +284,8 @@ export default function PatientsPage() {
               className="input-field pr-10"
               placeholder={strings.patients.search_placeholder}
               autoComplete="off"
+              name="patient-list-search"
+              id="patient-list-search"
             />
           </div>
           {inactiveCount > 0 && (
@@ -575,8 +584,9 @@ export default function PatientsPage() {
               </button>
             </div>
 
-            {/* Scrollable body */}
-            <div className="overflow-y-auto flex-1 px-3 sm:px-6 py-4 space-y-4">
+            {/* Scrollable body — autocomplete="off" on the wrapping form tells the browser
+                not to autofill these fields into the background search input */}
+            <div className="overflow-y-auto flex-1 px-3 sm:px-6 py-4 space-y-4" data-form="new-patient">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{strings.patients.full_name_label}</label>
                 <input
@@ -585,6 +595,8 @@ export default function PatientsPage() {
                   onChange={(e) => setNewPatient((prev) => ({ ...prev, full_name: e.target.value }))}
                   className="input-field"
                   placeholder={strings.patients.full_name_placeholder}
+                  name="np-full-name"
+                  autoComplete="new-password"
                 />
               </div>
               <div>
@@ -602,6 +614,8 @@ export default function PatientsPage() {
                   value={newPatient.email}
                   onChange={(e) => setNewPatient((prev) => ({ ...prev, email: e.target.value }))}
                   className="input-field"
+                  name="np-email"
+                  autoComplete="new-password"
                   placeholder="patient@example.com"
                 />
               </div>
