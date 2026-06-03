@@ -99,9 +99,13 @@ class Settings(BaseSettings):
     # Set a long random value in Render; leave unset to disable all admin endpoints.
     ADMIN_SECRET: str | None = None
 
-    # SendGrid (transactional email — admin password reset, notifications)
+    # SendGrid (transactional email — admin password reset, notifications, feedback)
     SENDGRID_API_KEY: str | None = None
-    SENDGRID_FROM_EMAIL: str = "admin@metapel.online"
+    # Verified sender — must match a Single Sender or authenticated domain in SendGrid.
+    # "noreply@metapel.online" matches the marketing-site verified sender.
+    SENDGRID_FROM_EMAIL: str = "noreply@metapel.online"
+    # Destination mailbox for in-app feedback / bug reports (same as marketing site).
+    CONTACT_TARGET_EMAIL: str | None = None
 
     # Supabase (for auth.admin.deleteUser when supabase_user_id is set)
     SUPABASE_URL: str | None = None
