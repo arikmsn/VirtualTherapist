@@ -101,9 +101,12 @@ class Settings(BaseSettings):
 
     # SendGrid (transactional email — admin password reset, notifications, feedback)
     SENDGRID_API_KEY: str | None = None
-    # Verified sender — must match a Single Sender or authenticated domain in SendGrid.
-    # "noreply@metapel.online" matches the marketing-site verified sender.
+    # Sender for admin / system emails (password reset etc.). May be overridden in Render.
     SENDGRID_FROM_EMAIL: str = "noreply@metapel.online"
+    # Sender specifically for the in-app "Report a bug / Contact us" feedback flow.
+    # Kept separate so that SENDGRID_FROM_EMAIL can be admin@metapel.online for admin
+    # emails while feedback always uses the marketing-site verified sender.
+    SENDGRID_FEEDBACK_FROM_EMAIL: str = "noreply@metapel.online"
     # Destination mailbox for in-app feedback / bug reports (same as marketing site).
     CONTACT_TARGET_EMAIL: str | None = None
 

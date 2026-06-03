@@ -523,6 +523,15 @@ async def submit_feedback(
     # Subject mirrors marketing-site convention: context label + identifier
     subject_line = f"[Metapel App] {label}: {body.subject or 'ללא נושא'} ({current_therapist.email})"
 
+    # ── Debug: log resolved config values so mismatches are immediately visible ──
+    logger.info(
+        f"[feedback] CONFIG resolved: "
+        f"SENDGRID_FEEDBACK_FROM_EMAIL={_s.SENDGRID_FEEDBACK_FROM_EMAIL!r} "
+        f"SENDGRID_FROM_EMAIL={_s.SENDGRID_FROM_EMAIL!r} "
+        f"CONTACT_TARGET_EMAIL={'<set>' if _s.CONTACT_TARGET_EMAIL else '<not set>'} "
+        f"SENDGRID_API_KEY={'<set>' if _s.SENDGRID_API_KEY else '<not set>'}"
+    )
+
     # Always log the received feedback so it is always recoverable from Render logs
     logger.warning(
         f"[feedback] RECEIVED type={body.type!r} therapist_id={current_therapist.id} "
@@ -540,7 +549,10 @@ async def submit_feedback(
         logger.warning("[feedback] CONTACT_TARGET_EMAIL not set — email NOT sent, logged only")
         return
 
-    from_email = _s.SENDGRID_FROM_EMAIL  # default: "noreply@metapel.online"
+    # Use SENDGRID_FEEDBACK_FROM_EMAIL (always "noreply@metapel.online" by default),
+    # intentionally separate from SENDGRID_FROM_EMAIL so Render's explicit
+    # SENDGRID_FROM_EMAIL=admin@metapel.online setting cannot affect the feedback flow.
+    from_email = _s.SENDGRID_FEEDBACK_FROM_EMAIL
 
     # ── Email bodies ──────────────────────────────────────────────────────────
     plain_body = (
