@@ -43,6 +43,8 @@ class CreateSessionRequest(BaseModel):
     session_type: SessionType = SessionType.INDIVIDUAL
     duration_minutes: Optional[int] = None
     notify_patient: bool = False  # send WhatsApp appointment reminder on creation
+    recurrence_rule: Optional[str] = None   # 'weekly' | 'biweekly' | 'monthly'
+    recurrence_ends_at: Optional[date] = None
 
 
 class UpdateSessionRequest(BaseModel):
@@ -68,6 +70,9 @@ class SessionResponse(BaseModel):
     summary_status: Optional[str] = None   # "draft" | "approved" | None (no summary)
     is_paid: bool = False
     paid_at: Optional[datetime] = None
+    recurrence_rule: Optional[str] = None
+    recurrence_ends_at: Optional[date] = None
+    recurrence_parent_id: Optional[int] = None
     created_at: datetime
 
     class Config:
@@ -182,6 +187,8 @@ async def create_session(
             start_time=request.start_time,
             end_time=request.end_time,
             notify_patient=request.notify_patient,
+            recurrence_rule=request.recurrence_rule,
+            recurrence_ends_at=request.recurrence_ends_at,
         )
         return SessionResponse.model_validate(session)
 
@@ -412,6 +419,60 @@ async def set_session_paid(
     db.commit()
     db.refresh(session)
     return SessionResponse.model_validate(session)
+
+
+@router.post("/{session_id}/next-occurrence", response_model=SessionResponse, status_code=201)
+async def create_next_occurrence(
+    session_id: int,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """
+    Generate the next occurrence of a recurring session.
+    Computes the next date from recurrence_rule (weekly/biweekly/monthly),
+    validates against recurrence_ends_at, then creates a new session record.
+    """
+    from app.models.session import Session as _Session
+    from datetime import timedelta
+    from dateutil.relativedelta import relativedelta
+
+    parent = db.query(_Session).filter(
+        _Session.id == session_id,
+        _Session.therapist_id == current_therapist.id,
+    ).first()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not parent.recurrence_rule:
+        raise HTTPException(status_code=400, detail="Session is not recurring")
+
+    rule = parent.recurrence_rule
+    next_date = parent.session_date
+    if rule == 'weekly':
+        next_date = next_date + timedelta(weeks=1)
+    elif rule == 'biweekly':
+        next_date = next_date + timedelta(weeks=2)
+    elif rule == 'monthly':
+        next_date = next_date + relativedelta(months=1)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown recurrence_rule: {rule}")
+
+    ends_at = parent.recurrence_ends_at
+    if ends_at and next_date > ends_at:
+        raise HTTPException(status_code=409, detail="recurrence_ends_at reached — no more occurrences")
+
+    root_id = parent.recurrence_parent_id or parent.id
+    service = SessionService(db)
+    next_session = await service.create_session(
+        therapist_id=current_therapist.id,
+        patient_id=parent.patient_id,
+        session_date=next_date,
+        session_type=parent.session_type or SessionType.INDIVIDUAL,
+        duration_minutes=parent.duration_minutes,
+        recurrence_rule=rule,
+        recurrence_ends_at=ends_at,
+        recurrence_parent_id=root_id,
+    )
+    return SessionResponse.model_validate(next_session)
 
 
 # --- Summary endpoints ---

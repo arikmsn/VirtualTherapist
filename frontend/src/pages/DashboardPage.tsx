@@ -143,7 +143,6 @@ export default function DashboardPage() {
   // Smart reminders state (today only, non-blocking)
   const [todayInsights, setTodayInsights] = useState<Array<{ patient_id: number; title: string; body: string }>>([])
   const [insightsLoading, setInsightsLoading] = useState(false)
-  const [insightsFetched, setInsightsFetched] = useState(false)
 
   // Load global stats
   useEffect(() => {
@@ -228,14 +227,12 @@ export default function DashboardPage() {
   useEffect(() => {
     if (selectedDate !== todayISO()) {
       setTodayInsights([])
-      setInsightsFetched(false)
       return
     }
 
     let cancelled = false
     const loadInsights = async () => {
       setInsightsLoading(true)
-      setInsightsFetched(false)
       try {
         const data = await therapistAPI.getTodayInsights()
         if (!cancelled) setTodayInsights(data.insights)
@@ -244,7 +241,6 @@ export default function DashboardPage() {
       } finally {
         if (!cancelled) {
           setInsightsLoading(false)
-          setInsightsFetched(true)
         }
       }
     }
@@ -320,41 +316,11 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Smart Reminders — today only, non-blocking */}
-        {isToday && (
-          <div className="mb-4">
-            {insightsLoading ? (
-              <div className="flex items-center gap-2 text-xs text-gray-400 py-1">
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-amber-400" />
-                <span>{strings.dashboard.smart_reminders_loading}</span>
-              </div>
-            ) : insightsFetched && todayInsights.length > 0 ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 mb-1">
-                  <SparklesIcon className="h-3.5 w-3.5" />
-                  {strings.dashboard.smart_reminders_title}
-                </div>
-                {todayInsights.map((insight) => {
-                  const patient = patients.find((p) => p.id === insight.patient_id)
-                  return (
-                    <div
-                      key={insight.patient_id}
-                      className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2"
-                    >
-                      <div className="font-medium text-amber-900 text-sm">{insight.title}</div>
-                      {patient && (
-                        <div className="text-xs text-amber-600 mb-0.5">{patient.full_name}</div>
-                      )}
-                      <div className="text-xs text-amber-800 leading-relaxed">{insight.body}</div>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : insightsFetched && todayInsights.length === 0 ? (
-              <p className="text-xs text-gray-400 pb-2">
-                {strings.dashboard.no_reminders}
-              </p>
-            ) : null}
+        {/* Smart reminders loading indicator — shown briefly before reminders attach to sessions */}
+        {isToday && insightsLoading && (
+          <div className="flex items-center gap-2 text-xs text-gray-400 py-1 mb-2">
+            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-amber-400" />
+            <span>{strings.dashboard.smart_reminders_loading}</span>
           </div>
         )}
 
@@ -373,9 +339,10 @@ export default function DashboardPage() {
           <div className="max-h-[26rem] overflow-y-auto -mx-1 px-1 space-y-2">
             {dailySessions.map((session) => {
               const lastReminder = lastReminderByPatient[session.patient_id]
+              const sessionInsight = isToday ? todayInsights.find((i) => i.patient_id === session.patient_id) : undefined
               return (
+                <div key={session.id} className="space-y-1">
                 <div
-                  key={session.id}
                   className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors gap-2 sm:gap-0"
                 >
                   <div className="flex items-center gap-3 sm:gap-4">
@@ -452,6 +419,17 @@ export default function DashboardPage() {
                       </button>
                     )}
                   </div>
+                </div>
+                {/* Smart reminder — shown inline under the matching session when available */}
+                {sessionInsight && (
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                    <div className="flex items-center gap-1 text-xs font-semibold text-amber-700 mb-0.5">
+                      <SparklesIcon className="h-3 w-3" />
+                      {sessionInsight.title}
+                    </div>
+                    <div className="text-xs text-amber-800 leading-relaxed">{sessionInsight.body}</div>
+                  </div>
+                )}
                 </div>
               )
             })}

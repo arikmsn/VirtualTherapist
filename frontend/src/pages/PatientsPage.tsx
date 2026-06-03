@@ -11,7 +11,7 @@ import {
   ChatBubbleLeftRightIcon,
   CalendarIcon,
 } from '@heroicons/react/24/outline'
-import { patientsAPI, sessionsAPI, exercisesAPI } from '@/lib/api'
+import { patientsAPI, sessionsAPI, exercisesAPI, therapistAPI } from '@/lib/api'
 import { formatDateIL } from '@/lib/dateUtils'
 import PhoneInput from '@/components/PhoneInput'
 import { strings } from '@/i18n/he'
@@ -45,6 +45,8 @@ interface Session {
   patient_id: number
   session_date: string
   session_type?: string
+  summary_id?: number
+  is_paid?: boolean
 }
 
 export default function PatientsPage() {
@@ -99,7 +101,14 @@ export default function PatientsPage() {
 
   useEffect(() => {
     const init = async () => {
-      const [patientsData] = await Promise.all([loadPatients(), loadSessions()])
+      const [patientsData, , profile] = await Promise.all([
+        loadPatients(),
+        loadSessions(),
+        therapistAPI.getProfile().catch(() => null),
+      ])
+      if ((profile as any)?.default_session_duration) {
+        setNewSessionDuration((profile as any).default_session_duration)
+      }
       setLoading(false)
 
       // Fetch exercises for all active patients in parallel to get per-patient open task counts
@@ -127,6 +136,15 @@ export default function PatientsPage() {
     document.body.style.overflow = locked ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
   }, [showCreateForm, createSessionFor])
+
+  // Debt per patient: true if any completed (has summary) session is unpaid
+  const patientHasDebt = useMemo(() => {
+    const map: Record<number, boolean> = {}
+    sessions.forEach((s) => {
+      if (s.summary_id != null && !s.is_paid) map[s.patient_id] = true
+    })
+    return map
+  }, [sessions])
 
   // Next session per patient (nearest future session_date >= today)
   const nextSessionByPatient = useMemo(() => {
@@ -339,12 +357,19 @@ export default function PatientsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-base md:text-lg leading-tight truncate">{patient.full_name}</div>
-                  <div className={`badge text-xs mt-0.5 ${
-                    patient.status === 'active' ? 'badge-approved' : 'badge-draft'
-                  }`}>
-                    {patient.status === 'active' ? strings.patients.status_active :
-                     patient.status === 'paused' ? strings.patients.status_paused :
-                     patient.status === 'completed' ? strings.patients.status_completed : strings.patients.status_inactive}
+                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                    <div className={`badge text-xs ${
+                      patient.status === 'active' ? 'badge-approved' : 'badge-draft'
+                    }`}>
+                      {patient.status === 'active' ? strings.patients.status_active :
+                       patient.status === 'paused' ? strings.patients.status_paused :
+                       patient.status === 'completed' ? strings.patients.status_completed : strings.patients.status_inactive}
+                    </div>
+                    {patientHasDebt[patient.id] && (
+                      <span className="text-xs bg-red-50 text-red-600 border border-red-200 rounded-full px-1.5 py-0.5 font-medium leading-none">
+                        יש חוב
+                      </span>
+                    )}
                   </div>
                 </div>
 

@@ -10,7 +10,7 @@ import {
   LightBulbIcon,
   PencilIcon,
 } from '@heroicons/react/24/outline'
-import { sessionsAPI, patientsAPI } from '@/lib/api'
+import { sessionsAPI, patientsAPI, therapistAPI } from '@/lib/api'
 import { usePrepStream } from '@/hooks/usePrepStream'
 import { formatDateIL } from '@/lib/dateUtils'
 import { strings } from '@/i18n/he'
@@ -28,6 +28,8 @@ interface Session {
   summary_status?: string | null
   created_at: string
   is_paid?: boolean
+  recurrence_rule?: string | null
+  recurrence_parent_id?: number | null
 }
 
 interface Patient {
@@ -85,6 +87,8 @@ export default function SessionsPage() {
     session_type: 'individual',
     duration_minutes: '50',
     notify_patient: false,
+    recurrence_rule: '' as '' | 'weekly' | 'biweekly' | 'monthly',
+    recurrence_ends_at: '',
   })
 
   const loadSessions = async () => {
@@ -112,7 +116,14 @@ export default function SessionsPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      await Promise.all([loadSessions(), loadPatients()])
+      const [, , profile] = await Promise.all([
+        loadSessions(),
+        loadPatients(),
+        therapistAPI.getProfile().catch(() => null),
+      ])
+      if ((profile as any)?.default_session_duration) {
+        setFormData((prev) => ({ ...prev, duration_minutes: String((profile as any).default_session_duration) }))
+      }
       setLoading(false)
     }
     loadData()
@@ -172,17 +183,21 @@ export default function SessionsPage() {
         duration_minutes: dur,
         start_time: startTime,
         notify_patient: formData.notify_patient,
+        recurrence_rule: formData.recurrence_rule || null,
+        recurrence_ends_at: formData.recurrence_rule && formData.recurrence_ends_at ? formData.recurrence_ends_at : null,
       })
 
       setShowCreateModal(false)
-      setFormData({
+      setFormData((prev) => ({
         patient_id: '',
         session_date: new Date().toISOString().split('T')[0],
         start_time: '',
         session_type: 'individual',
-        duration_minutes: '50',
+        duration_minutes: prev.duration_minutes, // preserve default from profile
         notify_patient: false,
-      })
+        recurrence_rule: '',
+        recurrence_ends_at: '',
+      }))
       await loadSessions()
     } catch (error: any) {
       setCreateError(error.response?.data?.detail || strings.sessions.error_create_generic)
@@ -241,6 +256,19 @@ export default function SessionsPage() {
       console.error('Error updating session:', error)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const [creatingNext, setCreatingNext] = useState<number | null>(null)
+  const handleCreateNextOccurrence = async (sessionId: number) => {
+    setCreatingNext(sessionId)
+    try {
+      await sessionsAPI.createNextOccurrence(sessionId)
+      await loadSessions()
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'שגיאה ביצירת הפגישה הבאה')
+    } finally {
+      setCreatingNext(null)
     }
   }
 
@@ -384,17 +412,23 @@ export default function SessionsPage() {
                           {strings.sessions.badge_none}
                         </span>
                       )}
-                      {/* Payment badge — only for sessions with a summary */}
+                      {/* Paid toggle — only for sessions with a summary */}
                       {session.summary_id != null && (
                         <button
                           onClick={() => handleTogglePaid(session)}
-                          className={`text-xs px-2 py-0.5 rounded-full border font-medium transition-colors touch-manipulation ${
-                            session.is_paid
-                              ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100'
-                              : 'bg-orange-50 text-orange-700 border-orange-300 hover:bg-orange-100'
-                          }`}
+                          title={session.is_paid ? 'שולם — לחץ לביטול' : 'לא שולם — לחץ לסימון כשולם'}
+                          className="flex items-center gap-1.5 touch-manipulation group"
                         >
-                          {session.is_paid ? 'שולם ✓' : 'לא שולם'}
+                          <span className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ${
+                            session.is_paid ? 'bg-green-500' : 'bg-gray-300 group-hover:bg-gray-400'
+                          }`}>
+                            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 ${
+                              session.is_paid ? 'translate-x-4' : 'translate-x-0'
+                            }`} />
+                          </span>
+                          <span className={`text-xs font-medium ${session.is_paid ? 'text-green-700' : 'text-gray-500'}`}>
+                            {session.is_paid ? 'שולם' : 'לא שולם'}
+                          </span>
                         </button>
                       )}
                     </div>
@@ -411,6 +445,11 @@ export default function SessionsPage() {
                         <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">
                           {SESSION_TYPES.find((t) => t.value === session.session_type)?.label ||
                             session.session_type}
+                        </span>
+                      )}
+                      {session.recurrence_rule && (
+                        <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-xs">
+                          🔁 {session.recurrence_rule === 'weekly' ? 'שבועי' : session.recurrence_rule === 'biweekly' ? 'דו-שבועי' : 'חודשי'}
                         </span>
                       )}
                     </div>
@@ -455,6 +494,17 @@ export default function SessionsPage() {
                       className="btn-primary flex-1 sm:flex-none min-h-[44px] sm:min-h-0 touch-manipulation"
                     >
                       {strings.sessions.edit_draft_button}
+                    </button>
+                  )}
+                  {/* Next occurrence button — for past recurring sessions */}
+                  {session.recurrence_rule && session.session_date < todayStr && (
+                    <button
+                      onClick={() => handleCreateNextOccurrence(session.id)}
+                      disabled={creatingNext === session.id}
+                      className="flex items-center gap-1 text-xs font-medium text-purple-700 border border-purple-300 bg-purple-50 hover:bg-purple-100 rounded-lg px-2.5 py-1.5 transition-colors touch-manipulation flex-shrink-0 disabled:opacity-50"
+                      title="צור פגישה הבאה בסדרה"
+                    >
+                      {creatingNext === session.id ? '...' : '🔁 הבאה'}
                     </button>
                   )}
                   {/* Edit session button */}
@@ -798,6 +848,32 @@ export default function SessionsPage() {
                     ))}
                   </select>
                 </div>
+
+                {/* Recurrence */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">חזרתיות</label>
+                  <select
+                    value={formData.recurrence_rule}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, recurrence_rule: e.target.value as any }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                  >
+                    <option value="">פגישה חד-פעמית</option>
+                    <option value="weekly">כל שבוע</option>
+                    <option value="biweekly">כל שבועיים</option>
+                    <option value="monthly">כל חודש</option>
+                  </select>
+                </div>
+                {formData.recurrence_rule && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">עד תאריך (אופציונלי)</label>
+                    <input
+                      type="date"
+                      value={formData.recurrence_ends_at}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, recurrence_ends_at: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+                    />
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between py-1">
                   <div>

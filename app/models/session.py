@@ -54,6 +54,12 @@ class Session(BaseModel):
     is_paid = Column(Boolean, nullable=False, default=False, server_default='false')
     paid_at = Column(DateTime, nullable=True)
 
+    # Recurring sessions (added migration 047)
+    # recurrence_rule: 'weekly' | 'biweekly' | 'monthly' — null = non-recurring
+    recurrence_rule = Column(String(20), nullable=True)
+    recurrence_ends_at = Column(Date, nullable=True)          # stop generating past this date
+    recurrence_parent_id = Column(Integer, ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True)
+
     # Pre-Session Prep 2.0 (added migration 017)
     prep_json = Column(JSON, nullable=True)                 # structured prep artifact (Call 1)
     prep_mode = Column(String(32), nullable=True)           # concise|deep|by_modality|gap_analysis

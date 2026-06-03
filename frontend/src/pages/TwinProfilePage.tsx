@@ -724,6 +724,7 @@ function AISettingsTab({
   directiveness, setDirectiveness,
   prohibitions, setProhibitions,
   customRules, setCustomRules,
+  defaultSessionDuration, setDefaultSessionDuration,
 }: {
   profile: TherapistProfile
   sigProfile: {
@@ -735,6 +736,7 @@ function AISettingsTab({
   directiveness: number; setDirectiveness: (v: number) => void
   prohibitions: string[]; setProhibitions: (v: string[]) => void
   customRules: string; setCustomRules: (v: string) => void
+  defaultSessionDuration: number; setDefaultSessionDuration: (v: number) => void
 }) {
   const [newProhibition, setNewProhibition] = useState('')
 
@@ -850,6 +852,19 @@ function AISettingsTab({
           label={strings.twinProfile.directiveness_label} leftLabel={strings.twinProfile.directiveness_left} rightLabel={strings.twinProfile.directiveness_right}
           value={directiveness} onChange={setDirectiveness} valueLabels={DIRECTIVE_LABELS}
         />
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">משך פגישה ברירת מחדל (דקות)</label>
+          <div className="flex items-center gap-3">
+            <input
+              type="number"
+              value={defaultSessionDuration}
+              onChange={(e) => setDefaultSessionDuration(Math.max(10, Math.min(180, parseInt(e.target.value) || 50)))}
+              min={10} max={180} step={5}
+              className="input-field w-28"
+            />
+            <span className="text-sm text-gray-500">דקות (ברירת מחדל בעת יצירת פגישה)</span>
+          </div>
+        </div>
       </div>
 
       {/* ── ג. מגבלות ── */}
@@ -937,6 +952,7 @@ export default function TwinProfilePage() {
   const [directiveness, setDirectiveness] = useState(3)
   const [prohibitions, setProhibitions] = useState<string[]>([])
   const [customRules, setCustomRules] = useState('')
+  const [defaultSessionDuration, setDefaultSessionDuration] = useState(50)
 
   const [sigProfile, setSigProfile] = useState<{
     is_active: boolean; approved_sample_count: number; min_samples_required: number
@@ -978,6 +994,7 @@ export default function TwinProfilePage() {
         setDirectiveness(d.directiveness)
         setProhibitions(d.prohibitions || [])
         setCustomRules(d.custom_rules || '')
+        setDefaultSessionDuration((d as any).default_session_duration ?? 50)
         setTone(d.tone || '')
         setEducation(d.education || '')
         setCertifications(d.certifications || '')
@@ -1018,6 +1035,7 @@ export default function TwinProfilePage() {
         certifications: certifications || null,
         years_of_experience: yearsOfExperience || null,
         areas_of_expertise: areasOfExpertise || null,
+        default_session_duration: defaultSessionDuration,
       })
       setProfile(updated)
       const { key, otherText } = decodeProfession(updated.profession)
@@ -1115,6 +1133,7 @@ export default function TwinProfilePage() {
           directiveness={directiveness} setDirectiveness={setDirectiveness}
           prohibitions={prohibitions} setProhibitions={setProhibitions}
           customRules={customRules} setCustomRules={setCustomRules}
+          defaultSessionDuration={defaultSessionDuration} setDefaultSessionDuration={setDefaultSessionDuration}
         />
       )}
 

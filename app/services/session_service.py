@@ -213,6 +213,9 @@ class SessionService:
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
         notify_patient: bool = False,
+        recurrence_rule: Optional[str] = None,
+        recurrence_ends_at: Optional[date] = None,
+        recurrence_parent_id: Optional[int] = None,
     ) -> TherapySession:
         """Create a new therapy session record"""
 
@@ -239,7 +242,10 @@ class SessionService:
             end_time=end_time,
             session_type=session_type,
             duration_minutes=duration_minutes,
-            session_number=(max_num or 0) + 1
+            session_number=(max_num or 0) + 1,
+            recurrence_rule=recurrence_rule,
+            recurrence_ends_at=recurrence_ends_at,
+            recurrence_parent_id=recurrence_parent_id,
         )
 
         self.db.add(session)

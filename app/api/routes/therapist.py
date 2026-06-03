@@ -58,6 +58,8 @@ class TherapistProfileResponse(BaseModel):
     # Protocol library (migration 040)
     protocols_used: List[str] = []       # IDs of protocols this therapist uses globally
     custom_protocols: List[Dict[str, Any]] = []  # custom protocol dicts
+    # Session defaults (migration 047)
+    default_session_duration: int = 50
 
     class Config:
         from_attributes = True
@@ -83,6 +85,8 @@ class UpdateTwinControlsRequest(BaseModel):
     primary_therapy_modes: Optional[List[str]] = None
     # Protocol library — updated via dedicated /protocols/* endpoints
     protocols_used: Optional[List[str]] = None
+    # Session defaults
+    default_session_duration: Optional[int] = None
 
 
 # --- Helpers ---
@@ -174,6 +178,7 @@ def _profile_response(profile, therapist=None) -> TherapistProfileResponse:
         profile_setup_completed=bool(therapist.profile_setup_completed) if therapist else False,
         protocols_used=_to_list(profile.protocols_used) or [],
         custom_protocols=_to_list(profile.custom_protocols) or [],
+        default_session_duration=profile.default_session_duration if profile.default_session_duration is not None else 50,
     )
 
 
@@ -482,6 +487,25 @@ class SideNoteUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     tags: Optional[List[str]] = None
+
+
+class FeedbackRequest(BaseModel):
+    type: str          # 'bug' | 'contact'
+    subject: Optional[str] = None
+    message: str
+
+
+@router.post("/feedback", status_code=204)
+async def submit_feedback(
+    body: FeedbackRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+):
+    """Log feedback / bug report from a therapist. Logged with WARNING priority so it surfaces in production logs."""
+    logger.warning(
+        f"[feedback] type={body.type!r} therapist_id={current_therapist.id} "
+        f"email={current_therapist.email!r} subject={body.subject!r} "
+        f"message={body.message!r}"
+    )
 
 
 class SideNoteResponse(BaseModel):

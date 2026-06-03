@@ -774,6 +774,16 @@ export default function PatientProfilePage() {
     loadNotes()
   }, [pid, tab])
 
+  const handleTogglePaid = async (sessionId: number, currentPaid: boolean, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await sessionsAPI.setPaid(sessionId, !currentPaid)
+      setSessions((prev) => prev.map((s) => s.id === sessionId ? { ...s, is_paid: !currentPaid } : s))
+    } catch (err) {
+      console.error('Error toggling paid status:', err)
+    }
+  }
+
   const openPrepModal = (session: PrepModalSession) => {
     setPrepModalSession(session)
     prepStream.start(session.id)
@@ -1288,13 +1298,22 @@ export default function PatientProfilePage() {
                           <span className="badge text-xs bg-gray-100 text-gray-500">{strings.patientProfile.badge_no_summary}</span>
                         )}
                         {session.summary_id != null && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${
-                            session.is_paid
-                              ? 'bg-green-50 text-green-700 border-green-200'
-                              : 'bg-orange-50 text-orange-700 border-orange-200'
-                          }`}>
-                            {session.is_paid ? 'שולם' : 'לא שולם'}
-                          </span>
+                          <button
+                            onClick={(e) => handleTogglePaid(session.id, !!session.is_paid, e)}
+                            title={session.is_paid ? 'שולם — לחץ לביטול' : 'לא שולם — לחץ לסימון כשולם'}
+                            className="flex items-center gap-1 touch-manipulation group"
+                          >
+                            <span className={`relative inline-flex h-4 w-8 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ${
+                              session.is_paid ? 'bg-green-500' : 'bg-gray-300 group-hover:bg-gray-400'
+                            }`}>
+                              <span className={`inline-block h-3 w-3 rounded-full bg-white shadow transform transition-transform duration-200 ${
+                                session.is_paid ? 'translate-x-4' : 'translate-x-0'
+                              }`} />
+                            </span>
+                            <span className={`text-xs font-medium ${session.is_paid ? 'text-green-700' : 'text-gray-500'}`}>
+                              {session.is_paid ? 'שולם' : 'לא שולם'}
+                            </span>
+                          </button>
                         )}
                       </div>
                       {session.duration_minutes && (

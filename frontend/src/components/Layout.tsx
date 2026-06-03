@@ -14,6 +14,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/useAuth'
 import { adminAPI } from '@/lib/adminApi'
+import { therapistAPI } from '@/lib/api'
 import {
   HomeIcon,
   ChatBubbleLeftRightIcon,
@@ -24,6 +25,7 @@ import {
   Bars3Icon,
   XMarkIcon,
   LightBulbIcon,
+  QuestionMarkCircleIcon,
 } from '@heroicons/react/24/outline'
 import SideNotebook from '@/components/SideNotebook'
 import AppLogo from '@/components/common/AppLogo'
@@ -35,6 +37,39 @@ export default function Layout() {
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [notebookOpen, setNotebookOpen] = useState(false)
+
+  // Feedback modal state
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackType, setFeedbackType] = useState<'bug' | 'contact'>('bug')
+  const [feedbackSubject, setFeedbackSubject] = useState('')
+  const [feedbackMessage, setFeedbackMessage] = useState('')
+  const [feedbackSending, setFeedbackSending] = useState(false)
+  const [feedbackSent, setFeedbackSent] = useState(false)
+  const [feedbackError, setFeedbackError] = useState('')
+
+  const openFeedback = (type: 'bug' | 'contact') => {
+    setFeedbackType(type)
+    setFeedbackSubject('')
+    setFeedbackMessage('')
+    setFeedbackSent(false)
+    setFeedbackError('')
+    setFeedbackOpen(true)
+  }
+
+  const handleFeedbackSubmit = async () => {
+    if (!feedbackMessage.trim()) return
+    setFeedbackSending(true)
+    setFeedbackError('')
+    try {
+      await therapistAPI.submitFeedback(feedbackType, feedbackMessage, feedbackSubject || undefined)
+      setFeedbackSent(true)
+      setTimeout(() => setFeedbackOpen(false), 2000)
+    } catch {
+      setFeedbackError('שגיאה בשליחה. נסה שנית.')
+    } finally {
+      setFeedbackSending(false)
+    }
+  }
 
   // ── Easter egg: 5 rapid clicks on name/email within 3 seconds → admin panel ──
   const eggClicksRef = useRef<number[]>([])
@@ -154,6 +189,15 @@ export default function Layout() {
                   )}
                 </div>
               )}
+
+              {/* Feedback / Help button */}
+              <button
+                onClick={() => openFeedback('bug')}
+                className="p-2 rounded-lg touch-manipulation min-w-[40px] min-h-[40px] flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                title="דווח על תקלה / צור קשר"
+              >
+                <QuestionMarkCircleIcon className="h-5 w-5" />
+              </button>
 
               {/* Side Notebook toggle — always visible */}
               <button
@@ -278,9 +322,88 @@ export default function Layout() {
               <p className="font-medium text-gray-600">{strings.layout.footer_subtitle}</p>
               <p className="mt-0.5 text-xs">{strings.layout.footer_security}</p>
             </div>
+            <div className="flex items-center gap-3 text-xs">
+              <button onClick={() => openFeedback('bug')} className="text-gray-400 hover:text-gray-600 underline">דווח על תקלה</button>
+              <span>·</span>
+              <button onClick={() => openFeedback('contact')} className="text-gray-400 hover:text-gray-600 underline">צור קשר</button>
+            </div>
           </div>
         </div>
       </footer>
+
+      {/* Feedback modal */}
+      {feedbackOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir="rtl">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  {feedbackType === 'bug' ? 'דווח על תקלה' : 'צור קשר'}
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {feedbackType === 'bug' ? 'דיווחך יגיע ישירות לצוות הפיתוח' : 'נחזור אליך בהקדם לכתובת: info@metapel.online'}
+                </p>
+              </div>
+              <button onClick={() => setFeedbackOpen(false)} className="text-gray-400 hover:text-gray-600 p-1">
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-3">
+              {/* Type tabs */}
+              <div className="flex gap-2">
+                {(['bug', 'contact'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setFeedbackType(t)}
+                    className={`flex-1 py-1.5 text-sm rounded-lg font-medium transition-colors ${
+                      feedbackType === t ? 'bg-therapy-calm text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {t === 'bug' ? 'דווח על תקלה' : 'יצירת קשר'}
+                  </button>
+                ))}
+              </div>
+
+              <input
+                type="text"
+                value={feedbackSubject}
+                onChange={(e) => setFeedbackSubject(e.target.value)}
+                placeholder={feedbackType === 'bug' ? 'כותרת התקלה (אופציונלי)' : 'נושא (אופציונלי)'}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+              />
+
+              <textarea
+                value={feedbackMessage}
+                onChange={(e) => setFeedbackMessage(e.target.value)}
+                placeholder={feedbackType === 'bug' ? 'תאר את התקלה — מה קרה, מתי, באיזה מסך...' : 'כתוב את הודעתך כאן...'}
+                rows={5}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-therapy-calm focus:border-therapy-calm"
+              />
+
+              {feedbackError && (
+                <div className="text-red-600 text-sm bg-red-50 rounded-lg p-2">{feedbackError}</div>
+              )}
+              {feedbackSent && (
+                <div className="text-green-700 text-sm bg-green-50 rounded-lg p-2 font-medium">ההודעה נשלחה בהצלחה ✓</div>
+              )}
+            </div>
+
+            <div className="flex gap-3 px-5 py-4 border-t border-gray-100">
+              <button
+                onClick={handleFeedbackSubmit}
+                disabled={!feedbackMessage.trim() || feedbackSending || feedbackSent}
+                className="btn-primary flex-1 disabled:opacity-50"
+              >
+                {feedbackSending ? 'שולח...' : 'שלח'}
+              </button>
+              <button onClick={() => setFeedbackOpen(false)} className="btn-secondary flex-1">
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

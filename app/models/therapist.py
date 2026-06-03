@@ -139,6 +139,9 @@ class TherapistProfile(BaseModel):
     years_of_experience = Column(String(50))  # e.g. "12" or "10-15"
     areas_of_expertise = Column(Text)    # Comma-separated or free-text areas
 
+    # Session defaults (added migration 047)
+    default_session_duration = Column(Integer, nullable=False, server_default='50', default=50)
+
     # AI layer (added migration 014)
     # Links to the modality pack currently active for this therapist.
     # NULL falls back to generic_integrative pack at generation time.

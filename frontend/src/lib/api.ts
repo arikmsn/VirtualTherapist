@@ -359,7 +359,9 @@ export const sessionsAPI = {
     duration_minutes?: number
     start_time?: string
     end_time?: string
-    notify_patient?: boolean   // send WhatsApp appointment reminder (default false)
+    notify_patient?: boolean
+    recurrence_rule?: string | null
+    recurrence_ends_at?: string | null
   }) => {
     const response = await api.post('/sessions/', data)
     return response.data
@@ -372,6 +374,11 @@ export const sessionsAPI = {
 
   setPaid: async (sessionId: number, isPaid: boolean) => {
     const response = await api.patch(`/sessions/${sessionId}/paid`, { is_paid: isPaid })
+    return response.data
+  },
+
+  createNextOccurrence: async (sessionId: number) => {
+    const response = await api.post(`/sessions/${sessionId}/next-occurrence`)
     return response.data
   },
 
@@ -688,6 +695,7 @@ export const therapistAPI = {
     areas_of_expertise?: string | null
     profession?: string | null
     primary_therapy_modes?: string[] | null
+    default_session_duration?: number | null
   }) => {
     const response = await api.patch('/therapist/profile', data)
     return response.data
@@ -706,6 +714,10 @@ export const therapistAPI = {
   completeIntroWizard: async () => {
     const response = await api.post('/therapist/intro-wizard-complete')
     return response.data as { success: boolean }
+  },
+
+  submitFeedback: async (type: 'bug' | 'contact', message: string, subject?: string) => {
+    await api.post('/therapist/feedback', { type, message, subject })
   },
 
   getSignatureProfile: async () => {
