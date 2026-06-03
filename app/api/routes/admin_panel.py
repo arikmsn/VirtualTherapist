@@ -582,6 +582,65 @@ def admin_usage(
     )
 
 
+# ── Feedback inbox ────────────────────────────────────────────────────────────
+
+class FeedbackRow(BaseModel):
+    id: int
+    therapist_id: Optional[int]
+    therapist_name: str
+    therapist_email: str
+    type: str
+    subject: Optional[str]
+    message: str
+    status: str
+    email_delivery_status: str
+    email_delivery_error: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/feedback", response_model=List[FeedbackRow])
+def list_feedback(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(200, le=1000),
+    admin: Therapist = Depends(get_admin_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Return all in-app feedback messages, newest first."""
+    from app.models.feedback import FeedbackMessage
+    rows = (
+        db.query(FeedbackMessage)
+        .order_by(FeedbackMessage.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return rows
+
+
+@router.patch("/feedback/{feedback_id}/status", response_model=FeedbackRow)
+def set_feedback_status(
+    feedback_id: int,
+    body: dict,
+    admin: Therapist = Depends(get_admin_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Update the admin-triage status of a feedback message (new → read → resolved)."""
+    from app.models.feedback import FeedbackMessage
+    msg = db.query(FeedbackMessage).filter(FeedbackMessage.id == feedback_id).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Feedback message not found")
+    new_status = body.get("status", msg.status)
+    if new_status not in ("new", "read", "resolved"):
+        raise HTTPException(status_code=422, detail="status must be 'new', 'read', or 'resolved'")
+    msg.status = new_status
+    db.commit()
+    db.refresh(msg)
+    return msg
+
+
 @router.get("/alerts", response_model=List[AlertRow])
 def list_alerts(
     unread_only: bool = False,

@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy import desc
 from pydantic import BaseModel, Field
@@ -495,81 +495,153 @@ class FeedbackRequest(BaseModel):
     message: str
 
 
+def _send_resend_email_bg(
+    feedback_id: int,
+    resend_api_key: str,
+    from_email: str,
+    to_email: str,
+    subject: str,
+    html: str,
+    text: str,
+) -> None:
+    """
+    Background task: send email via Resend REST API, then update email_delivery_status in DB.
+    Runs AFTER the HTTP response is sent to the client so a failure here never
+    blocks or fails the user's submission.
+    """
+    import httpx
+    from app.core.database import SessionLocal
+    from app.models.feedback import FeedbackMessage
+
+    db = SessionLocal()
+    try:
+        logger.info(f"[feedback] Resend attempt: feedback_id={feedback_id} to={to_email!r}")
+        resp = httpx.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {resend_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"from": from_email, "to": [to_email], "subject": subject, "html": html, "text": text},
+            timeout=15.0,
+        )
+
+        msg = db.query(FeedbackMessage).filter(FeedbackMessage.id == feedback_id).first()
+        if not msg:
+            return
+
+        if resp.status_code in (200, 201):
+            msg.email_delivery_status = "sent"
+            logger.info(f"[feedback] Resend success: feedback_id={feedback_id} status={resp.status_code}")
+        else:
+            error_snippet = resp.text[:300]
+            msg.email_delivery_status = "failed"
+            msg.email_delivery_error = f"HTTP {resp.status_code}: {error_snippet}"
+            logger.error(
+                f"[feedback] Resend non-2xx: feedback_id={feedback_id} "
+                f"status={resp.status_code} body={error_snippet!r}"
+            )
+        db.commit()
+
+    except Exception as exc:
+        logger.error(f"[feedback] Resend exception: feedback_id={feedback_id} exc={exc!r}")
+        try:
+            msg = db.query(FeedbackMessage).filter(FeedbackMessage.id == feedback_id).first()
+            if msg:
+                msg.email_delivery_status = "failed"
+                msg.email_delivery_error = str(exc)[:500]
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 @router.post("/feedback", status_code=204)
 async def submit_feedback(
     body: FeedbackRequest,
+    background_tasks: BackgroundTasks,
     current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
 ):
     """
-    Send in-app feedback / bug report via SendGrid, aligned with the marketing-site pattern:
-      - From:    SENDGRID_FROM_EMAIL (default "noreply@metapel.online" — verified sender)
-      - To:      CONTACT_TARGET_EMAIL (same env-var as marketing site)
-      - SDK:     sendgrid.SendGridAPIClient  (Python SDK, same provider as marketing site)
-      - Thread:  sg.send() runs in asyncio.to_thread() — never blocks the event loop
+    Dual-path feedback submission:
 
-    Guard conditions (log-only, return 204 so dev environments don't break):
-      - SENDGRID_API_KEY not set
-      - CONTACT_TARGET_EMAIL not set
+    PRIMARY — DB persistence (source of truth, always attempted):
+      Save FeedbackMessage to DB.  If this fails → 500 (true failure).
 
-    Error mapping:
-      - SendGrid 401   → 500 "configuration error" (bad API key or unverified sender)
-      - SendGrid other → 500 "generic send error"
-      - Network/SDK    → 500 "generic send error"
+    SECONDARY — Resend email (best-effort, non-blocking):
+      Enqueued as a FastAPI BackgroundTask that runs after the response is sent.
+      If Resend fails for any reason, the submission is still considered successful
+      because the message is already safely stored in the DB.
+
+    User sees success iff DB save succeeds, regardless of email outcome.
     """
-    import asyncio
     from app.core.config import settings as _s
+    from app.models.feedback import FeedbackMessage
 
     label = "דיווח על תקלה" if body.type == "bug" else "יצירת קשר"
-    # Subject mirrors marketing-site convention: context label + identifier
-    subject_line = f"[Metapel App] {label}: {body.subject or 'ללא נושא'} ({current_therapist.email})"
 
-    # ── Debug: log resolved config values so mismatches are immediately visible ──
     logger.info(
-        f"[feedback] CONFIG resolved: "
-        f"SENDGRID_FEEDBACK_FROM_EMAIL={_s.SENDGRID_FEEDBACK_FROM_EMAIL!r} "
-        f"SENDGRID_FROM_EMAIL={_s.SENDGRID_FROM_EMAIL!r} "
-        f"CONTACT_TARGET_EMAIL={'<set>' if _s.CONTACT_TARGET_EMAIL else '<not set>'} "
-        f"SENDGRID_API_KEY={'<set>' if _s.SENDGRID_API_KEY else '<not set>'}"
-    )
-
-    # Always log the received feedback so it is always recoverable from Render logs
-    logger.warning(
         f"[feedback] RECEIVED type={body.type!r} therapist_id={current_therapist.id} "
         f"email={current_therapist.email!r} subject={body.subject!r} "
         f"message_len={len(body.message)}"
     )
 
-    # ── Guard: skip email if env vars are absent (acceptable in dev) ──────────
-    if not _s.SENDGRID_API_KEY:
-        logger.warning("[feedback] SENDGRID_API_KEY not set — email NOT sent, logged only")
-        return
+    # ── PRIMARY: persist to DB ────────────────────────────────────────────────
+    fb = FeedbackMessage(
+        therapist_id=current_therapist.id,
+        therapist_name=current_therapist.full_name,
+        therapist_email=current_therapist.email,
+        type=body.type,
+        subject=body.subject,
+        message=body.message,
+        status="new",
+        email_delivery_status="pending",
+    )
+    db.add(fb)
+    try:
+        db.commit()
+        db.refresh(fb)
+    except Exception as exc:
+        logger.error(f"[feedback] DB save FAILED therapist_id={current_therapist.id}: {exc!r}")
+        raise HTTPException(status_code=500, detail="שגיאה בשמירת ההודעה. נסה שנית.")
 
+    logger.info(f"[feedback] persisted: feedback_id={fb.id} therapist_id={current_therapist.id}")
+
+    # ── SECONDARY: enqueue Resend email (best-effort) ─────────────────────────
     to_email = _s.CONTACT_TARGET_EMAIL
-    if not to_email:
-        logger.warning("[feedback] CONTACT_TARGET_EMAIL not set — email NOT sent, logged only")
-        return
+    resend_key = _s.RESEND_API_KEY
+    from_email = _s.RESEND_FROM_EMAIL  # default "noreply@metapel.online"
 
-    # Use SENDGRID_FEEDBACK_FROM_EMAIL (always "noreply@metapel.online" by default),
-    # intentionally separate from SENDGRID_FROM_EMAIL so Render's explicit
-    # SENDGRID_FROM_EMAIL=admin@metapel.online setting cannot affect the feedback flow.
-    from_email = _s.SENDGRID_FEEDBACK_FROM_EMAIL
+    if not resend_key or not to_email:
+        # Mark skipped so the admin inbox shows the correct delivery status
+        fb.email_delivery_status = "skipped"
+        db.commit()
+        logger.warning(
+            f"[feedback] email skipped (RESEND_API_KEY={'set' if resend_key else 'not set'}, "
+            f"CONTACT_TARGET_EMAIL={'set' if to_email else 'not set'}): feedback_id={fb.id}"
+        )
+        return  # 204 — DB save succeeded, that's all we need
 
-    # ── Email bodies ──────────────────────────────────────────────────────────
+    subject_line = f"[Metapel App] {label}: {body.subject or 'ללא נושא'} ({current_therapist.email})"
     plain_body = (
         f"{label}\n"
         f"מטפל/ת: {current_therapist.full_name} <{current_therapist.email}>\n"
-        f"נושא: {body.subject or '—'}\n\n"
+        f"נושא: {body.subject or '—'}\n"
+        f"תאריך: {fb.created_at.strftime('%d/%m/%Y %H:%M')}\n\n"
         f"{body.message}"
     )
     html_body = (
-        f'<div dir="rtl" style="font-family:Arial,sans-serif;max-width:560px;'
-        f'margin:0 auto;color:#1F2937;">'
+        f'<div dir="rtl" style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#1F2937;">'
         f'<h2 style="color:#2563EB;margin-top:0;">{label}</h2>'
         f'<table style="width:100%;border-collapse:collapse;font-size:14px;">'
-        f'<tr><td style="padding:4px 8px 4px 0;font-weight:bold;white-space:nowrap;">מטפל/ת:</td>'
+        f'<tr><td style="padding:4px 8px 4px 0;font-weight:bold;">מטפל/ת:</td>'
         f'<td style="padding:4px 0;">{current_therapist.full_name} &lt;{current_therapist.email}&gt;</td></tr>'
-        f'<tr><td style="padding:4px 8px 4px 0;font-weight:bold;white-space:nowrap;">נושא:</td>'
+        f'<tr><td style="padding:4px 8px 4px 0;font-weight:bold;">נושא:</td>'
         f'<td style="padding:4px 0;">{body.subject or "—"}</td></tr>'
+        f'<tr><td style="padding:4px 8px 4px 0;font-weight:bold;">תאריך:</td>'
+        f'<td style="padding:4px 0;">{fb.created_at.strftime("%d/%m/%Y %H:%M")}</td></tr>'
         f'</table>'
         f'<hr style="margin:16px 0;border:none;border-top:1px solid #E5E7EB;"/>'
         f'<div style="background:#F9FAFB;border-radius:8px;padding:16px;'
@@ -577,67 +649,17 @@ async def submit_feedback(
         f'</div>'
     )
 
-    # ── Synchronous send helper — runs in thread pool via asyncio.to_thread ──
-    def _send() -> int:
-        import sendgrid
-        from sendgrid.helpers.mail import Mail, Content
-
-        msg = Mail(
-            from_email=(from_email, "Metapel Online"),
-            to_emails=to_email,
-            subject=subject_line,
-        )
-        # Provide both variants (plain first — matches marketing-site sgMail.send order)
-        msg.add_content(Content("text/plain", plain_body))
-        msg.add_content(Content("text/html", html_body))
-
-        sg = sendgrid.SendGridAPIClient(api_key=_s.SENDGRID_API_KEY)
-        resp = sg.send(msg)
-        return resp.status_code
-
-    # ── Send and map errors ───────────────────────────────────────────────────
-    logger.info(
-        f"[feedback] sending via SendGrid: from={from_email!r} to={to_email!r} "
-        f"therapist_id={current_therapist.id} type={body.type!r}"
+    background_tasks.add_task(
+        _send_resend_email_bg,
+        feedback_id=fb.id,
+        resend_api_key=resend_key,
+        from_email=from_email,
+        to_email=to_email,
+        subject=subject_line,
+        html=html_body,
+        text=plain_body,
     )
-    try:
-        status = await asyncio.to_thread(_send)
-    except Exception as exc:
-        # Network-level or SDK-level failure (not an HTTP error from SendGrid)
-        logger.error(
-            f"[feedback] SendGrid SDK/network error for therapist_id={current_therapist.id}: {exc!r}"
-        )
-        raise HTTPException(status_code=500, detail="שגיאה בשליחת ההודעה. נסה שנית.")
-
-    if status == 401:
-        logger.error(
-            f"[feedback] SendGrid 401 Unauthorized — check SENDGRID_API_KEY and that "
-            f"{from_email!r} is a verified sender in the SendGrid account"
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="שגיאה בתצורת המייל במערכת. ההודעה לא נשלחה. אנא פנה למנהל המערכת.",
-        )
-    if status == 403:
-        logger.error(
-            f"[feedback] SendGrid 403 Forbidden — sender {from_email!r} may not be verified "
-            f"or API key lacks Mail Send permission"
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="שגיאה בתצורת המייל במערכת. ההודעה לא נשלחה. אנא פנה למנהל המערכת.",
-        )
-    if status not in (200, 202):
-        logger.error(
-            f"[feedback] SendGrid returned unexpected status={status} "
-            f"therapist_id={current_therapist.id}"
-        )
-        raise HTTPException(status_code=500, detail="שגיאה בשליחת ההודעה. נסה שנית.")
-
-    logger.info(
-        f"[feedback] SendGrid accepted (status={status}): "
-        f"to={to_email!r} therapist_id={current_therapist.id}"
-    )
+    logger.info(f"[feedback] Resend background task queued: feedback_id={fb.id} to={to_email!r}")
 
 
 class SideNoteResponse(BaseModel):

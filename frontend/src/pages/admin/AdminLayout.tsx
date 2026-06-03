@@ -10,6 +10,7 @@ const NAV = [
   { to: '/admin/therapists', label: 'מטפלים', icon: '👥' },
   { to: '/admin/usage', label: 'שימוש AI', icon: '🤖' },
   { to: '/admin/alerts', label: 'התראות', icon: '🔔' },
+  { to: '/admin/feedback', label: 'פניות', icon: '📩' },
 ]
 
 export default function AdminLayout() {

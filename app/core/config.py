@@ -110,6 +110,11 @@ class Settings(BaseSettings):
     # Destination mailbox for in-app feedback / bug reports (same as marketing site).
     CONTACT_TARGET_EMAIL: str | None = None
 
+    # Resend (https://resend.com) — email delivery for in-app feedback.
+    # Primary provider for the feedback flow (simpler REST API than SendGrid).
+    RESEND_API_KEY: str | None = None
+    RESEND_FROM_EMAIL: str = "noreply@metapel.online"
+
     # Supabase (for auth.admin.deleteUser when supabase_user_id is set)
     SUPABASE_URL: str | None = None
     SUPABASE_SERVICE_ROLE_KEY: str | None = None

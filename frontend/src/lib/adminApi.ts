@@ -120,6 +120,20 @@ export interface UsageStats {
   total_tokens: number
 }
 
+export interface FeedbackRow {
+  id: number
+  therapist_id: number | null
+  therapist_name: string
+  therapist_email: string
+  type: 'bug' | 'contact'
+  subject: string | null
+  message: string
+  status: 'new' | 'read' | 'resolved'
+  email_delivery_status: 'pending' | 'sent' | 'failed' | 'skipped'
+  email_delivery_error: string | null
+  created_at: string
+}
+
 // ── API calls ──────────────────────────────────────────────────────────────
 
 export const adminAPI = {
@@ -149,6 +163,9 @@ export const adminAPI = {
     get<AlertRow[]>(`/admin-panel/alerts${unreadOnly ? '?unread_only=true' : ''}`),
   markAlertRead: (id: number) => patch<{ ok: boolean }>(`/admin-panel/alerts/${id}/read`),
   markAllRead: () => patch<{ ok: boolean }>('/admin-panel/alerts/read-all'),
+  getFeedback: () => get<FeedbackRow[]>('/admin-panel/feedback'),
+  setFeedbackStatus: (id: number, status: string) =>
+    patch<FeedbackRow>(`/admin-panel/feedback/${id}/status`, { status }),
 
   deleteTherapist: async (id: number): Promise<{ deleted: boolean; therapist_id: number; email: string }> => {
     const res = await fetch(`${BASE}/admin-panel/therapists/${id}`, {

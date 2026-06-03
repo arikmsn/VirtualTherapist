@@ -24,6 +24,7 @@ import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminTherapistsPage from './pages/admin/AdminTherapistsPage'
 import AdminUsagePage from './pages/admin/AdminUsagePage'
 import AdminAlertsPage from './pages/admin/AdminAlertsPage'
+import AdminFeedbackPage from './pages/admin/AdminFeedbackPage'
 import ChangePasswordModal from './components/ChangePasswordModal'
 import OnboardingWizard from './components/OnboardingWizard'
 import ScrollToTop from './components/ScrollToTop'
@@ -101,6 +102,7 @@ function AppRoutes() {
               <Route path="/admin/therapists" element={<AdminTherapistsPage />} />
               <Route path="/admin/usage" element={<AdminUsagePage />} />
               <Route path="/admin/alerts" element={<AdminAlertsPage />} />
+              <Route path="/admin/feedback" element={<AdminFeedbackPage />} />
             </Route>
           </Route>
 
