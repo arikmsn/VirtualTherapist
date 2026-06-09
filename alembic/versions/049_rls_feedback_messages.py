@@ -30,6 +30,11 @@ apscheduler_jobs, modality_packs, ai_eval_runs, ai_eval_samples):
 
 from alembic import op
 
+revision = '049'
+down_revision = '048'
+branch_labels = None
+depends_on = None
+
 
 def upgrade():
     # 1. Enable RLS — this alone is sufficient (no policy = deny-all)
