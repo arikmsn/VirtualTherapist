@@ -19,6 +19,15 @@ from app.core.agent import (
 from app.ai.models import FlowType
 from app.ai.completeness import CompletenessChecker
 from app.ai.summary_pipeline import SummaryInput, SummaryPipeline, compute_edit_distance
+from app.ai.summary_tasks import (
+    SummaryTaskType,
+    TASK_REGISTRY,
+    parse_strict,
+    build_suggest_messages,
+    build_revise_messages,
+)
+from app.ai.summary_models import SourceSaveResult, SuggestResult, ReviseResult
+from app.ai.router import ModelRouter
 from app.ai.prep import PrepInput, PrepMode, PrepPipeline, PrepResult
 from app.ai.signature import SignatureEngine, inject_into_prompt
 from app.services.treatment_plan_service import TreatmentPlanService
@@ -170,17 +179,22 @@ class SessionService:
         session_summary_id: Optional[int] = None,
         modality_pack_id: Optional[int] = None,
         generation_result=None,  # Optional[GenerationResult]; defaults to agent._last_result
+        task_type=None,  # Optional[SummaryTaskType]; prefixes route_reason for analytics
     ) -> None:
         """
         Best-effort: write a row to ai_generation_log.
         Pass generation_result explicitly to log a result other than agent._last_result
         (e.g. from the CompletenessChecker).
+        Pass task_type to prefix route_reason with "task:<type>;" (Phase 10 — no schema change).
         Never raises — a logging failure must not block the main flow.
         """
         try:
             last = generation_result if generation_result is not None else agent._last_result
             if last is None:
                 return
+            route_reason = last.route_reason
+            if task_type is not None:
+                route_reason = f"task:{task_type.value};{route_reason}"
             log_row = AIGenerationLog(
                 therapist_id=therapist_id,
                 flow_type=flow_type.value,
@@ -188,7 +202,7 @@ class SessionService:
                 session_summary_id=session_summary_id,
                 modality_pack_id=modality_pack_id,
                 model_used=last.model_used,
-                route_reason=last.route_reason,
+                route_reason=route_reason,
                 prompt_version="1.0",
                 prompt_tokens=last.prompt_tokens,
                 completion_tokens=last.completion_tokens,
@@ -483,6 +497,7 @@ class SessionService:
             session_summary_id=summary.id,
             modality_pack_id=modality_pack_id,
             generation_result=pipeline._last_extraction_result,
+            task_type=SummaryTaskType.AI_SUMMARY_GENERATE,
         )
         self._write_generation_log(
             therapist_id=therapist_id,
@@ -492,6 +507,7 @@ class SessionService:
             session_summary_id=summary.id,
             modality_pack_id=modality_pack_id,
             generation_result=pipeline._last_render_result,
+            task_type=SummaryTaskType.AI_SUMMARY_GENERATE,
         )
 
         self.db.commit()
@@ -506,7 +522,10 @@ class SessionService:
             action_details={"session_id": session_id, "generated_from": "audio"},
         )
 
-        logger.info(f"Generated summary from audio for session {session_id}")
+        logger.info(
+            f"[summary_task] task=ai_summary_generate ai=True model={ai_model} "
+            f"session_summary_id={summary.id} status=ok"
+        )
         return summary
 
     async def generate_summary_from_text(
@@ -614,6 +633,7 @@ class SessionService:
             session_summary_id=summary.id,
             modality_pack_id=modality_pack_id,
             generation_result=pipeline._last_extraction_result,
+            task_type=SummaryTaskType.AI_SUMMARY_GENERATE,
         )
         self._write_generation_log(
             therapist_id=therapist_id,
@@ -623,6 +643,7 @@ class SessionService:
             session_summary_id=summary.id,
             modality_pack_id=modality_pack_id,
             generation_result=pipeline._last_render_result,
+            task_type=SummaryTaskType.AI_SUMMARY_GENERATE,
         )
 
         self.db.commit()
@@ -637,7 +658,267 @@ class SessionService:
             action_details={"session_id": session_id, "generated_from": "text"},
         )
 
-        logger.info(f"Generated structured summary for session {session_id}")
+        logger.info(
+            f"[summary_task] task=ai_summary_generate ai=True model={ai_model} "
+            f"session_summary_id={summary.id} status=ok"
+        )
+        return summary
+
+    # ── Phase 10: task-based summary orchestration ────────────────────────────
+
+    async def _run_ai_task(
+        self,
+        task_type: SummaryTaskType,
+        *,
+        agent: TherapyAgent,
+        system_msg: str,
+        user_msg: str,
+    ):
+        """
+        Shared runner for AI summary tasks (suggest / revise).
+
+        Returns (parsed_model_or_None, generation_result). Enforces the per-task
+        timeout via asyncio.wait_for (provider.generate has no timeout param).
+        Raises RuntimeError if the provider is unavailable; asyncio.TimeoutError on timeout.
+        The caller applies the registry fallback_policy when the parsed result is None.
+        """
+        cfg = TASK_REGISTRY[task_type]
+        if not agent.provider:
+            raise RuntimeError("AI client not initialized.")
+        router = ModelRouter()
+        model_id, route_reason = router.resolve(cfg.flow_type)
+        result = await asyncio.wait_for(
+            agent.provider.generate(
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg},
+                ],
+                model=model_id,
+                flow_type=cfg.flow_type,
+                temperature=cfg.temperature,
+                max_tokens=cfg.max_tokens,
+                route_reason=route_reason,
+            ),
+            timeout=cfg.timeout_s,
+        )
+        parsed = parse_strict(result.content, cfg.response_model) if cfg.response_model else None
+        return parsed, result
+
+    async def source_save_summary(
+        self,
+        session_id: int,
+        source_text: str,
+        therapist_id: int,
+        source_origin: str = "manual",   # "manual" | "transcription"
+    ) -> SessionSummary:
+        """
+        Task: source_save — NO AI call. Preserve therapist/source text as-is.
+
+        Provenance is kept clean and traceable:
+          - manual typed text   → generated_from="manual",            notes_input=text, transcript=None
+          - saved transcription → generated_from="manual_transcript", transcript=text, notes_input=None
+        Both are non-AI (ai_model=None). Creates or updates the session's summary
+        in place (draft, never approved). Works even with no API key.
+        """
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
+        if not session:
+            raise ValueError("Session not found or does not belong to this therapist")
+        if not source_text or not source_text.strip():
+            raise ValueError("Source text cannot be empty")
+
+        text = source_text.strip()
+        is_transcription = source_origin == "transcription"
+        generated_from = "manual_transcript" if is_transcription else "manual"
+
+        summary = session.summary
+        if summary is None:
+            summary = SessionSummary()
+            self.db.add(summary)
+
+        summary.full_summary = text
+        summary.generated_from = generated_from
+        summary.notes_input = None if is_transcription else text
+        summary.transcript = text if is_transcription else None
+        summary.status = SummaryStatus.DRAFT
+        summary.approved_by_therapist = False
+        summary.therapist_edited = False
+        summary.clinical_json = None
+        summary.ai_draft_text = None
+        summary.ai_model = None
+        summary.ai_prompt_version = None
+        summary.ai_confidence = None
+        self.db.flush()
+
+        session.summary_id = summary.id
+        if is_transcription:
+            session.has_recording = True
+        self.db.commit()
+        self.db.refresh(summary)
+
+        await self.audit_service.log_action(
+            user_id=therapist_id,
+            user_type="therapist",
+            action="generate",
+            resource_type="session_summary",
+            resource_id=summary.id,
+            action_details={
+                "session_id": session_id,
+                "generated_from": generated_from,
+                "task_type": "source_save",
+            },
+        )
+        logger.info(
+            f"[summary_task] task=source_save ai=False model=None "
+            f"session_summary_id={summary.id} origin={source_origin} status=ok"
+        )
+        return summary
+
+    async def suggest_on_source(
+        self,
+        session_id: int,
+        source_text: str,
+        agent: TherapyAgent,
+        therapist_id: int,
+    ) -> SuggestResult:
+        """
+        Task: source_summary_suggest — AI returns ADVISORY suggestions only.
+
+        Never rewrites and never persists a summary. When an AI draft already
+        exists for the session, it is passed as context for gap analysis.
+        Writes one AIGenerationLog row (the call is real even though its output
+        is ephemeral). On malformed output, falls back to empty suggestions.
+        """
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
+        if not session:
+            raise ValueError("Session not found or does not belong to this therapist")
+        if not source_text or not source_text.strip():
+            raise ValueError("Source text cannot be empty")
+
+        existing = session.summary
+        existing_draft = existing.full_summary if existing else None
+        cfg = TASK_REGISTRY[SummaryTaskType.SOURCE_SUMMARY_SUGGEST]
+        system_msg, user_msg = build_suggest_messages(
+            source_text.strip(), agent.modality_pack, existing_draft=existing_draft,
+        )
+        parsed, result = await self._run_ai_task(
+            SummaryTaskType.SOURCE_SUMMARY_SUGGEST,
+            agent=agent, system_msg=system_msg, user_msg=user_msg,
+        )
+
+        modality_pack_id = agent.modality_pack.id if agent.modality_pack else None
+        self._write_generation_log(
+            therapist_id=therapist_id,
+            flow_type=cfg.flow_type,
+            agent=agent,
+            session_id=session.id,
+            session_summary_id=existing.id if existing else None,
+            modality_pack_id=modality_pack_id,
+            generation_result=result,
+            task_type=SummaryTaskType.SOURCE_SUMMARY_SUGGEST,
+        )
+        self.db.commit()
+
+        if parsed is None:   # fallback_policy="scaffold"
+            parsed = SuggestResult(suggestions=[], overall_note=None)
+
+        logger.info(
+            f"[summary_task] task=source_summary_suggest ai=True model={result.model_used} "
+            f"session_summary_id={existing.id if existing else None} "
+            f"suggestions={len(parsed.suggestions)} status=ok"
+        )
+        return parsed
+
+    async def revise_summary(
+        self,
+        session_id: int,
+        instruction: str,
+        agent: TherapyAgent,
+        therapist_id: int,
+    ) -> SessionSummary:
+        """
+        Task: ai_summary_revise — apply ONE instruction to an existing draft. Single-shot.
+
+        Allowed for ANY existing draft regardless of provenance (AI-generated OR
+        source-saved) — revise operates on full_summary, so asking AI to restructure
+        the therapist's own saved notes is valid and useful.
+
+        Never auto-approves. If the summary was approved, it is reset to draft.
+        ai_draft_text is left untouched (immutable original for signature learning).
+        On malformed AI output the draft is left UNCHANGED (passthrough_original).
+        """
+        session = self.db.query(TherapySession).filter(
+            TherapySession.id == session_id,
+            TherapySession.therapist_id == therapist_id,
+        ).first()
+        if not session:
+            raise ValueError("Session not found or does not belong to this therapist")
+        summary = session.summary
+        if summary is None:
+            raise ValueError("No summary to revise")
+        if not instruction or not instruction.strip():
+            raise ValueError("Revision instruction cannot be empty")
+
+        current = summary.full_summary or ""
+        cfg = TASK_REGISTRY[SummaryTaskType.AI_SUMMARY_REVISE]
+        system_msg, user_msg = build_revise_messages(
+            current, instruction.strip(), agent.modality_pack,
+        )
+        parsed, result = await self._run_ai_task(
+            SummaryTaskType.AI_SUMMARY_REVISE,
+            agent=agent, system_msg=system_msg, user_msg=user_msg,
+        )
+
+        modality_pack_id = agent.modality_pack.id if agent.modality_pack else None
+        self._write_generation_log(
+            therapist_id=therapist_id,
+            flow_type=cfg.flow_type,
+            agent=agent,
+            session_id=session.id,
+            session_summary_id=summary.id,
+            modality_pack_id=modality_pack_id,
+            generation_result=result,
+            task_type=SummaryTaskType.AI_SUMMARY_REVISE,
+        )
+
+        if parsed is None:   # fallback_policy="passthrough_original" — never corrupt the draft
+            self.db.commit()
+            logger.info(
+                f"[summary_task] task=ai_summary_revise ai=True model={result.model_used} "
+                f"session_summary_id={summary.id} status=fallback_unchanged"
+            )
+            return summary
+
+        was_approved = bool(summary.approved_by_therapist) or summary.status == SummaryStatus.APPROVED
+        summary.full_summary = parsed.revised_summary
+        summary.therapist_edited = True
+        summary.status = SummaryStatus.DRAFT          # never auto-approve
+        summary.approved_by_therapist = False         # reset if it had been approved
+        self.db.flush()
+        self.db.commit()
+        self.db.refresh(summary)
+
+        await self.audit_service.log_action(
+            user_id=therapist_id,
+            user_type="therapist",
+            action="edit",
+            resource_type="session_summary",
+            resource_id=summary.id,
+            action_details={
+                "session_id": session_id,
+                "task_type": "ai_summary_revise",
+                "reset_from_approved": was_approved,
+            },
+        )
+        logger.info(
+            f"[summary_task] task=ai_summary_revise ai=True model={result.model_used} "
+            f"session_summary_id={summary.id} reset_from_approved={was_approved} status=ok"
+        )
         return summary
 
     async def get_summary(self, session_id: int, therapist_id: int) -> Optional[SessionSummary]:

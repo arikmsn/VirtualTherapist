@@ -20,6 +20,8 @@ class FlowType(str, Enum):
     # Standard-tier flows (everyday therapist interactions)
     CHAT = "chat"
     SESSION_SUMMARY = "session_summary"
+    SUMMARY_SUGGEST = "summary_suggest"   # Phase 10: advisory suggestions on source text
+    SUMMARY_REVISE = "summary_revise"     # Phase 10: single-instruction revision of a draft
     SESSION_PREP = "session_prep"
     PRE_SESSION_PREP = "pre_session_prep"   # Phase 4: structured two-call prep pipeline
     PATIENT_INSIGHT = "patient_insight"

@@ -38,6 +38,8 @@ class ModelRouter:
         FlowType.COMPLETENESS_CHECK:  "fast",
         FlowType.CHAT:                "standard",
         FlowType.SESSION_SUMMARY:     "standard",
+        FlowType.SUMMARY_SUGGEST:     "standard",   # Phase 10: advisory suggestions
+        FlowType.SUMMARY_REVISE:      "standard",   # Phase 10: single-shot revision
         FlowType.SESSION_PREP:        "standard",
         FlowType.PRE_SESSION_PREP:    "standard",
         FlowType.PATIENT_INSIGHT:     "standard",

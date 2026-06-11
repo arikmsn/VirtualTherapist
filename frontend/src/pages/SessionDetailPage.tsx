@@ -12,6 +12,7 @@ import {
   ClipboardDocumentListIcon,
   TrashIcon,
   ArrowPathIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline'
 import { sessionsAPI, patientsAPI, exercisesAPI } from '@/lib/api'
 import { strings } from '@/i18n/he'
@@ -127,6 +128,16 @@ export default function SessionDetailPage() {
   // Open tasks count across all patient tasks (for banner)
   const [openTasksCount, setOpenTasksCount] = useState(0)
 
+  // Phase 10: task-based actions (source-save / suggest / revise)
+  const [savingSource, setSavingSource] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestions, setSuggestions] = useState<Array<{ category: string; text: string; severity: string }>>([])
+  const [suggestionsNote, setSuggestionsNote] = useState<string | null>(null)
+  const [suggestionsStale, setSuggestionsStale] = useState(false)
+  const [suggestRan, setSuggestRan] = useState(false)   // true after at least one suggest call
+  const [reviseInstruction, setReviseInstruction] = useState('')
+  const [revising, setRevising] = useState(false)
+
   // Editable fields
   const [editFullSummary, setEditFullSummary] = useState('')
   const [editTopics, setEditTopics] = useState('')        // newline-separated list
@@ -232,6 +243,60 @@ export default function SessionDetailPage() {
       setError(detail)
     } finally {
       setGenerating(false)
+    }
+  }
+
+  // --- Phase 10: source_save (no AI) ---
+  const handleSourceSave = async (text: string, origin: 'manual' | 'transcription') => {
+    if (!text.trim()) return
+    setSavingSource(true)
+    setError('')
+    try {
+      const result = await sessionsAPI.sourceSaveSummary(Number(sessionId), text, origin)
+      setSummary(result as SessionSummary)
+      setSession((prev) => prev ? { ...prev, summary_id: (result as SessionSummary).id } : prev)
+      // Clear advisory state — it belongs to the pre-save source screen
+      setSuggestions([]); setSuggestRan(false); setSuggestionsStale(false); setSuggestionsNote(null)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || strings.sessionDetail.error_creating_summary)
+    } finally {
+      setSavingSource(false)
+    }
+  }
+
+  // --- Phase 10: source_summary_suggest (advisory only — never mutates the textarea) ---
+  const handleSuggest = async () => {
+    if (!notes.trim()) return
+    setSuggesting(true)
+    setError('')
+    try {
+      const result = await sessionsAPI.suggestOnSource(Number(sessionId), notes)
+      setSuggestions(result.suggestions)
+      setSuggestionsNote(result.overall_note)
+      setSuggestionsStale(false)
+      setSuggestRan(true)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || strings.sessionDetail.error_suggest)
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
+  // --- Phase 10: ai_summary_revise (single-shot; never auto-approves) ---
+  const handleRevise = async () => {
+    if (!reviseInstruction.trim()) return
+    setRevising(true)
+    setError('')
+    try {
+      const result = await sessionsAPI.reviseSummary(Number(sessionId), reviseInstruction)
+      setSummary(result as SessionSummary)
+      setSession((prev) => prev ? { ...prev, summary_id: (result as SessionSummary).id } : prev)
+      setReviseInstruction('')
+      setEditing(false)   // exit edit mode so the revised draft is shown fresh
+    } catch (err: any) {
+      setError(err.response?.data?.detail || strings.sessionDetail.error_revise)
+    } finally {
+      setRevising(false)
     }
   }
 
@@ -540,29 +605,95 @@ export default function SessionDetailPage() {
               </p>
               <textarea
                 value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                onChange={(e) => {
+                  setNotes(e.target.value)
+                  // Editing the source invalidates any previously generated suggestions.
+                  if (suggestRan) setSuggestionsStale(true)
+                }}
                 className="input-field h-48 resize-none"
                 placeholder={strings.sessionDetail.text_placeholder}
-                disabled={generating}
+                disabled={generating || savingSource}
               />
-              <div className="flex items-center justify-between mt-4">
+
+              {/* Advisory suggestions panel — never mutates the textarea */}
+              {suggestRan && (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-bold text-amber-800 flex items-center gap-1.5">
+                      <LightBulbIcon className="h-4 w-4" />
+                      {strings.sessionDetail.suggestions_title}
+                    </h3>
+                    <span className="text-[11px] text-amber-600">{strings.sessionDetail.suggestions_advisory_note}</span>
+                  </div>
+                  {suggestionsStale && (
+                    <div className="text-xs text-amber-700 bg-amber-100 rounded px-2 py-1 mb-2">
+                      {strings.sessionDetail.suggestions_stale}
+                    </div>
+                  )}
+                  {suggestions.length === 0 ? (
+                    <p className="text-sm text-amber-700">{strings.sessionDetail.suggestions_empty}</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {suggestions.map((s, i) => (
+                        <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 mt-0.5 ${
+                            s.severity === 'important' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {s.category}
+                          </span>
+                          <span className={suggestionsStale ? 'opacity-50' : ''}>{s.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {suggestionsNote && !suggestionsStale && (
+                    <p className="text-xs text-gray-500 mt-2 pt-2 border-t border-amber-200">{suggestionsNote}</p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between mt-4 flex-wrap gap-2">
                 <span className="text-xs text-gray-400">
                   {notes.length > 0 ? `${notes.length} ${strings.sessionDetail.char_count_label}` : ''}
                 </span>
-                <button
-                  onClick={handleGenerateSummary}
-                  disabled={!notes.trim() || generating}
-                  className="btn-primary disabled:opacity-50"
-                >
-                  {generating ? (
-                    <span className="flex items-center gap-2">
-                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                      {strings.sessionDetail.creating_summary}
-                    </span>
-                  ) : (
-                    strings.sessionDetail.create_ai_summary_button
-                  )}
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => handleSourceSave(notes, 'manual')}
+                    disabled={!notes.trim() || savingSource || generating}
+                    className="btn-secondary disabled:opacity-50"
+                    title={strings.sessionDetail.save_as_is_hint}
+                  >
+                    {savingSource ? strings.sessionDetail.saving : strings.sessionDetail.save_as_is_button}
+                  </button>
+                  <button
+                    onClick={handleSuggest}
+                    disabled={!notes.trim() || suggesting || generating}
+                    className="btn-secondary disabled:opacity-50"
+                  >
+                    {suggesting ? (
+                      <span className="flex items-center gap-2">
+                        <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-therapy-calm"></span>
+                        {strings.sessionDetail.suggesting}
+                      </span>
+                    ) : (
+                      strings.sessionDetail.get_suggestions_button
+                    )}
+                  </button>
+                  <button
+                    onClick={handleGenerateSummary}
+                    disabled={!notes.trim() || generating}
+                    className="btn-primary disabled:opacity-50"
+                  >
+                    {generating ? (
+                      <span className="flex items-center gap-2">
+                        <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                        {strings.sessionDetail.creating_summary}
+                      </span>
+                    ) : (
+                      strings.sessionDetail.create_ai_summary_button
+                    )}
+                  </button>
+                </div>
               </div>
             </>
           )}
@@ -664,6 +795,44 @@ export default function SessionDetailPage() {
               </button>
             )}
           </div>
+
+          {/* Revise with AI — single-shot; never auto-approves */}
+          {!editing && (
+            <div className="rounded-lg border border-therapy-calm/30 bg-therapy-calm/5 p-3">
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
+                <SparklesIcon className="h-4 w-4 text-therapy-calm" />
+                {strings.sessionDetail.revise_label}
+              </label>
+              <div className="flex items-start gap-2 flex-wrap sm:flex-nowrap">
+                <input
+                  type="text"
+                  value={reviseInstruction}
+                  onChange={(e) => setReviseInstruction(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && reviseInstruction.trim() && !revising) handleRevise() }}
+                  placeholder={strings.sessionDetail.revise_placeholder}
+                  className="input-field flex-1 min-w-0"
+                  disabled={revising}
+                />
+                <button
+                  onClick={handleRevise}
+                  disabled={!reviseInstruction.trim() || revising}
+                  className="btn-primary disabled:opacity-50 whitespace-nowrap"
+                >
+                  {revising ? (
+                    <span className="flex items-center gap-2">
+                      <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                      {strings.sessionDetail.revising}
+                    </span>
+                  ) : (
+                    strings.sessionDetail.revise_button
+                  )}
+                </button>
+              </div>
+              {(summary.status === 'approved' || summary.approved_by_therapist) && (
+                <p className="text-xs text-amber-600 mt-2">{strings.sessionDetail.revise_resets_approved_note}</p>
+              )}
+            </div>
+          )}
 
           {/* Delete summary confirmation */}
           {confirmDeleteSummary && (
@@ -930,7 +1099,7 @@ export default function SessionDetailPage() {
                 className="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 resize-y"
               />
             </div>
-            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex gap-3 justify-end">
+            <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex gap-3 justify-end flex-wrap">
               <button
                 onClick={() => { setShowTranscriptReview(false); setPendingTranscript('') }}
                 className="btn-secondary"
@@ -938,8 +1107,21 @@ export default function SessionDetailPage() {
                 {strings.sessionDetail.cancel_button}
               </button>
               <button
+                onClick={async () => {
+                  await handleSourceSave(pendingTranscript, 'transcription')
+                  setShowTranscriptReview(false)
+                  setPendingTranscript('')
+                  try { localStorage.removeItem(transcriptKey) } catch { /* ignore */ }
+                }}
+                disabled={savingSource || finalizing || !pendingTranscript.trim()}
+                className="btn-secondary flex items-center gap-2 disabled:opacity-50"
+                title={strings.sessionDetail.save_as_is_hint}
+              >
+                {savingSource ? strings.sessionDetail.saving : strings.sessionDetail.save_transcript_as_is_button}
+              </button>
+              <button
                 onClick={handleFinalizeWithTranscript}
-                disabled={finalizing || !pendingTranscript.trim()}
+                disabled={finalizing || savingSource || !pendingTranscript.trim()}
                 className="btn-primary flex items-center gap-2 disabled:opacity-50"
               >
                 {finalizing ? (

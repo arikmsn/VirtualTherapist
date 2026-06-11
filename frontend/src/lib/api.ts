@@ -461,6 +461,39 @@ export const sessionsAPI = {
     return response.data
   },
 
+  // ── Phase 10: task-based summary actions ──
+  // source_save — save source text as-is, no AI. source_origin preserves provenance.
+  sourceSaveSummary: async (
+    sessionId: number,
+    sourceText: string,
+    sourceOrigin: 'manual' | 'transcription' = 'manual',
+  ) => {
+    const response = await api.post(`/sessions/${sessionId}/summary/source-save`, {
+      source_text: sourceText,
+      source_origin: sourceOrigin,
+    })
+    return response.data
+  },
+
+  // source_summary_suggest — advisory suggestions only; returns { suggestions, overall_note }.
+  suggestOnSource: async (sessionId: number, sourceText: string) => {
+    const response = await api.post(`/sessions/${sessionId}/summary/suggest`, {
+      source_text: sourceText,
+    })
+    return response.data as {
+      suggestions: Array<{ category: string; text: string; severity: string }>
+      overall_note: string | null
+    }
+  },
+
+  // ai_summary_revise — single-shot revision of the existing draft. Never auto-approves.
+  reviseSummary: async (sessionId: number, instruction: string) => {
+    const response = await api.post(`/sessions/${sessionId}/summary/revise`, {
+      instruction,
+    })
+    return response.data
+  },
+
   // Multi-clip recording
   uploadClip: async (sessionId: number, audioBlob: Blob, durationSeconds?: number, language?: string) => {
     const formData = new FormData()

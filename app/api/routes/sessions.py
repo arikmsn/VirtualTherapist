@@ -1,5 +1,6 @@
 """Session management routes"""
 
+import asyncio
 import json
 import time
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
@@ -703,6 +704,131 @@ async def regenerate_summary_from_transcript(
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.exception(f"regenerate_from_transcript session={session_id} failed: {e!r}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Phase 10: task-based summary endpoints ────────────────────────────────────
+# Each summary task is its own explicit endpoint so the requested task is
+# unambiguous at the routing layer and each gets its own strict typed body/response.
+# Frontend mode → endpoint mapping:
+#   save (manual)        → POST /{id}/summary/source-save  (source_origin="manual")
+#   save (transcription) → POST /{id}/summary/source-save  (source_origin="transcription")
+#   generate             → POST /{id}/summary/from-text | /from-audio
+#   suggest              → POST /{id}/summary/suggest
+#   revise               → POST /{id}/summary/revise
+
+class SourceSaveRequest(BaseModel):
+    source_text: str
+    source_origin: str = "manual"   # "manual" | "transcription"
+
+
+class SuggestRequest(BaseModel):
+    source_text: str
+
+
+class ReviseRequest(BaseModel):
+    instruction: str
+
+
+class SuggestionItem(BaseModel):
+    category: str
+    text: str
+    severity: str = "info"
+
+
+class SuggestResponse(BaseModel):
+    """Advisory-only response — deliberately NOT a SummaryResponse."""
+    suggestions: List[SuggestionItem]
+    overall_note: Optional[str] = None
+
+
+@router.post("/{session_id}/summary/source-save", response_model=SummaryResponse, status_code=201)
+async def source_save_summary(
+    session_id: int,
+    request: SourceSaveRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Task source_save — save source text as-is, no AI call. Preserves provenance."""
+    service = SessionService(db)
+    if request.source_origin not in ("manual", "transcription"):
+        raise HTTPException(status_code=422, detail="source_origin must be 'manual' or 'transcription'")
+    try:
+        summary = await service.source_save_summary(
+            session_id=session_id,
+            source_text=request.source_text,
+            therapist_id=current_therapist.id,
+            source_origin=request.source_origin,
+        )
+        return _summary_response_with_meta(summary)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"source_save_summary session={session_id} failed: {e!r}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{session_id}/summary/suggest", response_model=SuggestResponse)
+async def suggest_on_source(
+    session_id: int,
+    request: SuggestRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Task source_summary_suggest — advisory suggestions only; never rewrites or persists."""
+    session_service = SessionService(db)
+    therapist_service = TherapistService(db)
+    try:
+        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+        result = await session_service.suggest_on_source(
+            session_id=session_id,
+            source_text=request.source_text,
+            agent=agent,
+            therapist_id=current_therapist.id,
+        )
+        return SuggestResponse(
+            suggestions=[
+                SuggestionItem(category=s.category, text=s.text, severity=s.severity)
+                for s in result.suggestions
+            ],
+            overall_note=result.overall_note,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (RuntimeError, asyncio.TimeoutError) as e:
+        logger.exception(f"suggest_on_source session={session_id} provider error: {e!r}")
+        raise HTTPException(status_code=503, detail="שירות ה-AI אינו זמין כעת. נסה שוב מאוחר יותר.")
+    except Exception as e:
+        logger.exception(f"suggest_on_source session={session_id} failed: {e!r}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{session_id}/summary/revise", response_model=SummaryResponse)
+async def revise_summary(
+    session_id: int,
+    request: ReviseRequest,
+    current_therapist: Therapist = Depends(get_current_therapist),
+    db: DBSession = Depends(get_db),
+):
+    """Task ai_summary_revise — single-shot revision of an existing draft. Never auto-approves."""
+    session_service = SessionService(db)
+    therapist_service = TherapistService(db)
+    try:
+        agent = await therapist_service.get_agent_for_therapist(current_therapist.id)
+        summary = await session_service.revise_summary(
+            session_id=session_id,
+            instruction=request.instruction,
+            agent=agent,
+            therapist_id=current_therapist.id,
+        )
+        return _summary_response_with_meta(summary)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (RuntimeError, asyncio.TimeoutError) as e:
+        logger.exception(f"revise_summary session={session_id} provider error: {e!r}")
+        raise HTTPException(status_code=503, detail="שירות ה-AI אינו זמין כעת. נסה שוב מאוחר יותר.")
+    except Exception as e:
+        logger.exception(f"revise_summary session={session_id} failed: {e!r}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
